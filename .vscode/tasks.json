@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "setup-dev-environment",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m uv pip install -e '.[dev]'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "never",
+        "clear": true
+      },
+      "detail": "Installs project in editable mode with dev dependencies using UV."
+    }
+  ]
+}

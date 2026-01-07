@@ -1,0 +1,46 @@
+from typing import AsyncGenerator, Dict, List, Union
+
+from openai.types.completion import Completion
+
+from burrito.services.inference import generate_hosted
+from burrito.common.config import settings
+from burrito.common.logger import FastAPILogger
+from burrito.common.utils import random_uuid
+from burrito.types.adapter import AdapterCreateParams
+
+
+class AdapterGenerationHandler:
+    def __init__(self):
+        self.can_stream = True
+        self.log_id = random_uuid()
+        self.logger = FastAPILogger.get_logger(__name__)
+        self.log_extra = {"log_id": f"agh_{self.log_id}"}
+
+    async def _generate_native(
+        self, prompt_token_ids: List[int], params: AdapterCreateParams
+    ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
+        yield {"error": "Native generation is not implemented yet."}  # type: ignore
+
+    async def _generate_hosted(
+        self, prompt_token_ids: List[int], params: AdapterCreateParams
+    ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
+        try:
+            async for completion in generate_hosted(prompt_token_ids, params):
+                if not self.can_stream:
+                    self.logger.warning("generator: breaking loop", extra=self.log_extra)
+                    break
+                yield completion
+        finally:
+            self.logger.info("generator: cleaning up", extra=self.log_extra)
+
+    async def generate(
+        self, prompt_token_ids: List[int], params: AdapterCreateParams
+    ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
+        # TODO: implement native, for now default to false for type checks and speed of debug
+        if settings.INFERENCE_BACKEND_IS_NATIVE:
+            generator = self._generate_native(prompt_token_ids, params)
+        else:
+            generator = self._generate_hosted(prompt_token_ids, params)
+
+        async for item in generator:
+            yield item
