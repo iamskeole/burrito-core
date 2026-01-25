@@ -1,4 +1,10 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
+
+from gpt_oss.tools.python_docker.docker_tool import PythonTool
+
+from burrito.tools.browser.tool import BurritoBrowser
+
+from openai_harmony import Message
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
@@ -9,7 +15,10 @@ from burrito.types.adapter.adapter_create_params_responses import (
     AdapterFunctionToolResponses,
 )
 from burrito.types.adapter.adapter_tool_namespace import AdapterToolNamespace
-from burrito.types.sandbox.sandbox_run_code_request import SandboxRequest, SandboxResponse
+from burrito.types.sandbox.sandbox_run_code_request import (
+    SandboxRequest,
+    SandboxResponse,
+)
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
@@ -182,23 +191,26 @@ class ToolHandler:
     # TODO: here, and maybe also caller tools, enable strict tool enforcement,
     # eg only call shell, that gets to spec parity with openai?
 
-    def _call_python_tool(self, code: str):
-        import json
+    @staticmethod
+    async def run_tool(
+        tool: Union[PythonTool, BurritoBrowser], message: Message
+    ) -> List[Message]:
+        results = []
+        async for msg in tool.process(message):
+            results.append(msg)
 
-        session_id = self.manager.manager.log_id
-        sandbox_handler = self.manager.manager.sandbox_handler
-        sandbox = sandbox_handler.sandbox
-        req = SandboxRequest(session_id=session_id, code=code)
-        res = sandbox.run(req)
-        text = f"stdout: {res.stdout}\n\nstderr: {res.stderr}"
-        self.manager._update_state_with_tool_result(text, "python")
-        self.manager.response_buffer
+        return results
 
-        x = 1
-
-
-    async def _call_browser_tool(self):
-        pass
+    async def _call_native_tool(
+        self, tool: Union[PythonTool, BurritoBrowser], message: Message
+    ):
+        try:
+            tool_result = await self.run_tool(tool, message)
+        except Exception as e:
+            msg = f"**Error calling {tool.name} tool**: {repr(e)}"
+            self.manager._add_recovery_message(msg)
+            return self.manager._recover_state()
+        self.manager._update_state_with_tool_result(tool_result)
 
     async def maybe_call_native_tool(self):
         if self.manager.parser_state != AdapterConversationState.NATIVE_TOOL_CALL:
@@ -214,11 +226,17 @@ class ToolHandler:
         if not recipient:
             return
 
-        is_python = recipient == "python"
-        is_browser = recipient.startswith("browser")
+        is_python = recipient == "python" or recipient.startswith("functions.python")
+        is_browser = recipient.startswith("browser.")
 
+        tool = None
         if is_python:
-            return self._call_python_tool(last_message.content[0].text)
-        
+            tool = self.manager.manager.python_tool
         if is_browser:
-            return self._call_browser_tool()
+            tool = self.manager.manager.browser_tool
+            self.manager.manager.browser_tool_used = True
+
+        if tool is None:
+            return
+
+        await self._call_native_tool(tool, last_message)

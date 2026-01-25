@@ -8,6 +8,10 @@ from burrito.common.config import settings
 from .adapter_reasoning import AdapterReasoning
 
 
+# class AdapterNativeToolResponses(BaseModel):
+#     type: Literal["web_search", "code_interpreter"]
+
+
 class CustomToolInputFormatText(BaseModel):
     type: Literal["text"]
 
@@ -62,12 +66,12 @@ class ContentPartOutputText(BaseModel):
 
 class UserMessage(BaseModel):
     type: Literal["message"]
-    role: Literal["user"]
+    role: Literal["user", "developer"]
     content: Union[
         str,
         List[
             Annotated[
-                Union[UserMessageContentText, UserMessageContentText],
+                Union[UserMessageContentText, UserMessageContentImage],
                 Field(discriminator="type"),
             ],
         ],
@@ -159,7 +163,13 @@ class AdapterCreateParamsResponses(BaseModel):
 
     instructions: Optional[str] = None
     tools: Optional[
-        List[Union[AdapterFunctionToolResponses, AdapterCustomToolResponses]]
+        List[
+            Union[
+                # AdapterNativeToolResponses,
+                AdapterFunctionToolResponses,
+                AdapterCustomToolResponses,
+            ]
+        ]
     ] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = "auto"
     stream: Optional[bool] = True

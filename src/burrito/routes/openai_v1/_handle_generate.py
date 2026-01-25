@@ -4,9 +4,11 @@ import httpx
 from fastapi import Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from gpt_oss.tools.python_docker.docker_tool import PythonTool
+from burrito.tools.browser.tool import BurritoBrowser
+
 from burrito.handlers.conversation_handler import AdapterConversationHandler
 from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.sandbox_handler import SandboxHandler
 from burrito.types.adapter import AdapterCreateParams
 
 
@@ -14,11 +16,12 @@ async def handle_generate(
     request: Request,
     params: AdapterCreateParams,
     generation_handler: AdapterGenerationHandler,
-    sandbox_handler: SandboxHandler,
+    python_tool: PythonTool,
+    browser_tool: BurritoBrowser,
 ) -> Union[StreamingResponse, JSONResponse]:
     try:
         handler = AdapterConversationHandler(
-            request, params, generation_handler, sandbox_handler
+            request, params, generation_handler, python_tool, browser_tool
         )
         if params.stream:
             return StreamingResponse(

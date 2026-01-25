@@ -99,6 +99,13 @@ from openai.types.responses.response_web_search_call_completed_event import (
 )
 
 # web search
+from openai.types.responses.response_function_web_search import (
+    ResponseFunctionWebSearch,
+    ActionFind,
+    ActionOpenPage,
+    ActionSearch,
+    ActionSearchSource,
+)
 from openai.types.responses.response_web_search_call_in_progress_event import (
     ResponseWebSearchCallInProgressEvent,
 )
@@ -229,14 +236,19 @@ class ToolPluginResponses(BasePluginResponses):
     def build_output_item(
         self,
         tool_name: str,
-    ) -> Union[
-        ResponseFunctionToolCall,
-        ResponseCustomToolCall,
-        ResponseCodeInterpreterToolCall,
+    ) -> Optional[
+        Union[
+            ResponseFunctionToolCall,
+            ResponseCustomToolCall,
+        ]
     ]:
         inputs = self.manager.conversation_inputs
         tool: Optional[AdapterConversationInputTool] = None
         for i in inputs.tools or []:
+            if i.name == "browser" and tool_name.startswith("browser."):
+                tool = i
+                break
+
             if i.name == tool_name:
                 tool = i
                 break
@@ -244,18 +256,10 @@ class ToolPluginResponses(BasePluginResponses):
         assert tool is not None, f"Could not map tool for {tool_name}"
 
         match tool.type:
-            # case AdapterToolType.PYTHON.value:
-            #     fc_id, call_id = (f"fc_{random_uuid()}", f"call_{random_uuid()}")
-            #     obj = ResponseCodeInterpreterToolCall(
-            #         id=fc_id,
-            #         code="",
-            #         container_id="burrito",  # TODO: figure out?
-            #         type="code_interpreter_call",
-            #         status="in_progress",
-            #     )
-            #     return obj
-            # case AdapterToolType.BROWSER.value:
-            #     pass
+            case AdapterToolType.PYTHON.value:
+                return # always handle "internally" in model CoT
+            case AdapterToolType.BROWSER.value:
+                return # always handle "internally" in model CoT
             case AdapterToolType.FUNCTION.value:
                 fc_id, call_id = (f"fc_{random_uuid()}", f"call_{random_uuid()}")
                 return ResponseFunctionToolCall(
@@ -285,6 +289,7 @@ class ToolPluginResponses(BasePluginResponses):
     ) -> Union[
         ResponseFunctionCallArgumentsDeltaEvent, ResponseCustomToolCallInputDeltaEvent
     ]:
+        self.manager.response_buffer
         assert output_item.id is not None, "output_item.id is None"
         if isinstance(output_item, ResponseFunctionToolCall):
             # TODO: this looks sane, but double check if we're supposed to add to buffer
@@ -345,6 +350,9 @@ class ToolPluginResponses(BasePluginResponses):
 
         tool_name = self.extract_tool_name_from_recipient(parser.current_recipient)
         output_item = self.build_output_item(tool_name)
+        if not output_item:
+            return
+
         event = ResponseOutputItemAddedEvent(
             item=output_item,
             output_index=self.manager.output_index,
@@ -359,11 +367,18 @@ class ToolPluginResponses(BasePluginResponses):
         )
 
         output_item = self.manager.output_object.output[self.manager.output_index]
+        if not output_item:
+            return
+
         assert output_item.id is not None, (
             f"output_item.id is None: {output_item.model_dump()}"
         )
         assert isinstance(
-            output_item, (ResponseFunctionToolCall, ResponseCustomToolCall)
+            output_item,
+            (
+                ResponseFunctionToolCall,
+                ResponseCustomToolCall,
+            ),
         ), f"Expected a ResponseCustomToolCall, but got {type(output_item)}"
 
         # TODO: figure out custom tools and native tools and mcp and fuckme..
@@ -377,6 +392,8 @@ class ToolPluginResponses(BasePluginResponses):
         )
 
         output_item = self.manager.output_object.output[self.manager.output_index]
+        if not output_item:
+            return
 
         assert isinstance(
             output_item, (ResponseFunctionToolCall, ResponseCustomToolCall)

@@ -114,7 +114,7 @@ def build_payload(
     # default to logprobs for both vLLM and llama.cpp
     # WARNING: llama.cpp inference speed drops 3x as of 9.29.25 when logprobs >0
     # vLLM is less sensitive, seems to be unaffected by None, 0 or 20 logprobs
-    payload["logprobs"] = None
+    payload["logprobs"] = 20
 
     # --- overrides, we ignore anything the caller sends here to preserve format
 

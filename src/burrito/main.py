@@ -1,29 +1,32 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from contextlib import asynccontextmanager
 
 from burrito.routes.openai_v1 import chat, models, responses
-from burrito.common.dependencies import browser_handler_singleton
-from burrito.routes import browser_routes
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Start the Browser Process (Playwright)
-    await browser_handler_singleton.start()
+    # start singletons / dependencies
+    # await browser_tool_singleton.start()
 
     yield
 
-    # 2. Cleanup the Browser Process
-    await browser_handler_singleton.stop()
+    # cleanup
+    # await browser_tool_singleton.stop()
 
 
-app = FastAPI(lifespan=lifespan)
-
-
-app = FastAPI(title="burrito:harness", version="0.1.0")
+app = FastAPI(lifespan=lifespan, title="burrito:harness", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (including OPTIONS)
+    allow_headers=["*"],  # Allows all headers
+)
 app.include_router(models.router)
 app.include_router(chat.router)
 app.include_router(responses.router)
-app.include_router(browser_routes.router)

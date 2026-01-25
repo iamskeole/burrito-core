@@ -108,11 +108,12 @@ def is_native_tool(parser: StreamableParser) -> bool:
     match_this_recipient = this_recipient in [
         AdapterToolType.BROWSER.value,
         AdapterToolType.PYTHON.value,
-    ]
+    ] or (this_recipient and this_recipient.startswith("browser."))
     match_last_recipient = last_recipient in [
         AdapterToolType.BROWSER.value,
         AdapterToolType.PYTHON.value,
-    ]
+    ] or (last_recipient and last_recipient.startswith("browser."))
+
     match_this_channel = this_channel in [
         AdapterAssistantChannel.ANALYSIS.value,
         AdapterAssistantChannel.COMMENTARY.value,

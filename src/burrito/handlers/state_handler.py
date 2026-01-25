@@ -30,7 +30,6 @@ from burrito.plugins import (
 from burrito.services.harmony import (
     ENCODING,
     build_conversation,
-    build_tool_message,
     build_user_message,
     render_conversation_for_completion,
 )
@@ -120,7 +119,11 @@ class AdapterStateHandler:
 
     def _init_conversation(self, extra_messages: Optional[List[Message]] = None):
         params = self.manager.params
-        conversation, inputs = build_conversation(params, extra_messages)
+        python_tool = self.manager.python_tool
+        browser_tool = self.manager.browser_tool
+        conversation, inputs = build_conversation(
+            params, extra_messages, python_tool, browser_tool
+        )
         self.conversation = conversation
         self.conversation_inputs = inputs
         self.prompt_tokens = render_conversation_for_completion(self.conversation)
@@ -175,11 +178,12 @@ class AdapterStateHandler:
         self.response_buffer += bfr
         self.recovery_message = message
 
-    def _update_state_with_tool_result(self, text: str, recipient: Optional[str]):
+    def _update_state_with_tool_result(self, tool_result: List[Message]):
+        if not tool_result:
+            return
         self.manager._stop_stream()
         prev_messages = self.parser.messages
-        tool_result = build_tool_message(text, recipient)
-        prev_messages.append(tool_result)
+        prev_messages += tool_result
 
         for i in prev_messages:
             self.extra_messages.append(i)

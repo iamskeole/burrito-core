@@ -204,7 +204,7 @@ def map_input_tools(params: AdapterCreateParamsResponses):
                     fmt = CustomToolInputFormatGrammar(
                         definition=tool.format.definition,
                         syntax=tool.format.syntax,
-                        type=tool.format.type
+                        type=tool.format.type,
                     )
                 else:
                     fmt = CustomToolInputFormatText(type=tool.format.type or "text")

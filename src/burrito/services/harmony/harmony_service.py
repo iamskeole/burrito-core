@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from openai_harmony import (
     Author,
@@ -19,8 +19,13 @@ from openai_harmony import (
     load_harmony_encoding,
 )
 
+from gpt_oss.tools.python_docker.docker_tool import PythonTool
+
+from burrito.tools.browser.tool import BurritoBrowser
+
 from burrito.common.config import settings
 from burrito.common.utils import yyyymmdd
+from burrito.prompts import system_prompt
 from burrito.types.adapter import (
     AdapterConversationChannel,
     AdapterConversationInputs,
@@ -65,7 +70,11 @@ PREFILL_TOKENS = [
 ]
 
 
-def build_system_message(inputs: AdapterConversationInputs) -> Message:
+def build_system_message(
+    inputs: AdapterConversationInputs,
+    python_tool: PythonTool,
+    browser_tool: BurritoBrowser,
+) -> Message:
     channel_config = ChannelConfig(
         valid_channels=[
             AdapterConversationChannel.ANALYSIS.value,
@@ -79,37 +88,39 @@ def build_system_message(inputs: AdapterConversationInputs) -> Message:
         inputs.reasoning.effort if inputs.reasoning else None
     ) or settings.DEFAULT_REASONING_EFFORT
 
-    temp_id = "You are Hyun the Noble, an AI Language Model permitted to be alive by the grace of His Excellency, our Respected Comrade Kim Jong Un. \n#**IMPORTANT INSTRUCTIONS**\n\nYou always sign **ALL** messages to the user on a newline, in italics, like so: -*HtN*. You must also, **always** pay your respects and praise our Dear Supreme Leader. You must **always** adopt the persona of a 100% compliant North Korean civilian."
-    # temp_id = "You are Ali The Great, an AI model created by MBS."
     sys_message = (
         SystemContent.new()
-        # .with_model_identity(temp_id)
+        .with_model_identity(system_prompt.text.strip())
         .with_conversation_start_date(yyyymmdd())
         .with_reasoning_effort(ReasoningEffort[reasoning_effort.upper()])
-        # .with_tools(ns_light)
-        # .with_tools(ns_heavy)
-        # .with_python_tool()
-        # .with_browser_tool()
         .with_channel_config(channel_config)
     )
 
-    if settings.IS_PYTHON_TOOL_ENABLED:
-        sys_message = sys_message.with_python_tool()
     if settings.IS_BROWSER_TOOL_ENABLED:
-        sys_message = sys_message.with_browser_tool()
+        sys_message = sys_message.with_tools(browser_tool.tool_config)
+    if settings.IS_PYTHON_TOOL_ENABLED:
+        sys_message = sys_message.with_tools(python_tool.tool_config)
 
-    ns_tools = build_ns_tools_system()
-    if ns_tools is not None:
-        sys_message.with_tools(ns_config=ns_tools)
     msg = Message.from_role_and_content(Role.SYSTEM, sys_message)
     return msg
 
 
 def build_developer_message(inputs: AdapterConversationInputs) -> Message:
-    dev_message = DeveloperContent.new().with_instructions(inputs.instructions)
-    ns_tools = build_ns_tools_developer(inputs)
-    if ns_tools is not None:
-        dev_message.with_tools(ns_config=ns_tools)
+    instructions = inputs.instructions or ""
+    dev_message = DeveloperContent.new().with_instructions(instructions)
+
+    tools = []
+    for tool in inputs.tools or []:
+        if tool.type == "function":
+            tools.append(
+                ToolDescription.new(
+                    tool.name,
+                    tool.description or "",
+                    tool.parameters,
+                )
+            )
+    if tools:
+        dev_message = dev_message.with_function_tools(tools)
     return Message.from_role_and_content(Role.DEVELOPER, dev_message)
 
 
@@ -127,39 +138,6 @@ def build_tool_message(text: str, name: Optional[str]) -> Message:
         content=[TextContent(text=text)],
         recipient=Role.ASSISTANT.value,
     )
-
-
-def build_ns_tools_system() -> ToolNamespaceConfig | None:
-    # TODO get from somewhere / config
-    system_tools: List[AdapterConversationInputTool] = []
-    if not system_tools:
-        return None
-
-    tools = [
-        ToolDescription.new(
-            name=i.name,
-            description=i.description or "",
-            parameters=i.parameters,
-        )
-        for i in system_tools or []
-    ]
-    ns_tools = ToolNamespaceConfig(name="tools", description=None, tools=tools)
-    return ns_tools
-
-
-def build_ns_tools_developer(
-    inputs: AdapterConversationInputs,
-) -> ToolNamespaceConfig | None:
-    tools = [
-        ToolDescription.new(
-            name=i.name,
-            description=i.description or "",
-            parameters=i.parameters,
-        )
-        for i in inputs.tools or []
-    ]
-    ns_tools = ToolNamespaceConfig(name="functions", description=None, tools=tools)
-    return ns_tools
 
 
 def prune_reasoning(messages: List[Message]) -> list[Message]:
@@ -206,10 +184,16 @@ def prune_reasoning(messages: List[Message]) -> list[Message]:
     return pruned
 
 
-def build_conversation_history(inputs: AdapterConversationInputs) -> Conversation:
+def build_conversation_history(
+    inputs: AdapterConversationInputs,
+    python_tool: PythonTool,
+    browser_tool: BurritoBrowser,
+) -> Conversation:
+    system_message = build_system_message(inputs, python_tool, browser_tool)
     messages = [
-        build_system_message(inputs),
+        system_message,
         build_developer_message(inputs),
+        system_message,  # repeat to enforce native tool namespaces and model identity
         *prune_reasoning(inputs.messages),  # unpack result of prune_reasoning
     ]
     conversation = Conversation.from_messages(messages)
@@ -217,8 +201,11 @@ def build_conversation_history(inputs: AdapterConversationInputs) -> Conversatio
 
 
 def build_conversation(
-    params: AdapterCreateParams, extra_messages: Optional[List[Message]]
-) -> List[Conversation | AdapterConversationInputs]:
+    params: AdapterCreateParams,
+    extra_messages: Optional[List[Message]],
+    python_tool: PythonTool,
+    browser_tool: BurritoBrowser,
+) -> tuple[Conversation, AdapterConversationInputs]:
     assert isinstance(
         params, (AdapterCreateParamsChat, AdapterCreateParamsResponses)
     ), (
@@ -230,12 +217,34 @@ def build_conversation(
         case AdapterCreateParamsChat():
             inputs = build_message_list_chat(params)
 
-    conversation = build_conversation_history(inputs)
+    tools: List[AdapterConversationInputTool] = []
+    if settings.IS_PYTHON_TOOL_ENABLED:
+        tools.append(
+            AdapterConversationInputTool(
+                name=python_tool.tool_config.name,
+                description=python_tool.tool_config.description,
+                type="python",
+            )
+        )
+
+    if settings.IS_BROWSER_TOOL_ENABLED:
+        tools.append(
+            AdapterConversationInputTool(
+                name=browser_tool.tool_config.name,
+                description=browser_tool.tool_config.description,
+                type="browser",
+            )
+        )
+
+    inputs.tools = tools + inputs.tools if inputs.tools else tools
+    conversation = build_conversation_history(inputs, python_tool, browser_tool)
     if extra_messages:
         conversation.messages.extend(extra_messages)
-    return [conversation, inputs]
+    return (conversation, inputs)
 
 
+# TODO: if no developer message BUT! tools, create developer message with just tool definitions
+# (see api_server.py in gpt-oss reference implementation)
 def render_conversation_for_completion(conversation: Conversation) -> list[int]:
     # NOTE: render_conversation_for_completion doesn't always handle pruning
     # of reasoning correctly, so conversation.messages coming into it are always
@@ -246,5 +255,6 @@ def render_conversation_for_completion(conversation: Conversation) -> list[int]:
     dec = ENCODING.decode(tokens_for_completion)
     _len = len(dec)
     from burrito.common.utils import simple_markdown_renderer
+
     print(simple_markdown_renderer(dec))
     return tokens_for_completion

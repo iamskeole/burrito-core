@@ -2,8 +2,8 @@ import logging
 from typing import Dict, Optional, Any
 from playwright.async_api import async_playwright, Browser
 
-from burrito.services.browser.browser_engine import BrowserEngine
-from burrito.services.browser.browser_tool import BrowserTool
+from burrito.tools.browser.engine import BrowserEngine
+from burrito.tools.browser.tool import BrowserTool
 
 logger = logging.getLogger(__name__)
 
@@ -20,24 +20,13 @@ class BrowserHandler:
 
     async def start(self):
         """Called by FastAPI Lifespan on startup"""
-        if self._playwright is None:
-            logger.info("Initializing Playwright Browser Handler...")
-            self._playwright = await async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-            )
-            # Inject the global browser instance into the Engine class 
-            BrowserEngine._playwright = self._playwright
-            BrowserEngine._browser = self._browser
+        logger.info("Initializing Browser Engine...")
+        await BrowserEngine.start()
 
     async def stop(self):
         """Called by FastAPI Lifespan on shutdown"""
-        logger.info("Shutting down Browser Handler...")
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        logger.info("Shutting down Browser Engine...")
+        await BrowserEngine.stop()
         self._user_sessions.clear()
 
     def get_tool_for_user(self, user_id: str) -> BrowserTool:

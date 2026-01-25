@@ -5,8 +5,11 @@ import async_timeout
 from fastapi import Request
 from openai.types.completion import Completion
 
+from gpt_oss.tools.python_docker.docker_tool import PythonTool
+
+from burrito.tools.browser.tool import BurritoBrowser
+
 from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.sandbox_handler import SandboxHandler
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid, unix_timestamp_in_ms
@@ -21,7 +24,8 @@ class AdapterConversationHandler:
         request: Request,
         params: AdapterCreateParams,
         generator: AdapterGenerationHandler,
-        sandbox_handler: SandboxHandler,
+        python_tool: PythonTool,
+        browser_tool: BurritoBrowser,
     ):
         self.request = request
         self.params = params
@@ -35,7 +39,9 @@ class AdapterConversationHandler:
         self.stream: AsyncGenerator[Union[Completion, Dict, str], None]
         self.prompt_tokens: List[int]
         self.state_handler: AdapterStateHandler
-        self.sandbox_handler = sandbox_handler
+        self.python_tool = python_tool
+        self.browser_tool = browser_tool
+        self.browser_tool_used = False
 
         self.log_id = random_uuid()
         self.logger = FastAPILogger.get_logger(__name__)
@@ -151,15 +157,20 @@ class AdapterConversationHandler:
             await self.state_handler.push_error(msg, "ERR_TASK_GROUP_EXCEPTION")
 
     async def return_json(self) -> Dict:
-        # This consumes the entire stream but doesn't yield anything to the caller.
-        # It just runs the process to populate the internal state.
         async for _ in self.return_stream():
-            pass  # Consume the stream to completion
-
-        # After the stream is done, get the final result.
+            pass
         if self.state_handler.is_done:
-            return self.state_handler.output_object.model_dump()
-            return {"done": "ok"}  # TODO: self.state_handler.json_output()
+            browser_tool = self.browser_tool
+            old_text = self.state_handler.output_object.output_text
+
+            new_text = browser_tool.normalize_citations(old_text)
+            _json = self.state_handler.output_object.model_dump()
+            _json["output"][-1]["content"][0]["text"] = new_text[0]
+
+            print("output items")
+            # build message for tool response into response object? see official spec
+            for i in _json["output"][:-1]:
+                print(i)
+            return _json
         else:
-            # Handle cases where generation failed
             return {"error": "Generation did not complete successfully."}
