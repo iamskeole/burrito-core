@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional, Set, Union
 from burrito.types.adapter import AdapterConversationInputTool, AdapterConversationState
 
 if TYPE_CHECKING:
-    from burrito.adapter.handlers.state_handler import (
+    from burrito.handlers.state_handler import (
         AdapterStateHandler,
     )
 from openai.types.responses.response import Response
@@ -113,7 +113,7 @@ from openai.types.responses.response_web_search_call_searching_event import (
     ResponseWebSearchCallSearchingEvent,
 )
 
-from burrito.plugins.base_plugin_responses import BasePluginResponses
+from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
 from burrito.types.adapter import AdapterCompletionToken, AdapterToolNamespace
 from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
@@ -214,24 +214,12 @@ EVENTS = [
 class ToolPluginResponses(BasePluginResponses):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
+        self.manager = manager
         self.content_index = 0
 
     @property
     def subscribed_states(self) -> Set[str]:
         return {AdapterConversationState.TOOL_INPUT}
-
-    def extract_tool_name_from_recipient(self, recipient: str) -> str:
-        if recipient == AdapterToolNamespace.NATIVE_PYTHON.value:
-            return recipient
-        elif recipient.startswith(AdapterToolNamespace.NATIVE_BROWSER.value + "."):
-            return recipient  # TODO: maybe we'll have to split by method eg get, fetch
-
-        # see if we have a tool with a namespace prefix
-        try_split = recipient.split(".")
-        # if no prefix, just return tool name
-        if not try_split:
-            return recipient
-        return try_split[1] if len(try_split) > 1 else recipient
 
     def build_output_item(
         self,
@@ -257,9 +245,9 @@ class ToolPluginResponses(BasePluginResponses):
 
         match tool.type:
             case AdapterToolType.PYTHON.value:
-                return # always handle "internally" in model CoT
+                return  # always handle "internally" in model CoT
             case AdapterToolType.BROWSER.value:
-                return # always handle "internally" in model CoT
+                return  # always handle "internally" in model CoT
             case AdapterToolType.FUNCTION.value:
                 fc_id, call_id = (f"fc_{random_uuid()}", f"call_{random_uuid()}")
                 return ResponseFunctionToolCall(
@@ -341,15 +329,11 @@ class ToolPluginResponses(BasePluginResponses):
                 return
 
     async def handle_on_enter_state(self):
-        # TODO: use this to figure out whether native or custom tool
-        # here as well, we buffer / wait to have full call built to determine tool type
-        # no interim streams
-        parser = self.manager.parser
-        assert parser.current_recipient is not None, "parser.current_recipient is None"
+        entry = self.manager.tool_handler.register_tool_call()
         self.manager.output_index += 1
 
-        tool_name = self.extract_tool_name_from_recipient(parser.current_recipient)
-        output_item = self.build_output_item(tool_name)
+        tool: AdapterConversationInputTool = entry["tool"]
+        output_item = self.build_output_item(tool.name)
         if not output_item:
             return
 

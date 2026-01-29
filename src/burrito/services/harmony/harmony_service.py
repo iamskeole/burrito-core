@@ -83,16 +83,12 @@ def build_system_message(
         ],
         channel_required=True,
     )
-    # TODO: check this plugs in the right (lower case) formatting, eg: "low"
-    reasoning_effort = (
-        inputs.reasoning.effort if inputs.reasoning else None
-    ) or settings.DEFAULT_REASONING_EFFORT
 
     sys_message = (
         SystemContent.new()
         .with_model_identity(system_prompt.text.strip())
         .with_conversation_start_date(yyyymmdd())
-        .with_reasoning_effort(ReasoningEffort[reasoning_effort.upper()])
+        .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()]) # type: ignore
         .with_channel_config(channel_config)
     )
 
@@ -192,8 +188,7 @@ def build_conversation_history(
     system_message = build_system_message(inputs, python_tool, browser_tool)
     messages = [
         system_message,
-        build_developer_message(inputs),
-        system_message,  # repeat to enforce native tool namespaces and model identity
+        # build_developer_message(inputs),
         *prune_reasoning(inputs.messages),  # unpack result of prune_reasoning
     ]
     conversation = Conversation.from_messages(messages)
@@ -252,9 +247,8 @@ def render_conversation_for_completion(conversation: Conversation) -> list[int]:
     tokens_for_completion = ENCODING.render_conversation_for_completion(
         conversation=conversation, next_turn_role=Role.ASSISTANT
     )
-    dec = ENCODING.decode(tokens_for_completion)
-    _len = len(dec)
-    from burrito.common.utils import simple_markdown_renderer
-
-    print(simple_markdown_renderer(dec))
+    # dec = ENCODING.decode(tokens_for_completion)
+    # _len = len(dec)
+    # from burrito.common.utils import simple_markdown_renderer
+    # print(simple_markdown_renderer(dec))
     return tokens_for_completion

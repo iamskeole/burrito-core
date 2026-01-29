@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from burrito.adapter.handlers.token_handler import (
         AdapterCompletionToken,
     )
-from .base_plugin import BasePlugin
+from .responses.base_plugin import BasePlugin
 
 
 class ReasoningSummaryPluginResponses(BasePlugin):

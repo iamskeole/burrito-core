@@ -12,7 +12,7 @@ from openai.types.responses.response_usage import (
 
 from burrito.types.adapter import AdapterConversationState
 
-from .base_plugin_responses import BasePluginResponses
+from burrito.plugins.responses.base_plugin import BasePluginResponses
 
 
 class ContextManagerPluginResponses(BasePluginResponses):
@@ -72,7 +72,9 @@ class ContextManagerPluginResponses(BasePluginResponses):
         for output_item in self.manager.output_object.output:
             if hasattr(output_item, "status"):
                 setattr(output_item, "status", "completed")
+
         await self.push_event(event)
+        await self.send_close_marker()
 
     async def on_enter_state(self, state: AdapterConversationState):
         if state in [

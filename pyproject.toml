@@ -21,5 +21,6 @@ dependencies = [
     "pydantic>=2.12.3",
     "pydantic-settings>=2.11.0",
     "tenacity>=9.1.2",
+    "trafilatura>=2.0.0",
     "uvicorn>=0.38.0",
 ]

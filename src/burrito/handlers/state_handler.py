@@ -7,7 +7,7 @@ from burrito.common.logger import FastAPILogger
 if TYPE_CHECKING:
     from .conversation_handler import AdapterConversationHandler
 
-from openai.types.chat.chat_completion import ChatCompletion
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
 from openai_harmony import (
@@ -18,15 +18,20 @@ from openai_harmony import (
     StreamableParser,
 )
 
-from burrito.plugins import (
-    BasePlugin,
+from burrito.plugins import BasePlugin, ErrorPlugin
+from burrito.plugins.chat import (
+    ContextManagerPluginChat,
+    ReasoningTextPluginChat,
+    OutputTextPluginChat,
+    ToolPluginChat,
+)
+from burrito.plugins.responses import (
     ContextManagerPluginResponses,
-    ErrorPlugin,
-    OutputTextPluginResponses,
-    ReasoningSummaryPluginResponses,
     ReasoningTextPluginResponses,
+    OutputTextPluginResponses,
     ToolPluginResponses,
 )
+
 from burrito.services.harmony import (
     ENCODING,
     build_conversation,
@@ -40,6 +45,7 @@ from burrito.types.adapter import (
     AdapterConversationInputs,
     AdapterConversationState,
     AdapterCreateParamsChat,
+    AdapterCreateParamsResponses,
 )
 
 from .token_handler import (
@@ -81,14 +87,11 @@ class AdapterStateHandler:
         self.created_event_fired: bool = False
         self.is_done: bool = False
 
-        self.output_object: Union[ChatCompletion, Response]
+        self.output_object: Union[Response, List[ChatCompletionChunk]]
 
-        self.plugins: List[BasePlugin] = []
+        self.plugins: List[BasePlugin]
         self._active_plugins_by_state: dict[str, list[BasePlugin]] = {}
         self.error_plugin = ErrorPlugin(self)
-
-        self.tool_handler = ToolHandler(self)
-        self.transition_handler = TransitionHandler(self)
 
         self.created_at = unix_timestamp_in_ms()
         self.recover_state_attempts = 0
@@ -97,17 +100,28 @@ class AdapterStateHandler:
         self._init_conversation()
         self._init_plugins()
 
+        self.tool_handler = ToolHandler(self)
+        self.transition_handler = TransitionHandler(self)
+
     def _init_plugins(self):
-        if isinstance(self.manager.params, AdapterCreateParamsChat):
-            self.plugins += []  # TODO
-        else:
-            self.plugins += [
-                ContextManagerPluginResponses(self),
-                ReasoningTextPluginResponses(self),
-                ReasoningSummaryPluginResponses(self),
-                OutputTextPluginResponses(self),
-                ToolPluginResponses(self),
-            ]
+        match self.manager.params:
+            case AdapterCreateParamsChat():
+                self.plugins = [
+                    ContextManagerPluginChat(self),
+                    ReasoningTextPluginChat(self),
+                    OutputTextPluginChat(self),
+                    ToolPluginChat(self),
+                    # TODO: continue, output, tool and then summaries, maybe
+                ]
+            case AdapterCreateParamsResponses():
+                self.plugins = [
+                    ContextManagerPluginResponses(self),
+                    ReasoningTextPluginResponses(self),
+                    OutputTextPluginResponses(self),
+                    ToolPluginResponses(self),
+                ]
+            case _:
+                pass  # TODO: maybe anthropic messages?
         for plugin in self.plugins:
             for state in plugin.subscribed_states:
                 self._active_plugins_by_state.setdefault(state, []).append(plugin)
@@ -320,8 +334,6 @@ class AdapterStateHandler:
     def _cleanup_on_done(self, completion: Union[Completion, str]):
         self.is_done = isinstance(completion, str) and completion == "[DONE]"
         if not self.is_done:
-            if self.parser_channel in ["analysis", "commentary"]:
-                print(completion.choices[0].text, end="\r")
             return
         self._log_stats()
         self.response_buffer

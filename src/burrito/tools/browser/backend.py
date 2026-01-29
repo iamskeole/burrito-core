@@ -21,7 +21,7 @@ logger = logging.getLogger("browser_backend")
 
 @chz.chz(typecheck=True)
 class BurritoBackend(Backend):
-    source: str = chz.field(default="search engine or direct URL access")
+    source: str = chz.field(default="general,news,it,science,files,social media")
 
     async def start(self):
         await BrowserEngine.start()
@@ -29,9 +29,9 @@ class BurritoBackend(Backend):
     async def stop(self):
         await BrowserEngine.stop()
 
-    async def fetch(self, url: str, session: aiohttp.ClientSession) -> PageContents:
+    async def fetch(self, url: str, is_docs_website: bool, session: aiohttp.ClientSession) -> PageContents:
         try:
-            text = await BrowserEngine.fetch(url, session)
+            text = await BrowserEngine.fetch(url, is_docs_website, session)
             processed = process_html(html=text, url=url, title=None)
 
             if not processed.text:
@@ -42,15 +42,27 @@ class BurritoBackend(Backend):
             raise BackendError(f"Error fetching or processing content: {str(e)}")
 
     async def _search_searxng(
-        self, query: str, topn: int, session: ClientSession
+        self,
+        query: str,
+        topn: int,
+        session: ClientSession,
+        locale: str,
+        language: str,
+        time_range: str,
+        source: str
     ) -> List[tuple]:
         payload = {
             "q": query,
             "safesearch": 0,
             "format": "json",
-            "categories": "general,news,it,science,files,social media",
+            "language": language,
+            "locale": locale,
+            "time_range": time_range,
+            "categories": source,
             "engines": "bing,brave,duckduckgo,google,yandex,baidu,startpage,yahoo,wikidata,wikipedia,wolframalpha",
         }
+        if time_range == "alltime":
+            payload.pop("time_range", None)
         headers = {
             "x-api-key": self._get_api_key(),
             "user-agent": settings.USER_AGENT_SEARCH,
@@ -107,7 +119,14 @@ class BurritoBackend(Backend):
             ]
 
     async def search(
-        self, query: str, topn: int, session: aiohttp.ClientSession
+        self,
+        query: str,
+        topn: int,
+        session: ClientSession,
+        locale: str = "en-US",
+        language: str = "en",
+        time_range: str = "alltime",
+        source: str = "general"
     ) -> PageContents:
         titles_and_urls = []
 
@@ -118,7 +137,7 @@ class BurritoBackend(Backend):
                 logger.error(f"Brave search failed, falling back: {e}")
 
         if not titles_and_urls:
-            titles_and_urls = await self._search_searxng(query, topn, session)
+            titles_and_urls = await self._search_searxng(query, topn, session, locale, language, time_range, source)
 
         if not titles_and_urls:
             html_page = "<html><body><h1>No results found.</h1></body></html>"

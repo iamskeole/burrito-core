@@ -1,40 +1,46 @@
+import logging
 import re
 
-from typing import Any
+from typing import Any, AsyncIterator, Literal
 
 from urllib.parse import quote, unquote
 
-from gpt_oss.tools.simple_browser.simple_browser_tool import wrap_lines
-from gpt_oss.tools.simple_browser.page_contents import (
-    remove_unicode_smp,
-    _replace_special_chars,
-)
-from gpt_oss.tools.simple_browser import SimpleBrowserTool
+from aiohttp import ClientSession
+
 from burrito.tools.browser.backend import BurritoBackend
 
-FIND_PAGE_LINK_FORMAT = "# 【{idx}†{title}】"
-PARTIAL_INITIAL_LINK_PATTERN = re.compile(r"^[^【】]*】")
-PARTIAL_FINAL_LINK_PATTERN = re.compile(
-    r"【\d*(?:†(?P<content>[^†】]*)(?:†[^†】]*)?)?$"
+from gpt_oss.tools.simple_browser.simple_browser_tool import (
+    wrap_lines,
+    function_the_model_can_call,
+    handle_errors,
+    BackendError,
 )
-LINK_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
 
-CITATION_OUTPUT_PATTERN = re.compile(
-    r"【(?P<cursor>\d+)†(?P<content>[^†】]+)(?:†[^†】]+)?】"
+from gpt_oss.tools.simple_browser.backend import VIEW_SOURCE_PREFIX
+from gpt_oss.tools.simple_browser import SimpleBrowserTool
+from gpt_oss.tools.simple_browser.simple_browser_tool import ToolUsageError
+from gpt_oss.tools.simple_browser.page_contents import Extract, PageContents
+from gpt_oss.tools.simple_browser.backend import maybe_truncate
+from openai_harmony import ToolNamespaceConfig, ToolDescription, Message
+
+from gpt_oss.tools.simple_browser.simple_browser_tool import (
+    PARTIAL_FINAL_LINK_PATTERN,
+    CITATION_OUTPUT_PATTERN,
 )
+
+from burrito.prompts import browser_search_prompt, browser_open_prompt
+
 CLEANUP_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
+
+logger = logging.getLogger("browser_backend")
 
 
 def merge_lines_cited(lines_page: list[str], l_start: int, l_end: int) -> str:
-    # 1. Get the slice
     lines_cited = lines_page[l_start:l_end]
 
-    # 2. Robust Sentence Filtering (Added safety checks for empty/short lines)
-    # Discard if starts with lowercase (partial sentence)
     if lines_cited and lines_cited[0] and lines_cited[0][0].islower():
         lines_cited = lines_cited[1:]
 
-    # Discard if last line doesn't end in punctuation
     if lines_cited and lines_cited[-1] and lines_cited[-1][-1] not in ".!?\"'”":
         lines_cited = lines_cited[:-1]
 
@@ -44,31 +50,21 @@ def merge_lines_cited(lines_page: list[str], l_start: int, l_end: int) -> str:
 
 
 def generate_highlight_url(base_url: str, lines_cited: str) -> str:
-    # join and Clean AI markers
-    # extract 3-word anchors
-    # split by whitespace and filter out empty strings
     words = [w for w in lines_cited.split() if w]
 
     if not words:
         return base_url
 
     if len(words) <= 6:
-        # If the text is short, just use the whole thing
-        # We quote the whole string
         fragment = quote(" ".join(words))
     else:
-        # Get first 3 and last 3 words
-        # We strip non-alphanumeric chars from the edges of these words
-        # to make the browser matching more "fuzzy" and reliable.
+
         def clean_anchor(word_list):
-            # Join words, then URL encode
             s = " ".join(word_list)
             return quote(s)
 
         start_anchor = clean_anchor(words[:3])
         end_anchor = clean_anchor(words[-3:])
-
-        # The comma is the special "start,end" delimiter for the browser
         fragment = f"{start_anchor},{end_anchor}"
 
     return f"{base_url}#:~:text={fragment}#:~:cite={lines_cited}"
@@ -77,7 +73,197 @@ def generate_highlight_url(base_url: str, lines_cited: str) -> str:
 class BurritoBrowser(SimpleBrowserTool):
     def __init__(self):
         super().__init__(backend=BurritoBackend())
-        x = 1
+
+    def patch_search_tool(self, config: ToolNamespaceConfig):
+        _tool = None
+        for i in config.tools:
+            if i.name == "search":
+                _tool = i
+                break
+
+        if _tool is None:
+            return
+
+        _tool.parameters["properties"]["query"] = {
+            "type": "string",
+            "description": browser_search_prompt.query_description,
+        }
+
+        _tool.parameters["properties"]["source"] = {
+            "type": "string",
+            "description": browser_search_prompt.source_description,
+            "enum": ["general", "news", "it", "science", "files", "social media"],
+        }
+        _tool.parameters["properties"]["locale"] = {
+            "type": "string",
+            "description": browser_search_prompt.locale_description,
+            # "default": "en-US"
+        }
+        _tool.parameters["properties"]["language"] = {
+            "type": "string",
+            "description": browser_search_prompt.language_description,
+            # "default": "en-US"
+        }
+        _tool.parameters["properties"]["time_range"] = {
+            "type": "string",
+            "enum": ["day", "week", "month", "year", "alltime"],
+            "description": "Restricts search results where relevant.",
+            # "default": "en-US"
+        }
+        _tool.parameters["required"] = [
+            "query",
+            "source",
+            "locale",
+            "language",
+            "time_range",
+        ]
+        return config
+
+    def patch_open_tool(self, config: ToolNamespaceConfig):
+        _tool = None
+        for i in config.tools:
+            if i.name == "open":
+                _tool = i
+                break
+
+        if _tool is None:
+            return
+
+        _tool.parameters["properties"]["is_docs_website"] = {
+            "type": "boolean",
+            "description": browser_open_prompt.is_docs_site_description,
+        }
+        _tool.parameters["required"] = ["is_docs_website"]
+        return config
+
+    @property
+    def tool_config(self) -> ToolNamespaceConfig:
+        config = super().tool_config
+        self.patch_search_tool(config)
+        self.patch_open_tool(config)
+        return config
+
+    # TODO: do the same for .open() and add a param for is_docs_website
+    # so we can use trafilatura for regular content and html parsing as a fallback for docs
+    @function_the_model_can_call
+    @handle_errors
+    async def search(
+        self,
+        query: str,
+        # 4. Strict Python typing matches the TypeScript definition above
+        locale: str = "en-US",
+        language: str = "en",
+        time_range: Literal["day", "week", "month", "year", "alltime"] = "alltime",
+        topn: int = 10,
+        top_n: int = 10,  # Keep for backward compatibility (legacy param)
+        source: str | None = None,
+    ) -> AsyncIterator[Message]:
+        # Determine the actual limit (handling the topn/top_n quirk)
+        limit = topn if topn != 10 else top_n
+
+        try:
+            async with ClientSession() as session:
+                # 5. Pass the new arguments to your backend
+                # Note: You must ensure self.backend.search accepts **kwargs
+                # or explicitly accepts these new arguments.
+                search_page = await self.backend.search(
+                    query=query,
+                    topn=limit,
+                    session=session,
+                    locale=locale,
+                    language=language,
+                    time_range=time_range,
+                    source=source,
+                )
+        except Exception as e:
+            # Re-using the logic from the base class to truncate error messages
+            msg = maybe_truncate(str(e))
+            raise BackendError(f"Error during search for `{query}`: {msg}") from e
+
+        # 6. Add results to state and render the page
+        self.tool_state.add_page(search_page)
+        yield await self.show_page_safely(loc=0)
+
+    async def _open_url(
+        self, url: str, direct_url_open: bool, is_docs_website: bool
+    ) -> PageContents:
+        """Use the cache, if available."""
+        backend = self.backend
+        # direct_url_open should be regarded as a refresh
+        if not direct_url_open and (page := self.tool_state.get_page_by_url(url)):
+            assert page.url == url
+            return page
+
+        try:
+            async with ClientSession() as session:
+                page = await backend.fetch(url, is_docs_website, session=session)
+            return page
+        except Exception as e:
+            msg = maybe_truncate(str(e))
+            logger.warning("Error fetching URL in lean browser tool", exc_info=e)
+            raise BackendError(
+                f"Error fetching URL `{maybe_truncate(url)}`: {msg}"
+            ) from e
+
+    @function_the_model_can_call
+    @handle_errors
+    async def open(
+        self,
+        id: int | str = -1,
+        cursor: int = -1,
+        loc: int = -1,
+        num_lines: int = -1,
+        view_source: bool = False,
+        source: str | None = None,
+        is_docs_website: bool = False,
+    ) -> AsyncIterator[Message]:
+        curr_page: PageContents | None = None
+        stay_on_current_page = False
+        direct_url_open = False
+
+        if isinstance(id, str):
+            snippet = None
+            url = id
+            direct_url_open = True
+        else:  # Operate on a previously opened page
+            curr_page = self.tool_state.get_page(cursor)
+
+            if id >= 0:  # click a link
+                try:
+                    url = curr_page.urls[str(id)]
+                except KeyError as e:
+                    raise ToolUsageError(f"Invalid link id `{id}`.") from e
+                snippet = (curr_page.snippets or {}).get(str(id))
+                if snippet and curr_page.url == "":
+                    # current page is a search result page
+                    assert isinstance(snippet, Extract)
+            else:  # navigate to new position on the current page
+                if not view_source:
+                    stay_on_current_page = True
+                url = curr_page.url
+                snippet = None
+
+        new_page: PageContents
+        if view_source:
+            url = f"{VIEW_SOURCE_PREFIX}{url}"
+            snippet = None
+        if stay_on_current_page:
+            assert curr_page is not None
+            new_page = curr_page
+        else:
+            new_page = await self._open_url(url, direct_url_open, is_docs_website)
+
+        self.tool_state.add_page(new_page)
+
+        if loc < 0:  # unset
+            if snippet is not None and snippet.line_idx is not None:
+                loc = snippet.line_idx
+                if loc > 4:
+                    loc -= 4
+            else:
+                loc = 0
+
+        yield await self.show_page_safely(loc=loc, num_lines=num_lines)
 
     def augment_annotation(self, annotation: dict[str, Any]) -> dict[str, Any]:
         url = annotation["url"]
@@ -102,7 +288,8 @@ class BurritoBrowser(SimpleBrowserTool):
         old_content: str,
         hide_partial_citations: bool = False,
         current_citations: list[dict[str, Any]] = [],
-    ) -> tuple[str, list[dict[str, Any]], bool]:
+        current_citation_index: int = 0,
+    ) -> tuple[str, list[dict[str, Any]], bool, int]:
         """
         Returns a tuple of (new_message, annotations, has_partial_citations)
         - new_message: Message with citations replaced by ([domain](url))
@@ -162,7 +349,6 @@ class BurritoBrowser(SimpleBrowserTool):
 
             if url:
                 domain = extract_domain(url)
-                # replacement = f" ([{domain}]({url})) "
                 annotation = {
                     "url": url_clean,
                     "type": "url_citation",
@@ -173,10 +359,11 @@ class BurritoBrowser(SimpleBrowserTool):
 
                 replacement = ""
                 if annotation["url"] not in cited_urls:
-                    # replacement = f" [[{len(current_citations)+1}]]({annotation['url']})"
-                    replacement = f" [({domain.replace('www.', '')})]({annotation['url']})"
-                else:
-                    replacement = ""
+                    current_citation_index += 1
+                    replacement = (
+                        f" [**`[{current_citation_index}]`**]({annotation['url']})"  # whole citation is the link
+                        # f" [[**`{current_citation_index}`**]({annotation['url']})]" # only the number is the link
+                    )
                 new_content += replacement
 
                 # The start and end indices in the new content
@@ -197,4 +384,4 @@ class BurritoBrowser(SimpleBrowserTool):
             last_idx = orig_end
 
         new_content += old_content[last_idx:]
-        return new_content, annotations, has_partial_citations
+        return new_content, annotations, has_partial_citations, current_citation_index

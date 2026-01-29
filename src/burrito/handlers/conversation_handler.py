@@ -68,8 +68,8 @@ class AdapterConversationHandler:
         self.generator.can_stream = False
 
     async def _stream_completions(self):
+        sm = self.state_handler
         try:
-            sm = self.state_handler
             while 1:
                 completion = "streaming"
                 # detect client disconnects
@@ -113,7 +113,7 @@ class AdapterConversationHandler:
         except Exception as e:
             msg = f"Exception in stream processor:\n{repr(e)}"
             self.logger.exception(msg, extra=self.log_extra)
-            await self.state_handler.push_error(msg, "ERR_STREAM_PROCESSOR")
+            await sm.push_error(msg, "ERR_STREAM_PROCESSOR")
         finally:
             self.is_finished.set()
             # Ensure the backend generator stream is closed if possible.
@@ -125,6 +125,7 @@ class AdapterConversationHandler:
 
     async def return_stream(self) -> AsyncGenerator[bytes, None]:
         # use TaskGroup for safe concurrency
+        sm = self.state_handler
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._stream_completions())
@@ -133,7 +134,7 @@ class AdapterConversationHandler:
                 while (
                     not self.is_finished.is_set()
                     or not self.output_queue.empty()
-                    or not self.state_handler.is_done
+                    or not sm.is_done
                 ):
                     try:
                         # TODO: figure out optimal timeout here
@@ -154,23 +155,13 @@ class AdapterConversationHandler:
             # generator
             msg = f"TaskGroup caught an unhandled exception:\n{repr(e)}"
             self.logger.error(msg, extra=self.log_extra)
-            await self.state_handler.push_error(msg, "ERR_TASK_GROUP_EXCEPTION")
+            await sm.push_error(msg, "ERR_TASK_GROUP_EXCEPTION")
 
     async def return_json(self) -> Dict:
         async for _ in self.return_stream():
             pass
         if self.state_handler.is_done:
-            browser_tool = self.browser_tool
-            old_text = self.state_handler.output_object.output_text
-
-            new_text = browser_tool.normalize_citations(old_text)
             _json = self.state_handler.output_object.model_dump()
-            _json["output"][-1]["content"][0]["text"] = new_text[0]
-
-            print("output items")
-            # build message for tool response into response object? see official spec
-            for i in _json["output"][:-1]:
-                print(i)
-            return _json
+            return _json # TODO handle dumps for responses / chat completions separately
         else:
             return {"error": "Generation did not complete successfully."}

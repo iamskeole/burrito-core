@@ -4,31 +4,33 @@ from typing import Dict, List, Optional, Union
 
 from openai_harmony import Author, Content, Message, Role, TextContent
 
-from burrito.common.config import settings
 from burrito.types.adapter import (
     AdapterAssistantChannel,
     AdapterConversationInputs,
     AdapterConversationInputTool,
-    AdapterReasoning,
-    AdapterToolNamespace,
-    AdapterToolType,
+    AdapterReasoningParam,
 )
 from burrito.types.adapter.adapter_create_params_responses import (
     AdapterCreateParamsResponses,
-    AdapterFunctionToolResponses,
-    AdapterCustomToolResponses,
-    AssistantMessage,
-    AssistantReasoning,
-    CustomToolCall,
-    CustomToolCallOutput,
+    AssistantMessageParamResponses,
+    AssistantReasoningParamResponses,
+    CustomToolInputParamResponses,
+    CustomToolCallOutputParamResponses,
+    FunctionToolInputParamResponses,
+    ToolCallOutputParamResponses,
+    InputItemParamResponses,
+    UserMessageParamResponses,
+    UserMessageContentImageParamResponses,
+    UserMessageContentTextParamResponses,
+)
+
+from burrito.types.adapter.adapter_function_tool_param import (
+    AdapterFunctionToolParamResponses,
+)
+from burrito.types.adapter.adapter_custom_tool_param import (
+    AdapterCustomToolParamResponses,
     CustomToolInputFormatText,
     CustomToolInputFormatGrammar,
-    FunctionToolCall,
-    FunctionToolCallOutput,
-    InputItem,
-    UserMessage,
-    UserMessageContentImage,
-    UserMessageContentText,
 )
 
 
@@ -41,13 +43,13 @@ def user_message_from_text_input(user_input: str) -> Message:
 
 
 # TODO: check oss implementation, individual messages PER content item? all other roles too
-def user_message_from_list_input(message_data: UserMessage) -> Message:
+def user_message_from_list_input(message_data: UserMessageParamResponses) -> Message:
     content = []
     for item in message_data.content:
         match item:
-            case UserMessageContentText():
+            case UserMessageContentTextParamResponses():
                 content.append(TextContent(text=item.text))
-            case UserMessageContentImage():
+            case UserMessageContentImageParamResponses():
                 pass  # TODO, tbd, for now gpt-oss does not support image inputs
             case _:
                 pass  # maybe throw? shouldn't happen, probably too defensive
@@ -58,27 +60,19 @@ def user_message_from_list_input(message_data: UserMessage) -> Message:
     return message
 
 
-def recipient_name_with_namespace(message_data: FunctionToolCall) -> Optional[str]:
-    recipient_name = message_data.name
-    if not recipient_name:
-        return None
-    # TODO; handle this properly; temporary hack to add namespace to function tools
-    if "python" not in recipient_name and "browser" not in recipient_name:
-        recipient_name = f"functions.{recipient_name}"
-    return message_data.name
-
-
 def assistant_message(
-    message_data: Union[AssistantMessage, AssistantReasoning],
+    message_data: Union[
+        AssistantMessageParamResponses, AssistantReasoningParamResponses
+    ],
 ) -> Message:
     content: List[Content] = []
     channel: Optional[AdapterAssistantChannel] = None
 
     match message_data:
-        case AssistantMessage():
+        case AssistantMessageParamResponses():
             channel = AdapterAssistantChannel.FINAL
             content = [TextContent(text=i.text) for i in message_data.content]
-        case AssistantReasoning():
+        case AssistantReasoningParamResponses():
             channel = AdapterAssistantChannel.ANALYSIS
             content = [TextContent(text=i.text) for i in message_data.content]
         case _:  # tool calls handled in separate function; anything else?
@@ -91,17 +85,22 @@ def assistant_message(
     return message
 
 
-def tool_call_message(message_data: Union[FunctionToolCall, CustomToolCall]) -> Message:
+def tool_call_input_message(
+    message_data: Union[
+        FunctionToolInputParamResponses,
+        CustomToolInputParamResponses,
+    ],
+) -> Message:
     channel = None
     content = None
     recipient = None
 
     match message_data:
-        case FunctionToolCall():
+        case FunctionToolInputParamResponses():
             channel = AdapterAssistantChannel.COMMENTARY
             content = [TextContent(text=message_data.arguments)]
             recipient = message_data.name
-        case CustomToolCall():
+        case CustomToolInputParamResponses():
             # TODO: maybe handle custom namespaces?
             channel = AdapterAssistantChannel.COMMENTARY
             content = [TextContent(text=message_data.input)]
@@ -117,11 +116,13 @@ def tool_call_message(message_data: Union[FunctionToolCall, CustomToolCall]) -> 
     return message
 
 
-# TODO: figure out how to get name of tool
 # TODO: handle custom tool calls and native tool calls
 def tool_call_output_message(
-    message_data: FunctionToolCallOutput,
-    function_calls: Dict[str, Union[FunctionToolCall, CustomToolCall]],
+    message_data: ToolCallOutputParamResponses,
+    function_calls: Dict[
+        str,
+        Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
+    ],
 ) -> Message:
     call_id = message_data.call_id
     function_call = function_calls.get(call_id)
@@ -144,18 +145,28 @@ def tool_call_output_message(
     return message
 
 
-def input_params_to_messages(inputs: Union[str, List[InputItem]]) -> List[Message]:
+def input_params_to_messages(
+    inputs: Union[str, List[InputItemParamResponses]],
+) -> List[Message]:
     if isinstance(inputs, str):
         return [user_message_from_text_input(inputs)]
 
     messages: List[Message] = []
-    tool_calls: Dict[str, Union[FunctionToolCall, CustomToolCall]] = {}
+    tool_calls: Dict[
+        str,
+        Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
+    ] = {}
     for i in inputs:
         match i:
-            case UserMessage():
+            case FunctionToolInputParamResponses() | CustomToolInputParamResponses():
+                tool_calls[i.call_id] = i
+
+    for i in inputs:
+        match i:
+            case UserMessageParamResponses():
                 messages.append(user_message_from_list_input(i))
 
-            case AssistantMessage() | AssistantReasoning():
+            case AssistantMessageParamResponses() | AssistantReasoningParamResponses():
                 messages.append(assistant_message(i))
 
             # TODO: browser, python, other "native" tools
@@ -169,27 +180,29 @@ def input_params_to_messages(inputs: Union[str, List[InputItem]]) -> List[Messag
             # since that way caller will see tools called transparently but
             # will not expect to process their results, meaning we can separate
             # tools called natively from caller expectations
-            case FunctionToolCall() | CustomToolCall():
-                tool_calls[i.call_id] = i
-                messages.append(tool_call_message(i))
+            case FunctionToolInputParamResponses() | CustomToolInputParamResponses():
+                # tool_calls[i.call_id] = i
+                messages.append(tool_call_input_message(i))
 
-            case FunctionToolCallOutput():
+            case ToolCallOutputParamResponses():
                 # TODO: defend? output should follow call, but there's
                 # a chance this will crash if the prev message is not a
                 # tool call?
                 # should be handled by keeping the running tally of calls?
                 messages.append(tool_call_output_message(i, tool_calls))
-            case CustomToolCallOutput():
+            case CustomToolCallOutputParamResponses():
                 pass
     return messages
 
 
-def map_input_tools(params: AdapterCreateParamsResponses):
+def map_input_tools(
+    params: AdapterCreateParamsResponses,
+) -> List[AdapterConversationInputTool]:
     # TODO: handle tool_choice from params, eg auto, specific etc
     tools: List[AdapterConversationInputTool] = []
     for tool in params.tools or []:
         match tool:
-            case AdapterFunctionToolResponses():
+            case AdapterFunctionToolParamResponses():
                 tool = AdapterConversationInputTool(
                     name=tool.name,
                     parameters=tool.parameters,
@@ -199,15 +212,17 @@ def map_input_tools(params: AdapterCreateParamsResponses):
                 )
                 tools.append(tool)
 
-            case AdapterCustomToolResponses():
-                if tool.format.type == "grammar":
-                    fmt = CustomToolInputFormatGrammar(
-                        definition=tool.format.definition,
-                        syntax=tool.format.syntax,
-                        type=tool.format.type,
-                    )
-                else:
-                    fmt = CustomToolInputFormatText(type=tool.format.type or "text")
+            case AdapterCustomToolParamResponses():
+                fmt = None
+                if tool.format:
+                    if tool.format.type == "grammar":
+                        fmt = CustomToolInputFormatGrammar(
+                            definition=tool.format.definition,
+                            syntax=tool.format.syntax,
+                            type=tool.format.type,
+                        )
+                    else:
+                        fmt = CustomToolInputFormatText(type=tool.format.type or "text")
 
                 tool = AdapterConversationInputTool(
                     name=tool.name,
@@ -229,7 +244,7 @@ def build_message_list_responses(
     instructions = params.instructions or ""
     messages = input_params_to_messages(params.input)
     tools = map_input_tools(params)
-    reasoning = params.reasoning or AdapterReasoning()
+    reasoning = params.reasoning or AdapterReasoningParam()
 
     converation_inputs = AdapterConversationInputs(
         instructions=instructions,

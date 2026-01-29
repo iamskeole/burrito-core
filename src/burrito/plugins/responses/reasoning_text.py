@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
-    from burrito.adapter.handlers.state_handler import (
-        AdapterStateHandler,
-    )
+    from burrito.handlers.state_handler import AdapterStateHandler
     from burrito.types.adapter import AdapterCompletionToken
 
 from openai.types.responses.response import Response
@@ -30,7 +28,7 @@ from openai.types.responses.response_reasoning_text_done_event import (
     ResponseReasoningTextDoneEvent,
 )
 
-from burrito.plugins.base_plugin_responses import BasePluginResponses
+from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
 
 

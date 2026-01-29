@@ -1,11 +1,9 @@
-from typing import Dict, Any
-from ..base import Tool, tool_action
-from .engine import PythonEngine
+from gpt_oss.tools.python_docker.docker_tool import PythonTool
 
-class PythonTool(Tool):
+from burrito.common.config import settings
+
+
+class BurritoPython(PythonTool):
     def __init__(self):
-        self.engine = PythonEngine()
-
-    @tool_action(name="python_repl", description="Execute Python code (Placeholder).")
-    def run_code(self, code: str) -> str:
-        return "Python execution not implemented yet."
+        backend = settings.PYTHON_BACKEND or "dangerously_use_local_jupyter"
+        super().__init__(execution_backend=backend)

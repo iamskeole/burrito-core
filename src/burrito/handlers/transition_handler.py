@@ -285,14 +285,17 @@ class TransitionHandler:
         old_state = self.manager.parser_state
         new_state = self._update_state()
 
+        self.manager.response_buffer
+
         if new_state == AdapterConversationState.ERROR:
             return self.manager._recover_state()
 
         if new_state != old_state:
-            self.logger.info(
-                f"state change: {old_state.value:<14} -> {new_state.value}",
-                extra=self.log_extra,
-            )
+            pass # TODO: log only if debug
+            # self.logger.info(
+            #     f"state change: {old_state.value:<14} -> {new_state.value}",
+            #     extra=self.log_extra,
+            # )
 
             for plugin in self.manager._active_plugins_by_state.get(old_state, []):
                 await plugin.on_exit_state(old_state)

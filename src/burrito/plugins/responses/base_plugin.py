@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from burrito.common.utils import random_uuid, unix_timestamp
 from burrito.types.adapter import AdapterConversationState
 
-from .base_plugin import BasePlugin
+from ..base_plugin import BasePlugin
 
 if TYPE_CHECKING:
     from burrito.adapter.handlers.state_handler import (

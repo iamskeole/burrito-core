@@ -6,7 +6,6 @@ from .adapter_conversation_channel import AdapterConversationChannel
 from .adapter_conversation_inputs import (
     AdapterConversationInputMessage,
     AdapterConversationInputMessageContent,
-    AdapterConversationInputReasoning,
     AdapterConversationInputs,
     AdapterConversationInputTool,
     AdapterConversationInputToolParam,
@@ -18,9 +17,9 @@ from .adapter_create_params_chat import AdapterCreateParamsChat
 from .adapter_create_params_responses import AdapterCreateParamsResponses
 from .adapter_message_type_user import AdapterMessageTypeUser
 from .adapter_parser_context import AdapterParserContext
-from .adapter_reasoning import AdapterReasoning
 from .adapter_request_category import AdapterRequestCategory
 from .adapter_tool_namespace import AdapterToolNamespace, AdapterToolType
+from .adapter_reasoning import AdapterReasoningParam
 
 __all__ = [
     "AdapterCreateParams",
@@ -36,11 +35,10 @@ __all__ = [
     "AdapterConversationInputMessageContent",
     "AdapterConversationInputTool",
     "AdapterConversationInputToolParam",
-    "AdapterConversationInputReasoning",
-    "AdapterReasoning",
     "AdapterToolNamespace",
     "AdapterToolType",
     "AdapterAssistantChannel",
     "AdapterParserContext",
     "AdapterCompletionToken",
+    "AdapterReasoningParam",
 ]

@@ -1,77 +1,48 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Literal, Optional, TypeAlias, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
-from .adapter_reasoning import AdapterReasoning
+from .adapter_reasoning import AdapterReasoningParam
+from .adapter_function_tool_param import AdapterFunctionToolParam
+from .adapter_custom_tool_param import AdapterCustomToolParam
 
 
-# class AdapterNativeToolResponses(BaseModel):
-#     type: Literal["web_search", "code_interpreter"]
-
-
-class CustomToolInputFormatText(BaseModel):
-    type: Literal["text"]
-
-
-class CustomToolInputFormatGrammar(BaseModel):
-    definition: str
-    syntax: Literal["lark", "regex"]
-    type: Literal["grammar"]
-
-
-CustomToolInputFormat: TypeAlias = Annotated[
-    Union[CustomToolInputFormatText, CustomToolInputFormatGrammar],
-    Field(discriminator="type"),
-]
-
-
-class AdapterCustomToolResponses(BaseModel):
-    name: str
-    type: Literal["custom"]
-    description: Optional[str] = None
-    format: Optional[CustomToolInputFormat] = None
-
-
-class AdapterFunctionToolResponses(BaseModel):
-    type: Literal["function"]
-    name: str
-    description: Optional[str] = None
-    parameters: Optional[Dict[str, Any]] = None
-    strict: Optional[bool] = False
-
-
-class UserMessageContentText(BaseModel):
+class UserMessageContentTextParamResponses(BaseModel):
     type: Literal["input_text"]
     text: str
 
 
-class UserMessageContentImage(BaseModel):
+class UserMessageContentImageParamResponses(BaseModel):
     type: Literal["input_image"]
     image_url: str
 
 
 ContentPartInputText = Annotated[
-    Union[UserMessageContentText, UserMessageContentImage], Field(discriminator="type")
+    Union[UserMessageContentTextParamResponses, UserMessageContentImageParamResponses],
+    Field(discriminator="type"),
 ]
 
 
-class ContentPartOutputText(BaseModel):
+class ContentPartOutputTextParamResponses(BaseModel):
     type: Literal["output_text"]
     text: str
     annotations: Optional[List[Any]] = None
 
 
-class UserMessage(BaseModel):
+class UserMessageParamResponses(BaseModel):
     type: Literal["message"]
     role: Literal["user", "developer"]
     content: Union[
         str,
         List[
             Annotated[
-                Union[UserMessageContentText, UserMessageContentImage],
+                Union[
+                    UserMessageContentTextParamResponses,
+                    UserMessageContentImageParamResponses,
+                ],
                 Field(discriminator="type"),
             ],
         ],
@@ -83,80 +54,74 @@ class AssistantReasoningContent(BaseModel):
     text: str
 
 
-class AssistantReasoning(BaseModel):
+class AssistantReasoningParamResponses(BaseModel):
     type: Literal["reasoning"]
     summary: List[Any]
     content: List[AssistantReasoningContent]
 
 
-class AssistantMessageContent(BaseModel):
+class AssistantMessageContentParamResponses(BaseModel):
     type: Literal["message"]
     text: str
 
 
-class AssistantMessage(BaseModel):
+class AssistantMessageParamResponses(BaseModel):
     type: Literal["message"]
     role: Literal["assistant"]
-    content: List[ContentPartOutputText]
+    content: List[ContentPartOutputTextParamResponses]
 
 
-class CustomToolCallOutput(BaseModel):
+class CustomToolCallOutputParamResponses(BaseModel):
     type: Literal["custom_tool_call_output"]
     call_id: str
     output: str
 
 
-class CustomToolCall(BaseModel):
+class CustomToolInputParamResponses(BaseModel):
     type: Literal["custom_tool_call"]
     call_id: str
     name: str
     input: str
 
 
-class FunctionToolCallOutput(BaseModel):
+class ToolCallOutputParamResponses(BaseModel):
     type: Literal["function_call_output"]
     call_id: str
     output: str
 
 
-class FunctionToolCall(BaseModel):
+class FunctionToolInputParamResponses(BaseModel):
     type: Literal["function_call"]
     name: str
     arguments: str
     call_id: str
 
 
-ToolCallOutputItem = Annotated[
-    Union[FunctionToolCallOutput, CustomToolCallOutput], Field(discriminator="type")
+ToolCallOutputParamResponses = Annotated[
+    Union[ToolCallOutputParamResponses, CustomToolCallOutputParamResponses],
+    Field(discriminator="type"),
 ]
 
-ToolCallItem = Annotated[
-    Union[FunctionToolCall, CustomToolCall], Field(discriminator="type")
-]
-
-
-InputItem = Union[
-    UserMessage,
-    AssistantMessage,
-    AssistantReasoning,
-    ToolCallItem,
-    ToolCallOutputItem,
+ToolCallInputParamResponses = Annotated[
+    Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
+    Field(discriminator="type"),
 ]
 
 
-Reasoning: TypeAlias = AdapterReasoning
+InputItemParamResponses = Union[
+    UserMessageParamResponses,
+    AssistantMessageParamResponses,
+    AssistantReasoningParamResponses,
+    ToolCallInputParamResponses,
+    ToolCallOutputParamResponses,
+]
 
 
 class AdapterCreateParamsResponses(BaseModel):
-    """
-    Validates the request body for the POST /v1/responses endpoint.
-    Handles the doubly-discriminated union for the `input` array.
-    """
+    model: str = settings.DEFAULT_MODEL_NAME
+    input: Union[str, List[InputItemParamResponses]]
 
-    model: Literal[settings.DEFAULT_MODEL_NAME]
-    input: Union[str, List[InputItem]]
-
-    reasoning: Optional[Reasoning] = None
+    reasoning: Optional[AdapterReasoningParam] = None
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
@@ -165,9 +130,8 @@ class AdapterCreateParamsResponses(BaseModel):
     tools: Optional[
         List[
             Union[
-                # AdapterNativeToolResponses,
-                AdapterFunctionToolResponses,
-                AdapterCustomToolResponses,
+                AdapterFunctionToolParam,
+                AdapterCustomToolParam,
             ]
         ]
     ] = None

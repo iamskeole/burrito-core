@@ -2,6 +2,10 @@ import re
 import sys
 import time
 import uuid
+import hashlib
+import platform
+import subprocess
+import os
 from datetime import datetime, timezone
 from typing import get_type_hints
 
@@ -33,6 +37,53 @@ def populate_openai_typed_dict(typed_dict_class: type, partial_data: dict) -> di
     complete_dict = {key: None for key in all_field_names}
     complete_dict.update(partial_data)
     return complete_dict
+
+
+def get_stable_machine_id():
+    """Gets a unique ID that stays the same for the hardware OS instance."""
+    os_type = platform.system()
+
+    try:
+        if os_type == "Linux":
+            # Standard on most Linux distros
+            if os.path.exists("/etc/machine-id"):
+                return open("/etc/machine-id").read().strip()
+            if os.path.exists("/var/lib/dbus/machine-id"):
+                return open("/var/lib/dbus/machine-id").read().strip()
+
+        elif os_type == "Windows":
+            # Registry key for the specific Windows installation
+            cmd = 'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid'
+            output = subprocess.check_output(cmd, shell=True).decode()
+            return output.split()[-1]
+
+        elif os_type == "Darwin":  # macOS
+            # Hardware UUID from system_profiler
+            cmd = "ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID"
+            output = subprocess.check_output(cmd, shell=True).decode()
+            return output.split("=")[-1].strip().replace('"', "")
+
+    except Exception:
+        # Fallback to something stable but less unique (CPU + Core count)
+        return f"{platform.processor()}-{os.cpu_count()}"
+
+
+# TODO - get as dependency? taxing on each route or not?
+# TODO - remove hardcoded version string, figure out a way to run versions for burrito
+# and use that
+def get_system_fingerprint(version_string="1.0.0"):
+    # 1. Identify the Machine
+    machine_id = get_stable_machine_id()
+
+    # 2. Identify the Environment (Python version + Architecture)
+    # We include this because code runs differently on 32-bit vs 64-bit or Py 3.10 vs 3.12
+    env_info = f"{platform.architecture()[0]}-{platform.python_version()}"
+
+    # Combine and hash
+    combined = f"{machine_id}-{env_info}-{version_string}"
+    fingerprint = hashlib.sha256(combined.encode()).hexdigest()
+
+    return f"fp_{fingerprint[:12]}"
 
 
 def simple_markdown_renderer(markdown_text):

@@ -1,33 +1,25 @@
+import textwrap
 import asyncio
 import logging
 from typing import Optional
-
+from datetime import datetime, date
+import json
 import aiohttp
 from playwright.async_api import async_playwright, Browser, Route, Playwright
 
 from lxml import html
-logger = logging.getLogger("browser_engine")
+import trafilatura
 
-HARD_TARGETS = [
-    "reuters.com", "bloomberg.com", "wsj.com", 
-    "nytimes.com", "ft.com", "discord.com", "twitter.com",
-    "washingtonpost.com",
-]
+logger = logging.getLogger("browser_engine")
 
 
 class BrowserEngine:
-    """
-    Engine for rendering HTML content to Markdown and managing the Playwright lifecycle.
-    Focuses on clean extraction, post-processing, and fetching.
-    """
-
     _playwright: Optional[Playwright] = None
     _browser: Optional[Browser] = None
-    _user_agent: str = "" # getting from chromium inside playwright
+    _user_agent: str = ""  # getting from chromium inside playwright
 
     @classmethod
     async def start(cls):
-        """Initializes Playwright and launches the browser if not already started."""
         if cls._playwright is None:
             logger.info("Starting Playwright...")
             cls._playwright = await async_playwright().start()
@@ -38,16 +30,12 @@ class BrowserEngine:
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-
                     "--disable-blink-features=AutomationControlled",
-
                     "--disable-infobars",
                     "--window-position=0,0",
                     "--ignore-certificate-errors",
                     "--window-size=1920,1080",
-
                     "--disable-http2",
-
                     # "--disable-extensions",
                     # "--mute-audio",
                     # "--disable-images",
@@ -55,19 +43,11 @@ class BrowserEngine:
             )
 
             temp_page = await cls._browser.new_page()
-
-            # 2. Ask the browser for its own User Agent string
             ua = await temp_page.evaluate("navigator.userAgent")
-            
-            # 3. Clean it (Just in case "Headless" sneaked in, though unlikely with headless=False)
             cls._user_agent = ua.replace("HeadlessChrome", "Chrome")
-            
-            logger.info(f"Native User-Agent detected: {cls._user_agent}")
-            x = 1
 
     @classmethod
     async def stop(cls):
-        """Closes the browser and stops Playwright."""
         if cls._browser:
             await cls._browser.close()
             cls._browser = None
@@ -76,46 +56,39 @@ class BrowserEngine:
             cls._playwright = None
 
     @classmethod
-    async def fetch(cls, url: str, session: aiohttp.ClientSession) -> str:
-        """
-        Fetches the content of a URL using aiohttp or Playwright.
-        Returns a tuple of (raw_html, markdown, urls_map).
-        """
-
-        is_hard_target = True #any(target in url for target in HARD_TARGETS)
-        raw_html = None
-
-        if not is_hard_target:
-            raw_html = await cls._fetch_aiohttp(url, session)
+    async def fetch(
+        cls, url: str, is_docs_website: bool, session: aiohttp.ClientSession
+    ) -> str:
+        # fast path (but disable for now, small overhead but ensure js always loads...)
+        raw_html = None  # await cls._fetch_aiohttp(url, session)
 
         if raw_html:
             if cls._is_spa(raw_html):
-                raw_html = None  # Fallback to Playwright
+                raw_html = None  # fallback to playwright
 
-        # 2. Slow Path (Playwright) if needed
+        # slow path (playwright) if needed
         if not raw_html:
             await cls.start()
             if not cls._browser:
                 raise RuntimeError("Failed to start browser")
 
             context = await cls._browser.new_context(
-                    user_agent=cls._user_agent,
-                    viewport={"width": 1920, "height": 1080},
-                    locale="en-US",
-                    timezone_id="America/New_York", # Or match your server location
-                    has_touch=False,
-                    is_mobile=False,
-                    device_scale_factor=1,
-                    color_scheme="light"
-                )
-            
-            # STEALTH UPGRADE 3: Script Injection
-            # This deletes the `navigator.webdriver` property which is the #1 bot tell.
+                user_agent=cls._user_agent,
+                viewport={"width": 1920, "height": 1080},
+                locale="en-US",
+                timezone_id="America/New_York",  # Or match your server location
+                has_touch=False,
+                is_mobile=False,
+                device_scale_factor=1,
+                color_scheme="light",
+            )
+
+            # delete the `navigator.webdriver` property which is the #1 bot tell
             await context.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', {
                     get: () => undefined
                 });
-                
+
                 // Overwrite the 'chrome' property so it looks consistent
                 window.chrome = {
                     runtime: {}
@@ -145,7 +118,7 @@ class BrowserEngine:
             await page.route("**/*", route_handler)
 
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=3000)
+                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=3000)
                 except Exception:
@@ -159,12 +132,13 @@ class BrowserEngine:
                 raw_html = await page.content()
             except Exception as e:
                 await context.close()
-                # raise Exception(f"Error loading page: {str(e)}")
-                raw_html = "<html></html>" # blank html will tell the agent to avoid restricted headless browsing
             finally:
                 await context.close()
 
-        return cls.preprocess_html(raw_html, url)
+        if raw_html is None:
+            # empty html will suggest to the model there's probably a headless block
+            raw_html = "<html></html>"
+        return cls.preprocess_html(raw_html, is_docs_website, url)
 
     @classmethod
     async def _fetch_aiohttp(
@@ -198,13 +172,9 @@ class BrowserEngine:
             return True
         return False
 
-    # TODO: cache, ie anthropic kills me on first processing
     @staticmethod
-    def preprocess_html(html_content: str, base_url: str) -> str:
-        tree = html.fromstring(html_content)
-
-        # 1. Generic XPath to catch any element with a class containing line-number keywords
-        # or containing specific data-attributes.
+    def _preprocess_docs_website(tree: html.HtmlElement) -> str:
+        # prune line-number keywords or containing specific data-attributes.
         line_number_xpath = (
             "//*["
             "contains(@class, 'line-number') or "
@@ -219,12 +189,110 @@ class BrowserEngine:
         for el in tree.xpath(line_number_xpath):
             el.drop_tree()
 
-        # 2. Your standard noise tag removal
-        noise_tags = ["script", "style", "nav", "footer", "header", "aside", "button", "input"]
+        # noise tag removal
+        noise_tags = [
+            "script",
+            "style",
+            "nav",
+            "footer",
+            "header",
+            "aside",
+            "button",
+            "input",
+        ]
         for tag in noise_tags:
             for el in tree.iter(tag):
                 el.drop_tree()
 
-        # 3. Output cleaned HTML
-        clean = html.tostring(tree, encoding='unicode', pretty_print=True, method='html')
-        return clean
+        clean = html.tostring(
+            tree, encoding="unicode", pretty_print=True, method="html"
+        )
+        return str(clean)
+
+    @classmethod
+    def _preprocess_standard_website(cls, html_content: str, base_url: str) -> str:
+        try:
+            date_cfg = {
+                "extensive_search": True,
+                "original_date": True,
+                "outputformat": "%Y-%m-%d",
+                "min_date": "1984-10-09",
+                "max_date": date.today().isoformat(),
+            }
+            content = trafilatura.extract(
+                html_content,
+                url=base_url,
+                fast=False,
+                include_links=True,
+                include_images=False,
+                include_tables=True,
+                include_comments=True,
+                favor_precision=False,
+                favor_recall=False,
+                output_format="json",
+                no_fallback=True,
+                with_metadata=True,
+                date_extraction_params=date_cfg,
+            )
+            loaded = json.loads(content) if content else None
+
+            if loaded and len(loaded.get("text", "")) > 100:
+                title = loaded.get("title")
+                source_name, host_name = (
+                    loaded.get("source-hostname"),
+                    loaded.get("hostname"),
+                )
+                source = (
+                    f"{source_name} ({host_name})"
+                    if source_name and host_name
+                    else base_url
+                )
+                body = textwrap.dedent(f"""
+                # Excerpt: {loaded.get("excerpt")}
+                # Date: {loaded.get("date") or loaded.get("filedate")}
+                # Source: {source}
+                # Author: {loaded.get("author") or None}
+                # Tags: {loaded.get("tags") or None}
+
+                # Article Content:
+                {loaded.get("text")}
+
+                ---
+
+                # Comments:
+                {loaded.get("comments") or None}
+                """).strip()
+
+                _html = f"<html><title>{title}</title><body>{body}</body></html>"
+                return _html
+        except Exception as e:
+            return f"<html>{repr(e)}</html>"
+
+    # TODO: cache, ie anthropic kills me on first processing
+    @classmethod
+    def preprocess_html(
+        cls, html_content: str, is_docs_website: bool, base_url: str
+    ) -> str:
+        tree = None
+        _empty = "<html></html>"
+        if not html_content:
+            return _empty
+
+        try:
+            tree = html.fromstring(html_content)
+            tree.make_links_absolute(base_url)
+            html_updated = html.tostring(tree, encoding="unicode", method="html")
+            if isinstance(html_updated, str):
+                html_content = html_updated
+        except Exception as e:
+            logger.warning(f"Error in preprocess_html: {str(e)}")
+            pass
+
+        if tree is not None and is_docs_website:
+            preprocessed = cls._preprocess_docs_website(tree)
+        else:
+            preprocessed = cls._preprocess_standard_website(html_content, base_url)
+
+        if preprocessed is None:
+            return _empty
+        return preprocessed

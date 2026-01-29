@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Union, Dict, Any
 
 from gpt_oss.tools.python_docker.docker_tool import PythonTool
 
@@ -9,16 +9,12 @@ from openai_harmony import Message
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.types.adapter import AdapterConversationState
-from burrito.types.adapter.adapter_create_params_chat import AdapterFunctionToolChat
-from burrito.types.adapter.adapter_create_params_responses import (
-    AdapterCustomToolResponses,
-    AdapterFunctionToolResponses,
+from burrito.types.adapter.adapter_conversation_inputs import (
+    AdapterConversationInputTool,
 )
 from burrito.types.adapter.adapter_tool_namespace import AdapterToolNamespace
-from burrito.types.sandbox.sandbox_run_code_request import (
-    SandboxRequest,
-    SandboxResponse,
-)
+
+from burrito.common.utils import random_uuid
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
@@ -66,7 +62,8 @@ class ToolHandler:
     def __init__(self, manager: "AdapterStateHandler"):
         self.manager = manager
         self.namespaces: List[str] = []
-        self.tools: List[str] = []
+        self.tool_names: List[str] = []
+        self.tools: Dict[str, AdapterConversationInputTool] = {}
 
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
@@ -74,6 +71,8 @@ class ToolHandler:
 
         self.msg_namespaces: str = ""
         self.msg_tools: str = ""
+
+        self.tool_calls: list[Dict[str, Any]] = []
 
         self._init_namespaces()
         self._init_tools()
@@ -91,20 +90,43 @@ class ToolHandler:
         self.msg_namespaces = "\n".join([i.replace(".", "") for i in self.namespaces])
 
     def _init_tools(self):
-        for tool in self.manager.manager.params.tools or []:
-            match tool:
-                case AdapterFunctionToolResponses() | AdapterCustomToolResponses():
-                    self.tools.append(tool.name)
-                case AdapterFunctionToolChat():
-                    self.tools.append(tool.function.name)
+        tools = self.manager.conversation_inputs.tools or []
+        self.tools = {i.name: i for i in tools}
+        self.tool_names = [i.name for i in tools]
 
-        if settings.IS_PYTHON_TOOL_ENABLED:
-            self.tools.append(AdapterToolNamespace.NATIVE_PYTHON.value)
+        self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
 
-        if settings.IS_BROWSER_TOOL_ENABLED:
-            self.tools.append(AdapterToolNamespace.NATIVE_BROWSER.value)
+    def get_tool_model_is_trying_to_call(self) -> AdapterConversationInputTool | None:
+        recipient = self.manager.parser.current_recipient
+        if not recipient:
+            return
 
-        self.msg_tools = "\n".join([i.replace(".", "") for i in self.tools])
+        tool_name = recipient
+
+        if tool_name == AdapterToolNamespace.NATIVE_PYTHON.value:
+            pass
+        elif recipient.startswith(AdapterToolNamespace.NATIVE_BROWSER.value + "."):
+            pass
+        else:
+            # see if we have a tool with a namespace prefix
+            try_split = recipient.split(".")
+            # if no prefix, just return tool name
+            if try_split and len(try_split) > 1:
+                tool_name = try_split[1]
+
+        return self.tools.get(tool_name)
+
+    def register_tool_call(self) -> Dict[str, Any]:
+        tool = self.get_tool_model_is_trying_to_call()
+        assert tool is not None, (
+            "Expected a AdapterConversationInputTool, but got `None`"
+        )
+
+        call_id = f"call_{random_uuid()}"
+        self.tool_calls.append(
+            {"index": len(self.tool_calls), "call_id": call_id, "tool": tool}
+        )
+        return self.tool_calls[-1]
 
     def _is_valid_namespace(self, recipient: str, state: Optional[str] = None) -> bool:
         namespace = [i for i in self.namespaces if recipient.startswith(i)]
@@ -134,7 +156,7 @@ class ToolHandler:
         # TODO: handle python and browser, namespaces will get fucked
         # but also need to patch original inputs to include native tools
         # since downstream in tool_plugin_responses we'll check for tools present in inputs
-        if not is_native_tool and tool not in self.tools:
+        if not is_native_tool and tool not in self.tool_names:
             if state is not None:
                 return False
             self.logger.warning(
@@ -179,7 +201,7 @@ class ToolHandler:
 
         if not self._is_valid_namespace(recipient, state):
             return False
-        self.manager.response_buffer
+
         if not self._is_valid_tool(recipient, state):
             return False
 
@@ -205,9 +227,14 @@ class ToolHandler:
         self, tool: Union[PythonTool, BurritoBrowser], message: Message
     ):
         try:
+            # print(f"Calling tool: {tool.name} with params: {message.content[0].text}")
             tool_result = await self.run_tool(tool, message)
+            # txt = tool_result[0].content[0].text
+            # from burrito.common.utils import simple_markdown_renderer
+            # print(simple_markdown_renderer(txt))
         except Exception as e:
             msg = f"**Error calling {tool.name} tool**: {repr(e)}"
+            self.logger.warning(msg, extra=self.log_extra)
             self.manager._add_recovery_message(msg)
             return self.manager._recover_state()
         self.manager._update_state_with_tool_result(tool_result)

@@ -5,8 +5,8 @@ from typing import Dict, List, Literal, Optional, TypeAlias
 from openai_harmony import Message
 from pydantic import BaseModel
 
-from .adapter_create_params_responses import CustomToolInputFormat
-from .adapter_reasoning import AdapterReasoning
+from .adapter_custom_tool_param import CustomToolInputFormat
+from .adapter_reasoning import AdapterReasoningParam
 
 
 class AdapterConversationInputMessageContent(BaseModel):
@@ -43,11 +43,8 @@ class AdapterConversationInputTool(BaseModel):
     type: Literal["python", "browser", "function", "custom"] = "function"
 
 
-AdapterConversationInputReasoning: TypeAlias = AdapterReasoning
-
-
 class AdapterConversationInputs(BaseModel):
     instructions: Optional[str] | None = None
     messages: List[Message]
     tools: Optional[List[AdapterConversationInputTool]]
-    reasoning: Optional[AdapterConversationInputReasoning]
+    reasoning: Optional[AdapterReasoningParam]

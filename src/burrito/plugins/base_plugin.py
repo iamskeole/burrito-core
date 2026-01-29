@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
-    from burrito.adapter.handlers.state_handler import (
+    from burrito.handlers.state_handler import (
         AdapterStateHandler,
     )
-    from burrito.adapter.handlers.token_handler import (
+    from burrito.handlers.token_handler import (
         AdapterCompletionToken,
     )
 from burrito.common.logger import FastAPILogger
@@ -55,5 +55,7 @@ class BasePlugin(ABC):
         encoded = event.encode("utf-8")
         await self.manager.push_event(encoded)
 
-    async def close(self):
-        pass
+    async def send_close_marker(self):
+        event = "data: [DONE]\n\n"
+        encoded = event.encode("utf-8")
+        await self.manager.push_event(encoded)

@@ -4,18 +4,11 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, TypeAlias, Uni
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .adapter_reasoning import AdapterReasoning
+from burrito.common.config import settings
 
-
-class FunctionDefinition(BaseModel):
-    name: str
-    description: Optional[str] = None
-    parameters: Dict[str, Any]
-
-
-class AdapterFunctionToolChat(BaseModel):
-    type: Literal["function"]
-    function: FunctionDefinition
+from .adapter_function_tool_param import AdapterFunctionToolParam
+from .adapter_custom_tool_param import AdapterCustomToolParam
+from .adapter_reasoning import ReasoningEffort
 
 
 class ContentPartText(BaseModel):
@@ -33,71 +26,66 @@ class ContentPartImageUrl(BaseModel):
     image_url: ImageUrl
 
 
-class SystemMessage(BaseModel):
+class SystemMessageParamChat(BaseModel):
     role: Literal["system"]
     content: str
     name: Optional[str] = None
 
 
-class DeveloperMessage(BaseModel):
+class DeveloperMessageParamChat(BaseModel):
     role: Literal["developer"]
     content: str
     name: Optional[str] = None
 
 
-class UserMessage(BaseModel):
+class UserMessageParamChat(BaseModel):
     role: Literal["user"]
     content: Union[str, List[Union[ContentPartText, ContentPartImageUrl]]]
     name: Optional[str] = None
 
 
-class AdapterToolCallFunctionChat(BaseModel):
+class AssistantToolCallInputsParamChat(BaseModel):
     name: str
     arguments: str
 
 
-class AssistantToolCall(BaseModel):
+class AssistantToolCallParamChat(BaseModel):
     id: str
-    type: Literal["function"]
-    function: AdapterToolCallFunctionChat
+    type: Literal["function", "custom_tool_call"]
+    function: AssistantToolCallInputsParamChat
 
 
-class AssistantMessage(BaseModel):
+class AssistantMessageParamChat(BaseModel):
     role: Literal["assistant"]
     content: Optional[str] = None
-    tool_calls: Optional[List[AssistantToolCall]] = None
+    tool_calls: Optional[List[AssistantToolCallParamChat]] = None
 
 
-class AdapterToolMessageChat(BaseModel):
+class ToolCallOutputParamChat(BaseModel):
     role: Literal["tool"]
     content: str
     tool_call_id: str
 
 
-ChatMessage = Annotated[
+InputItemParamChat = Annotated[
     Union[
-        SystemMessage,
-        DeveloperMessage,
-        UserMessage,
-        AssistantMessage,
-        AdapterToolMessageChat,
+        SystemMessageParamChat,
+        DeveloperMessageParamChat,
+        UserMessageParamChat,
+        AssistantMessageParamChat,
+        ToolCallOutputParamChat,
     ],
     Field(discriminator="role"),
 ]
 
 
-Reasoning: TypeAlias = AdapterReasoning
-
-
 class AdapterCreateParamsChat(BaseModel):
-    """
-    Validates the request body for the POST /v1/chat/completions endpoint.
-    """
+    model: str = settings.DEFAULT_MODEL_NAME
+    messages: List[InputItemParamChat]
 
-    model: str
-    messages: List[ChatMessage]
-
-    reasoning: Optional[Reasoning] = None
+    reasoning_effort: Optional[ReasoningEffort] = ReasoningEffort(
+        settings.DEFAULT_REASONING_EFFORT
+    )
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
@@ -105,9 +93,14 @@ class AdapterCreateParamsChat(BaseModel):
     stop: Optional[Union[str, List[str]]] = None
     max_tokens: Optional[int] = None
 
-    tools: Optional[List[AdapterFunctionToolChat]] = None
+    tools: Optional[
+        List[
+            Union[
+                AdapterFunctionToolParam,
+                AdapterCustomToolParam,
+            ]
+        ]
+    ] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
 
-    model_config = ConfigDict(
-        extra="allow",
-    )
+    model_config = ConfigDict(extra="allow")

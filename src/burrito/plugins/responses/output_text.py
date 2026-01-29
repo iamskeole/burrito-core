@@ -34,7 +34,7 @@ from openai.types.responses.response_output_text_annotation_added_event import (
     ResponseOutputTextAnnotationAddedEvent,
 )
 
-from burrito.plugins.base_plugin_responses import BasePluginResponses
+from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
 
 
@@ -50,11 +50,12 @@ class OutputTextPluginResponses(BasePluginResponses):
         self.current_output_text_content = ""
         self.output_delta_buffer = ""
         self.debug_full_buffer = ""
-        self.citation_index = 1
-        self.cited_urls = []
+        self.current_citation_index = 0
+        self.current_citations = []
 
     @property
     def subscribed_states(self) -> Set[str]:
+        # return {"output_text", "tool_input", "tool_call"}
         return {"output_text"}
 
     # TODO: handle content_part_added event
@@ -90,14 +91,19 @@ class OutputTextPluginResponses(BasePluginResponses):
         browser_tool = self.manager.manager.browser_tool
 
         # we normalize on the full current text to get the right indices in citations
-        updated_output_text, annotations, has_partial_citations = (
-            browser_tool.normalize_citations(
-                old_content=self.current_output_text_content + self.output_delta_buffer,
-                current_citations=self.annotations
-            )
+        (
+            updated_output_text,
+            annotations,
+            has_partial_citations,
+            current_citation_index,
+        ) = browser_tool.normalize_citations(
+            old_content=self.current_output_text_content + self.output_delta_buffer,
+            current_citations=self.annotations,
+            current_citation_index=self.current_citation_index,
         )
 
         self.has_partial_citations = has_partial_citations
+        self.current_citation_index = current_citation_index
 
         # remove the current text to get back the delta but now normalized
         self.output_delta_buffer = updated_output_text[
@@ -111,8 +117,8 @@ class OutputTextPluginResponses(BasePluginResponses):
         ]
         for a in new_annotations:
             url = a["url"]
-            if url not in self.cited_urls:
-                self.cited_urls.append(url)
+            if url not in self.current_citations:
+                self.current_citations.append(url)
             self.annotations.append(a)
             citation = AnnotationURLCitation(**a)
             event = ResponseOutputTextAnnotationAddedEvent(
@@ -223,8 +229,8 @@ class OutputTextPluginResponses(BasePluginResponses):
         self.current_output_text_content = ""
         self.output_delta_buffer = ""
         self.debug_full_buffer = ""
-        self.citation_index = 1
-        self.cited_urls = []
+        self.current_citation_index = 0
+        self.current_citations = []
 
     async def on_enter_state(self, state: str):
         await self.handle_on_enter_state()
