@@ -130,7 +130,9 @@ def build_payload(
 
 
 async def generate_hosted(
-    prompt_token_ids: list[int], params: AdapterCreateParams
+    prompt_token_ids: list[int],
+    params: AdapterCreateParams,
+    headers: Dict[str, str] = {},
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
     url = BACKEND_BASE_URL.rstrip("/") + "/" + BACKEND_COMPLETIONS_PATH.lstrip("/")
     payload = build_payload(prompt_token_ids, params)
@@ -139,7 +141,9 @@ async def generate_hosted(
     # TODO try / except here, to catch unresponsive backend before post?
 
     async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream("POST", url, json=payload) as response:
+        async with client.stream(
+            "POST", url, json=payload, headers=headers
+        ) as response:
             response.raise_for_status()
 
             message_buffer = ""

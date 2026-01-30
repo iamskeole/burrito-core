@@ -19,44 +19,6 @@ from burrito.common.utils import random_uuid
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
-import ast
-import traceback
-from contextlib import redirect_stdout
-from io import StringIO
-
-
-def run(code: str):
-    """
-    Run arbitrary Python code in a clean local namespace,
-    capture stdout, and return (result, stdout, error).
-    """
-    ns = {}
-
-    try:
-        tree = ast.parse(code, mode="exec")
-        if tree.body and isinstance(tree.body[-1], ast.Expr):
-            last = tree.body[-1]
-            assign = ast.Assign(
-                targets=[ast.Name("_result", ast.Store())], value=last.value
-            )
-            # copy position info so Python >=3.11 doesn’t complain
-            ast.copy_location(assign, last)
-            tree.body[-1] = assign
-            ast.fix_missing_locations(tree)
-        code_obj = compile(tree, "<assistant>", "exec")
-    except SyntaxError:
-        return None, "", traceback.format_exc()
-
-    buf = StringIO()
-    err = None
-    try:
-        with redirect_stdout(buf):
-            exec(code_obj, ns)
-    except Exception:
-        err = traceback.format_exc()
-
-    return ns.get("_result"), buf.getvalue(), err
-
 
 class ToolHandler:
     def __init__(self, manager: "AdapterStateHandler"):

@@ -6,10 +6,10 @@ if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
     from burrito.types.adapter import AdapterCompletionToken
 
-from burrito.types.adapter.adapter_chat_choice_delta import (
+from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunk,
-    AdapterChatChoice,
-    AdapterChatChoiceDelta,
+    AdapterChatCompletionChunkChoice,
+    AdapterChatCompletionChunkChoiceDelta,
 )
 from burrito.plugins.chat.base_plugin import BasePluginChat
 
@@ -35,9 +35,9 @@ class ReasoningTextPluginChat(BasePluginChat):
             f"Expected a ChatCompletionChunk, but got {type(self.manager.output_object[0])}"
         )
 
-        choice = AdapterChatChoice(
+        choice = AdapterChatCompletionChunkChoice(
             index=0,
-            delta=AdapterChatChoiceDelta(
+            delta=AdapterChatCompletionChunkChoiceDelta(
                 role="assistant",  # TODO, maybe tool?
                 reasoning_content=token.text,
             ),

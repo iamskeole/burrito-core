@@ -5,5 +5,5 @@ from burrito.common.config import settings
 
 class BurritoPython(PythonTool):
     def __init__(self):
-        backend = settings.PYTHON_BACKEND or "dangerously_use_local_jupyter"
+        backend = settings.PYTHON_BACKEND
         super().__init__(execution_backend=backend)

@@ -5,38 +5,10 @@ from typing import TYPE_CHECKING, Optional, Set, Union
 from burrito.types.adapter import AdapterConversationInputTool, AdapterConversationState
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import (
-        AdapterStateHandler,
-    )
+    from burrito.handlers.state_handler import AdapterStateHandler
+
 from openai.types.responses.response import Response
-from openai.types.responses.response_code_interpreter_call_code_delta_event import (
-    ResponseCodeInterpreterCallCodeDeltaEvent,  # ruff: ignore
-)
-from openai.types.responses.response_code_interpreter_call_code_done_event import (
-    ResponseCodeInterpreterCallCodeDoneEvent,
-)
-from openai.types.responses.response_code_interpreter_call_completed_event import (
-    ResponseCodeInterpreterCallCompletedEvent,
-)
-from openai.types.responses.response_code_interpreter_call_in_progress_event import (
-    ResponseCodeInterpreterCallInProgressEvent,
-)
-from openai.types.responses.response_code_interpreter_call_interpreting_event import (
-    ResponseCodeInterpreterCallInterpretingEvent,
-)
 
-# python
-from openai.types.responses.response_code_interpreter_tool_call import (
-    ResponseCodeInterpreterToolCall,
-)
-
-# content part
-from openai.types.responses.response_content_part_added_event import (
-    ResponseContentPartAddedEvent,
-)
-from openai.types.responses.response_content_part_done_event import (
-    ResponseContentPartDoneEvent,
-)
 from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
 
 # custom tools
@@ -56,159 +28,17 @@ from openai.types.responses.response_function_call_arguments_done_event import (
 )
 from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
 
-# mcp - args
-from openai.types.responses.response_mcp_call_arguments_delta_event import (
-    ResponseMcpCallArgumentsDeltaEvent,
-)
-from openai.types.responses.response_mcp_call_arguments_done_event import (
-    ResponseMcpCallArgumentsDoneEvent,
-)
-
-# mcp - call
-from openai.types.responses.response_mcp_call_completed_event import (
-    ResponseMcpCallCompletedEvent,
-)
-from openai.types.responses.response_mcp_call_failed_event import (
-    ResponseMcpCallFailedEvent,
-)
-from openai.types.responses.response_mcp_call_in_progress_event import (
-    ResponseMcpCallInProgressEvent,
-)
-from openai.types.responses.response_mcp_list_tools_completed_event import (
-    ResponseMcpListToolsCompletedEvent,
-)
-from openai.types.responses.response_mcp_list_tools_failed_event import (
-    ResponseMcpListToolsFailedEvent,
-)
-
-# mcp - list tools
-from openai.types.responses.response_mcp_list_tools_in_progress_event import (
-    ResponseMcpListToolsInProgressEvent,
-)
-
-# ------ EVENTS
-# output item
 from openai.types.responses.response_output_item_added_event import (
     ResponseOutputItemAddedEvent,
 )
 from openai.types.responses.response_output_item_done_event import (
     ResponseOutputItemDoneEvent,
 )
-from openai.types.responses.response_web_search_call_completed_event import (
-    ResponseWebSearchCallCompletedEvent,
-)
-
-# web search
-from openai.types.responses.response_function_web_search import (
-    ResponseFunctionWebSearch,
-    ActionFind,
-    ActionOpenPage,
-    ActionSearch,
-    ActionSearchSource,
-)
-from openai.types.responses.response_web_search_call_in_progress_event import (
-    ResponseWebSearchCallInProgressEvent,
-)
-from openai.types.responses.response_web_search_call_searching_event import (
-    ResponseWebSearchCallSearchingEvent,
-)
 
 from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
-from burrito.types.adapter import AdapterCompletionToken, AdapterToolNamespace
+from burrito.types.adapter import AdapterCompletionToken
 from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
-
-# TODO: remove when dome, temporary hack so linter doesn't remove imports
-EVENTS = [
-    ResponseOutputItemAddedEvent,
-    ResponseOutputItemDoneEvent,
-    ResponseContentPartAddedEvent,
-    ResponseContentPartDoneEvent,
-    ResponseFunctionCallArgumentsDeltaEvent,
-    ResponseFunctionCallArgumentsDoneEvent,
-    ResponseCustomToolCallInputDeltaEvent,
-    ResponseCustomToolCallInputDoneEvent,
-    ResponseWebSearchCallInProgressEvent,
-    ResponseWebSearchCallSearchingEvent,
-    ResponseWebSearchCallCompletedEvent,
-    ResponseCodeInterpreterCallCodeDeltaEvent,
-    ResponseCodeInterpreterCallCodeDoneEvent,
-    ResponseCodeInterpreterCallCompletedEvent,
-    ResponseCodeInterpreterCallInProgressEvent,
-    ResponseCodeInterpreterCallInterpretingEvent,
-    ResponseMcpCallArgumentsDeltaEvent,
-    ResponseMcpCallArgumentsDoneEvent,
-    ResponseMcpCallCompletedEvent,
-    ResponseMcpCallInProgressEvent,
-    ResponseMcpCallFailedEvent,
-    ResponseMcpListToolsInProgressEvent,
-    ResponseMcpListToolsCompletedEvent,
-    ResponseMcpListToolsFailedEvent,
-    # The Key Difference: Semantic Meaning
-    # The primary difference is not in how the code processes them, but in what
-    # they represent. The code itself doesn't define the structure of these
-    # types (that would be in the codex_protocol crate), but we can infer their
-    # purpose:
-    #     FunctionCall: This likely represents a standard, well-defined function
-    # call that the model can invoke. It probably has a rigid structure, such as
-    # a name (string) and arguments (JSON string). This is analogous to the
-    # standard function calling feature in models like OpenAI's GPT.
-    #     CustomToolCall: This suggests a more flexible or user-defined tool
-    # invocation. The term "custom tool" implies that the structure might be
-    # less rigid or could be defined entirely by the user or a specific
-    # integration. For example, it might have fields like tool_name and
-    # input rather than name and arguments.
-    ResponseFunctionToolCall,
-    ResponseCustomToolCall,
-]
-
-
-# [
-#     [x] 'event: response.created',
-#     [x] 'event: response.in_progress',
-#     [x] 'event: response.output_item.added',
-#     [x] 'event: response.content_part.added',
-#     [x] 'event: response.reasoning_text.delta',
-#     [x] 'event: response.reasoning_text.done', # full reasoning string
-#     [x] 'event: response.content_part.done', #TODO: missing content_part.done ?
-#     [x] 'event: response.output_item.done', # content=[part(text=...)]
-#     [x] 'event: response.output_item.added',
-#     [x] 'event: response.content_part.added',
-#     [x] 'event: response.output_text.delta',
-#     [x] 'event: response.output_text.done',
-#     [x] 'event: response.content_part.done',
-#     [x] 'event: response.output_item.done',
-#     [x] 'event: response.completed'
-# ]
-
-# TODO: figure out when / how to drop previous reasoning items
-
-# from codex rust implementation
-# https://github.com/openai/codex/blob/e899ae7d8a0c637d7a5d296481f3f48611acfdb0/codex-rs/core/src/client.rs#L826
-# "response.content_part.done"
-# | "response.function_call_arguments.delta"
-# | "response.custom_tool_call_input.delta"
-# | "response.custom_tool_call_input.done" // also emitted as response.output_item.done
-# | "response.in_progress"
-# | "response.output_text.done" => {}
-# "response.output_item.added" => {
-#     if let Some(item) = event.item.as_ref() {
-#         // Detect web_search_call begin and forward a synthetic event upstream.
-#         if let Some(ty) = item.get("type").and_then(|v| v.as_str())
-#             && ty == "web_search_call"
-#         {
-#             let call_id = item
-#                 .get("id")
-#                 .and_then(|v| v.as_str())
-#                 .unwrap_or("")
-#                 .to_string();
-#             let ev = ResponseEvent::WebSearchCallBegin { call_id };
-#             if tx_event.send(Ok(ev)).await.is_err() {
-#                 return;
-#             }
-#         }
-#     }
-# }
 
 
 class ToolPluginResponses(BasePluginResponses):

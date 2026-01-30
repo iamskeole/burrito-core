@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Literal, Optional, TypeAlias, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,7 +8,7 @@ from burrito.common.config import settings
 
 from .adapter_function_tool_param import AdapterFunctionToolParam
 from .adapter_custom_tool_param import AdapterCustomToolParam
-from .adapter_reasoning import ReasoningEffort
+from .adapter_reasoning import AdapterReasoningParam
 
 
 class ContentPartText(BaseModel):
@@ -83,9 +83,10 @@ class AdapterCreateParamsChat(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     messages: List[InputItemParamChat]
 
-    reasoning_effort: Optional[ReasoningEffort] = ReasoningEffort(
-        settings.DEFAULT_REASONING_EFFORT
-    )
+    # v1/chat/completions doesn't officially support reasoning effort
+    # so we're using the openrouter implementation
+    # https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+    reasoning: Optional[AdapterReasoningParam] = None
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0

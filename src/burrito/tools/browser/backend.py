@@ -1,9 +1,7 @@
 import logging
-import os
-import re
-from typing import Optional, List
+from typing import List
 import aiohttp
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientSession
 import chz
 from gpt_oss.tools.simple_browser.backend import Backend, BackendError
 from gpt_oss.tools.simple_browser.page_contents import (
@@ -29,7 +27,9 @@ class BurritoBackend(Backend):
     async def stop(self):
         await BrowserEngine.stop()
 
-    async def fetch(self, url: str, is_docs_website: bool, session: aiohttp.ClientSession) -> PageContents:
+    async def fetch(
+        self, url: str, is_docs_website: bool, session: aiohttp.ClientSession
+    ) -> PageContents:
         try:
             text = await BrowserEngine.fetch(url, is_docs_website, session)
             processed = process_html(html=text, url=url, title=None)
@@ -49,7 +49,7 @@ class BurritoBackend(Backend):
         locale: str,
         language: str,
         time_range: str,
-        source: str
+        source: str,
     ) -> List[tuple]:
         payload = {
             "q": query,
@@ -126,7 +126,7 @@ class BurritoBackend(Backend):
         locale: str = "en-US",
         language: str = "en",
         time_range: str = "alltime",
-        source: str = "general"
+        source: str = "general",
     ) -> PageContents:
         titles_and_urls = []
 
@@ -137,7 +137,9 @@ class BurritoBackend(Backend):
                 logger.error(f"Brave search failed, falling back: {e}")
 
         if not titles_and_urls:
-            titles_and_urls = await self._search_searxng(query, topn, session, locale, language, time_range, source)
+            titles_and_urls = await self._search_searxng(
+                query, topn, session, locale, language, time_range, source
+            )
 
         if not titles_and_urls:
             html_page = "<html><body><h1>No results found.</h1></body></html>"

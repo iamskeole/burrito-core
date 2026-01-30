@@ -22,10 +22,15 @@ class AdapterGenerationHandler:
         yield {"error": "Native generation is not implemented yet."}  # type: ignore
 
     async def _generate_hosted(
-        self, prompt_token_ids: List[int], params: AdapterCreateParams
+        self,
+        prompt_token_ids: List[int],
+        params: AdapterCreateParams,
+        headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         try:
-            async for completion in generate_hosted(prompt_token_ids, params):
+            async for completion in generate_hosted(
+                prompt_token_ids, params, headers
+            ):
                 if not self.can_stream:
                     self.logger.warning("generator: breaking loop", extra=self.log_extra)
                     break
@@ -34,13 +39,16 @@ class AdapterGenerationHandler:
             self.logger.info("generator: cleaning up", extra=self.log_extra)
 
     async def generate(
-        self, prompt_token_ids: List[int], params: AdapterCreateParams
+        self,
+        prompt_token_ids: List[int],
+        params: AdapterCreateParams,
+        headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         # TODO: implement native, for now default to false for type checks and speed of debug
         if settings.INFERENCE_BACKEND_IS_NATIVE:
             generator = self._generate_native(prompt_token_ids, params)
         else:
-            generator = self._generate_hosted(prompt_token_ids, params)
+            generator = self._generate_hosted(prompt_token_ids, params, headers)
 
         async for item in generator:
             yield item

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Set, Any, List
+from typing import TYPE_CHECKING, Set, List
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
@@ -12,10 +12,9 @@ from openai.types.chat.chat_completion_chunk import (
     ChoiceDeltaToolCallFunction,
 )
 
-
-from burrito.types.adapter.adapter_chat_choice_delta import (
-    AdapterChatChoice,
-    AdapterChatChoiceDelta,
+from burrito.types.adapter.adapter_chat_completion_chunk import (
+    AdapterChatCompletionChunkChoice,
+    AdapterChatCompletionChunkChoiceDelta,
 )
 
 from burrito.types.adapter import AdapterConversationInputTool, AdapterConversationState
@@ -61,9 +60,9 @@ class ToolPluginChat(BasePluginChat):
             type="function",
         )
 
-        choice = AdapterChatChoice(
+        choice = AdapterChatCompletionChunkChoice(
             index=0,
-            delta=AdapterChatChoiceDelta(
+            delta=AdapterChatCompletionChunkChoiceDelta(
                 role="assistant", content="", tool_calls=[tool_call]
             ),
         )

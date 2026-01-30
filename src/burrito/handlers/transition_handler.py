@@ -122,8 +122,8 @@ def is_native_tool(parser: StreamableParser) -> bool:
         AdapterAssistantChannel.ANALYSIS.value,
         AdapterAssistantChannel.COMMENTARY.value,
     ]
-    match_recipient = match_this_recipient or match_last_recipient
-    match_channel = match_this_channel or match_last_channel
+    match_recipient = bool(match_this_recipient or match_last_recipient)
+    match_channel = bool(match_this_channel or match_last_channel)
     return match_recipient and match_channel
 
 

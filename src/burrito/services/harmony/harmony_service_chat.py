@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Union, Dict
+from typing import List, Dict
 
 from openai_harmony import Message, Author, Role, Content, TextContent
 
@@ -179,7 +179,7 @@ def map_input_tools(
                     format=fmt,
                 )
             case _:
-                raise NotImplementedError("Only Function Tools implemented for now")
+                raise NotImplementedError(f"Unsupported tool type: {type(tool)}")
     return tools
 
 
@@ -189,7 +189,7 @@ def build_message_list_chat(
     instructions = parse_instructions(params)
     messages = parse_messages(params)
     tools = map_input_tools(params)
-    reasoning = AdapterReasoningParam(effort=params.reasoning_effort)
+    reasoning = params.reasoning or AdapterReasoningParam()
 
     conversation_inputs = AdapterConversationInputs(
         instructions=instructions,

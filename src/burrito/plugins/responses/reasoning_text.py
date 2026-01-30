@@ -64,11 +64,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             f"Expected a Response, but got {type(self.manager.output_object)}"
         )
 
-        try:
-            output_item = self.manager.output_object.output[self.manager.output_index]
-        except:
-            x = 1
-
+        output_item = self.manager.output_object.output[self.manager.output_index]
         assert isinstance(output_item, ResponseReasoningItem), (
             f"Expected a ResponseReasoningItem, but got {type(output_item)}"
         )

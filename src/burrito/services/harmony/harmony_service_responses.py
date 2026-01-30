@@ -33,6 +33,10 @@ from burrito.types.adapter.adapter_custom_tool_param import (
     CustomToolInputFormatGrammar,
 )
 
+from burrito.types.adapter.adapter_web_search_tool_param import (
+    AdapterWebSearchToolParamResponses,
+)
+
 
 def user_message_from_text_input(user_input: str) -> Message:
     return Message(
@@ -86,32 +90,27 @@ def assistant_message(
 
 
 def tool_call_input_message(
-    message_data: Union[
-        FunctionToolInputParamResponses,
-        CustomToolInputParamResponses,
-    ],
+    message_data: Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
 ) -> Message:
-    channel = None
-    content = None
-    recipient = None
+    content: List[Content]
+    recipient: str
 
     match message_data:
         case FunctionToolInputParamResponses():
-            channel = AdapterAssistantChannel.COMMENTARY
             content = [TextContent(text=message_data.arguments)]
             recipient = message_data.name
         case CustomToolInputParamResponses():
             # TODO: maybe handle custom namespaces?
-            channel = AdapterAssistantChannel.COMMENTARY
             content = [TextContent(text=message_data.input)]
-            message_data.name
+            recipient = message_data.name
         case _:
-            # TODO: native tool calls are probably in the analysis channel?
-            pass
+            raise (
+                NotImplementedError,
+                f"Unsupported message data type: {type(message_data)}",
+            )
 
-    # TODO: figure out linting errors, probably when handling native tools
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
-    message.with_channel(channel.value)
+    message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
     message.with_recipient(recipient)
     return message
 
@@ -231,10 +230,11 @@ def map_input_tools(
                     format=fmt,
                 )
 
-            # TODO: custom tools; browser, python from config or params
-            # eg caller may pass a string as web_search or python? see docs
+            case AdapterWebSearchToolParamResponses():
+                continue  # we handle web search natively
+
             case _:
-                raise NotImplementedError("Only Function Tools implemented for now")
+                raise NotImplementedError(f"Unsupported tool type: {type(tool)}")
     return tools
 
 

@@ -4,6 +4,8 @@ from typing import AsyncGenerator, Dict, List, Union
 import async_timeout
 from fastapi import Request
 from openai.types.completion import Completion
+from openai.types.chat.chat_completion import ChatCompletion
+from openai.types.responses import Response
 
 from gpt_oss.tools.python_docker.docker_tool import PythonTool
 
@@ -14,6 +16,7 @@ from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid, unix_timestamp_in_ms
 from burrito.types.adapter import AdapterCreateParams
+from burrito.types.adapter.adapter_chat_completion_chunk import AdapterChatCompletionChunk
 
 from .state_handler import AdapterStateHandler
 
@@ -23,9 +26,9 @@ class AdapterConversationHandler:
         self,
         request: Request,
         params: AdapterCreateParams,
-        generator: AdapterGenerationHandler,
         python_tool: PythonTool,
         browser_tool: BurritoBrowser,
+        forwarded_headers: Dict[str, str] = {},
     ):
         self.request = request
         self.params = params
@@ -42,6 +45,7 @@ class AdapterConversationHandler:
         self.python_tool = python_tool
         self.browser_tool = browser_tool
         self.browser_tool_used = False
+        self.forwarded_headers = forwarded_headers
 
         self.log_id = random_uuid()
         self.logger = FastAPILogger.get_logger(__name__)
@@ -62,7 +66,9 @@ class AdapterConversationHandler:
         self.generator.can_stream = True
         prompt_token_ids = self.state_handler.prompt_tokens
         params = self.params
-        self.stream = self.generator.generate(prompt_token_ids, params)
+        self.stream = self.generator.generate(
+            prompt_token_ids, params, self.forwarded_headers
+        )
 
     def _stop_stream(self):
         self.generator.can_stream = False
@@ -157,11 +163,40 @@ class AdapterConversationHandler:
             self.logger.error(msg, extra=self.log_extra)
             await sm.push_error(msg, "ERR_TASK_GROUP_EXCEPTION")
 
+    def _return_json_responses(self):
+        output_object = self.state_handler.output_object
+        assert isinstance(output_object, Response), (
+            f"Expected list, got {type(output_object)}"
+        )
+        return self.state_handler.output_object.model_dump()
+
+    def _return_json_chat(self):
+        output_object = self.state_handler.output_object
+        assert isinstance(output_object, list), (
+            f"Expected list, got {type(output_object)}"
+        )
+
+        if type(output_object[0]) is not AdapterChatCompletionChunk:
+            return {
+                "error": f"Expected AdapterChatCompletionChunk, got {type(AdapterChatCompletionChunk)}"
+            }
+        x = 1
+
     async def return_json(self) -> Dict:
         async for _ in self.return_stream():
             pass
-        if self.state_handler.is_done:
-            _json = self.state_handler.output_object.model_dump()
-            return _json # TODO handle dumps for responses / chat completions separately
-        else:
-            return {"error": "Generation did not complete successfully."}
+
+        assert self.state_handler.is_done, "Generation did not complete successfully."
+
+        output_object = self.state_handler.output_object
+
+        if isinstance(output_object, Response):
+            return output_object.model_dump()
+
+        if isinstance(output_object, list) and isinstance(
+            output_object[-1], ChatCompletion
+        ):
+            out = output_object[-1].model_dump()
+            return out
+
+        raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

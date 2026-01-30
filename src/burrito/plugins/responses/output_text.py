@@ -26,7 +26,6 @@ from openai.types.responses.response_output_message import ResponseOutputMessage
 from openai.types.responses.response_output_text import (
     ResponseOutputText,
     AnnotationURLCitation,
-    Annotation,
 )
 from openai.types.responses.response_text_delta_event import ResponseTextDeltaEvent
 from openai.types.responses.response_text_done_event import ResponseTextDoneEvent

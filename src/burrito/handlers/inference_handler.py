@@ -1,3 +1,4 @@
+import asyncio
 from typing import Union
 
 import httpx
@@ -10,21 +11,33 @@ from burrito.tools.python.tool import BurritoPython
 from burrito.handlers.conversation_handler import AdapterConversationHandler
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.types.adapter import AdapterCreateParams
+from burrito.common.config import settings
+
+# Global semaphore to limit concurrent inference requests
+inference_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_INFERENCE_REQUESTS)
 
 
-async def handle_generate(
+async def run_inference(
     request: Request,
     params: AdapterCreateParams,
-    generation_handler: AdapterGenerationHandler,
 ) -> Union[StreamingResponse, JSONResponse]:
-    try:
-        handler = AdapterConversationHandler(
-            request=request,
-            params=params,
-            generator=generation_handler,
-            python_tool=BurritoPython(),
-            browser_tool=BurritoBrowser(),
-        )
+    # Extract headers to forward
+    forwarded_headers = {
+        k: v for k, v in request.headers.items()
+        if k.title() in [h.title() for h in settings.FORWARD_HEADERS]
+    }
+
+    async with inference_semaphore:
+        try:
+            generation_handler = AdapterGenerationHandler()
+            handler = AdapterConversationHandler(
+                request=request,
+                params=params,
+                generator=generation_handler,
+                python_tool=BurritoPython(),
+                browser_tool=BurritoBrowser(),
+                forwarded_headers=forwarded_headers,
+            )
         if params.stream:
             return StreamingResponse(
                 content=handler.return_stream(),

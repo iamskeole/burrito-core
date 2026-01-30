@@ -21,7 +21,7 @@ from gpt_oss.tools.simple_browser import SimpleBrowserTool
 from gpt_oss.tools.simple_browser.simple_browser_tool import ToolUsageError
 from gpt_oss.tools.simple_browser.page_contents import Extract, PageContents
 from gpt_oss.tools.simple_browser.backend import maybe_truncate
-from openai_harmony import ToolNamespaceConfig, ToolDescription, Message
+from openai_harmony import ToolNamespaceConfig, Message
 
 from gpt_oss.tools.simple_browser.simple_browser_tool import (
     PARTIAL_FINAL_LINK_PATTERN,
@@ -147,7 +147,7 @@ class BurritoBrowser(SimpleBrowserTool):
     # so we can use trafilatura for regular content and html parsing as a fallback for docs
     @function_the_model_can_call
     @handle_errors
-    async def search(
+    async def search(# pyright: ignore[reportIncompatibleMethodOverride]
         self,
         query: str,
         # 4. Strict Python typing matches the TypeScript definition above
@@ -158,14 +158,10 @@ class BurritoBrowser(SimpleBrowserTool):
         top_n: int = 10,  # Keep for backward compatibility (legacy param)
         source: str | None = None,
     ) -> AsyncIterator[Message]:
-        # Determine the actual limit (handling the topn/top_n quirk)
         limit = topn if topn != 10 else top_n
 
         try:
             async with ClientSession() as session:
-                # 5. Pass the new arguments to your backend
-                # Note: You must ensure self.backend.search accepts **kwargs
-                # or explicitly accepts these new arguments.
                 search_page = await self.backend.search(
                     query=query,
                     topn=limit,
@@ -176,7 +172,6 @@ class BurritoBrowser(SimpleBrowserTool):
                     source=source,
                 )
         except Exception as e:
-            # Re-using the logic from the base class to truncate error messages
             msg = maybe_truncate(str(e))
             raise BackendError(f"Error during search for `{query}`: {msg}") from e
 
@@ -184,7 +179,7 @@ class BurritoBrowser(SimpleBrowserTool):
         self.tool_state.add_page(search_page)
         yield await self.show_page_safely(loc=0)
 
-    async def _open_url(
+    async def _open_url(# pyright: ignore[reportIncompatibleMethodOverride]
         self, url: str, direct_url_open: bool, is_docs_website: bool
     ) -> PageContents:
         """Use the cache, if available."""
@@ -283,7 +278,7 @@ class BurritoBrowser(SimpleBrowserTool):
         annotation["cited_text"] = cited_text
         return annotation
 
-    def normalize_citations(
+    def normalize_citations(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         old_content: str,
         hide_partial_citations: bool = False,

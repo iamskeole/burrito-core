@@ -1,21 +1,11 @@
 from typing import Set, List
 
-from openai.types.chat.chat_completion_message import (
-    ChatCompletionMessage,
-    FunctionCall,
-)
-from openai.types.chat.chat_completion_chunk import (
-    ChatCompletionChunk,
-    Choice,
-    ChoiceDelta,
-    ChoiceLogprobs,
-)
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.completion_usage import CompletionUsage, CompletionTokensDetails
 
 from burrito.types.adapter import AdapterConversationState
-from burrito.types.adapter.adapter_chat_choice_delta import (
-    AdapterChatChoice,
-    AdapterChatChoiceDelta,
+from burrito.types.adapter.adapter_chat_completion_chunk import (
+    AdapterChatCompletionChunkChoice,
     AdapterChatCompletionChunk,
 )
 
@@ -74,7 +64,7 @@ class ContextManagerPluginChat(BasePluginChat):
         n_output_tokens = len(output_tokens)
         n_total_tokens = n_input_tokens + n_output_tokens
 
-        choice = AdapterChatChoice(
+        choice = AdapterChatCompletionChunkChoice(
             index=0,
             finish_reason=finish_reason,  # type: ignore
             # empty choice, we don't rebuild full message like responses
@@ -91,9 +81,10 @@ class ContextManagerPluginChat(BasePluginChat):
         )
 
         chunk = self.build_chunk_object(choice, usage)
-        # self.manager.response_buffer, self.manager.parser
+        self.manager.output_object.append(chunk)
         await self.push_event(chunk)
         await self.send_close_marker()
+        self.build_output_object()
 
     async def on_enter_state(self, state: AdapterConversationState):
         if state in [

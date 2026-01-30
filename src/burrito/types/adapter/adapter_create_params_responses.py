@@ -8,6 +8,7 @@ from burrito.common.config import settings
 from .adapter_reasoning import AdapterReasoningParam
 from .adapter_function_tool_param import AdapterFunctionToolParam
 from .adapter_custom_tool_param import AdapterCustomToolParam
+from .adapter_web_search_tool_param import AdapterWebSearchToolParam
 
 
 class UserMessageContentTextParamResponses(BaseModel):
@@ -97,11 +98,6 @@ class FunctionToolInputParamResponses(BaseModel):
     call_id: str
 
 
-ToolCallOutputParamResponses = Annotated[
-    Union[ToolCallOutputParamResponses, CustomToolCallOutputParamResponses],
-    Field(discriminator="type"),
-]
-
 ToolCallInputParamResponses = Annotated[
     Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
     Field(discriminator="type"),
@@ -114,6 +110,7 @@ InputItemParamResponses = Union[
     AssistantReasoningParamResponses,
     ToolCallInputParamResponses,
     ToolCallOutputParamResponses,
+    CustomToolCallOutputParamResponses,
 ]
 
 
@@ -132,6 +129,7 @@ class AdapterCreateParamsResponses(BaseModel):
             Union[
                 AdapterFunctionToolParam,
                 AdapterCustomToolParam,
+                AdapterWebSearchToolParam,
             ]
         ]
     ] = None

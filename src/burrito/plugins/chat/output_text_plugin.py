@@ -2,49 +2,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set, Any, List
 
-from openai.types.responses.response import Response
-
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import (
-        AdapterStateHandler,
-    )
-    from burrito.handlers.token_handler import (
-        AdapterCompletionToken,
-    )
+    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.token_handler import AdapterCompletionToken
 
 
-from openai.types.chat.chat_completion_message import (
-    ChatCompletionMessage,
-    FunctionCall,
-)
-
-from openai.types.chat.chat_completion_chunk import (
-    ChatCompletionChunk,
-    Choice,
-    ChoiceDelta,
-    ChoiceDeltaFunctionCall,
-    ChoiceDeltaToolCall,
-    ChoiceDeltaToolCallFunction,
-    ChoiceLogprobs,
-)
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 
-from openai.types.responses.response_output_message import ResponseOutputMessage
-from openai.types.responses.response_output_text import (
-    ResponseOutputText,
-    AnnotationURLCitation,
-    Annotation,
-)
-
-from openai.types.responses.response_output_text_annotation_added_event import (
-    ResponseOutputTextAnnotationAddedEvent,
-)
-
-
-from burrito.types.adapter.adapter_chat_choice_delta import (
-    AdapterChatChoice,
-    AdapterChatChoiceDelta,
-    AdapterChatCompletionChunk,
+from burrito.types.adapter.adapter_chat_completion_chunk import (
+    AdapterChatCompletionChunkChoice,
+    AdapterChatCompletionChunkChoiceDelta,
 )
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
@@ -100,7 +68,7 @@ class OutputTextPluginChat(BasePluginChat):
             updated_output_text,
             annotations,
             has_partial_citations,
-            current_citation_index
+            current_citation_index,
         ) = browser_tool.normalize_citations(
             old_content=self.current_output_text_content + self.output_delta_buffer,
             current_citations=self.annotations,
@@ -154,9 +122,9 @@ class OutputTextPluginChat(BasePluginChat):
         if self.has_partial_citations:
             return
 
-        choice = AdapterChatChoice(
+        choice = AdapterChatCompletionChunkChoice(
             index=0,
-            delta=AdapterChatChoiceDelta(
+            delta=AdapterChatCompletionChunkChoiceDelta(
                 role="assistant",  # TODO, maybe tool?
                 content=self.output_delta_buffer,
             ),

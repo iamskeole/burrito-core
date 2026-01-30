@@ -10,7 +10,7 @@ from openai.types.chat.chat_completion_message import Annotation
 
 
 # extend so we can use in streaming chunks with reasoning + citations
-class AdapterChatChoiceDelta(ChoiceDelta):
+class AdapterChatCompletionChunkChoiceDelta(ChoiceDelta):
     reasoning_content: Optional[str] = None
     """The contents of the chunk message."""
 
@@ -24,9 +24,9 @@ class AdapterChatChoiceDelta(ChoiceDelta):
     """
 
 
-class AdapterChatChoice(Choice):
-    delta: Union[AdapterChatChoiceDelta, Dict[str, Any]]  # type: ignore
+class AdapterChatCompletionChunkChoice(Choice):
+    delta: Union[AdapterChatCompletionChunkChoiceDelta, Dict[str, Any]]  # type: ignore
 
 
 class AdapterChatCompletionChunk(ChatCompletionChunk):
-    choices: List[AdapterChatChoice]  # type: ignore
+    choices: List[AdapterChatCompletionChunkChoice]  # type: ignore

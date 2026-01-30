@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from openai_harmony import (
     Author,
@@ -15,7 +15,6 @@ from openai_harmony import (
     SystemContent,
     TextContent,
     ToolDescription,
-    ToolNamespaceConfig,
     load_harmony_encoding,
 )
 
@@ -188,7 +187,7 @@ def build_conversation_history(
     system_message = build_system_message(inputs, python_tool, browser_tool)
     messages = [
         system_message,
-        # build_developer_message(inputs),
+        build_developer_message(inputs),
         *prune_reasoning(inputs.messages),  # unpack result of prune_reasoning
     ]
     conversation = Conversation.from_messages(messages)

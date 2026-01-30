@@ -7,6 +7,7 @@ from burrito.common.logger import FastAPILogger
 if TYPE_CHECKING:
     from .conversation_handler import AdapterConversationHandler
 
+from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
@@ -87,7 +88,11 @@ class AdapterStateHandler:
         self.created_event_fired: bool = False
         self.is_done: bool = False
 
-        self.output_object: Union[Response, List[ChatCompletionChunk]]
+        self.output_object: Union[
+            Response,
+            List[ChatCompletionChunk],
+            ChatCompletion,
+        ]
 
         self.plugins: List[BasePlugin]
         self._active_plugins_by_state: dict[str, list[BasePlugin]] = {}

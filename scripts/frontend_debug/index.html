@@ -768,6 +768,15 @@
         let conversation = [];
         let isStreaming = true;
 
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         function toggleStream() {
             isStreaming = !isStreaming;
             streamToggleWrap.classList.toggle('active', isStreaming);
@@ -880,7 +889,9 @@
 
         async function testConnection() {
             try {
-                const res = await fetch(apiUrlEl.value.replace('/v1/responses', '/v1/models'));
+                const res = await fetch(apiUrlEl.value
+                    .replace('/v1/responses', '/v1/models')
+                    .replace('/v1/chat/completions', '/v1/models'));
                 statusDot.className = res.ok ? 'status-dot online' : 'status-dot';
                 document.getElementById('status-text').textContent = res.ok ? 'Backend Active' : 'Link Offline';
             } catch (e) {
@@ -912,6 +923,58 @@
             });
         }
 
+        function transformConversation(conv, target) {
+            if (target === 'responses') return conv;
+
+            return conv.map(item => {
+                if (item.role === 'user') {
+                    const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
+                    return { role: 'user', content: text };
+                } else if (item.role === 'assistant') {
+                    const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
+                    return { role: 'assistant', content: text };
+                } else if (item.type === 'reasoning') {
+                    // Chat API doesn't have a reasoning role, but we can send it as assistant for history preservation
+                    const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
+                    return { role: 'assistant', content: text };
+                } else if (item.type === 'function_call' || item.type === 'custom_tool_call') {
+                    return {
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: [{
+                            id: item.call_id,
+                            type: 'function',
+                            function: { name: item.name, arguments: item.arguments }
+                        }]
+                    };
+                } else if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
+                    return { role: 'tool', content: item.output, tool_call_id: item.call_id };
+                }
+                return item;
+            });
+        }
+
+        function transformTools(tools, target) {
+            if (target === 'responses') return tools;
+
+            return tools.map(tool => {
+                if (tool.type === 'function') {
+                    const { type, ...functionDef } = tool;
+                    return {
+                        type: 'function',
+                        function: functionDef
+                    };
+                } else if (tool.type === 'custom') {
+                    const { type, ...customDef } = tool;
+                    return {
+                        type: 'custom',
+                        custom: customDef
+                    };
+                }
+                return tool;
+            });
+        }
+
         async function sendMessage() {
             const text = userInputEl.value.trim();
             if (!text || sendBtn.disabled) return;
@@ -923,9 +986,15 @@
             let tools = [];
             try { tools = JSON.parse(toolsConfigEl.value || '[]'); } catch (e) { }
 
+            const isResponsesApi = apiUrlEl.value.includes('/v1/responses');
+            const targetFormat = isResponsesApi ? 'responses' : 'chat';
+            const transformedConv = transformConversation(conversation, targetFormat);
+            const transformedTools = transformTools(tools, targetFormat);
+
             const payload = {
-                model: modelNameEl.value, input: conversation,
-                tools: tools.length > 0 ? tools : undefined,
+                model: modelNameEl.value,
+                [isResponsesApi ? 'input' : 'messages']: transformedConv,
+                tools: tools.length > 0 ? transformedTools : undefined,
                 tool_choice: tools.length > 0 ? "auto" : undefined,
                 stream: isStreaming,
                 reasoning: {
@@ -949,9 +1018,18 @@
                         const msg = data.choices[0].message;
                         if (msg.reasoning_content) {
                             appendMessageUI('reasoning', msg.reasoning_content, 'reasoning');
+                            conversation.push({ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: msg.reasoning_content }] });
                         }
-                        appendMessageUI('assistant', msg.content, 'assistant');
-                        conversation.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: msg.content }] });
+                        if (msg.content) {
+                            appendMessageUI('assistant', msg.content, 'assistant');
+                            conversation.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: msg.content }] });
+                        }
+                        if (msg.tool_calls) {
+                            msg.tool_calls.forEach(tc => {
+                                appendMessageUI('tool-call', tc.function, 'function_call');
+                                conversation.push({ type: 'function_call', name: tc.function.name, call_id: tc.id, arguments: tc.function.arguments });
+                            });
+                        }
                     } else if (data.output) {
                         data.output.forEach(item => {
                             if (item.type === 'reasoning') {
@@ -962,6 +1040,9 @@
                                 const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('') : (item.text || '');
                                 appendMessageUI('assistant', text, 'assistant');
                                 conversation.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: text }] });
+                            } else if (item.type === 'function_call' || item.type === 'custom_tool_call') {
+                                appendMessageUI('tool-call', item, item.type);
+                                conversation.push(item);
                             }
                         });
                     } else if (data.content || data.input) {
@@ -994,12 +1075,19 @@
                         if (dataStr === '[DONE]') break;
                         try {
                             const event = JSON.parse(dataStr);
+
+                            // 1. OpenAI Responses API (Standard 2)
                             if (event.type === 'response.reasoning_text.delta') {
-                                if (!currentReasoningDiv) currentReasoningDiv = appendMessageUI('reasoning', '', 'reasoning');
+                                if (!currentReasoningDiv) {
+                                    currentReasoningDiv = appendMessageUI('reasoning', '', 'reasoning');
+                                    if (currentAssistantDiv) {
+                                        messagesEl.insertBefore(currentReasoningDiv.parentElement, currentAssistantDiv.parentElement);
+                                    }
+                                }
                                 reasoningText += event.delta;
-                                currentReasoningDiv.innerHTML = _.escape(reasoningText) + '<span class="streaming-cursor"></span>';
+                                currentReasoningDiv.innerHTML = escapeHtml(reasoningText) + '<span class="streaming-cursor"></span>';
                             } else if (event.type === 'response.reasoning_text.done') {
-                                if (currentReasoningDiv) currentReasoningDiv.textContent = event.text; // Remove cursor and render text
+                                if (currentReasoningDiv) currentReasoningDiv.textContent = event.text;
                                 conversation.push({ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: event.text }] });
                                 updateStateUI(); currentReasoningDiv = null; reasoningText = "";
                             } else if (event.type === 'response.output_text.delta') {
@@ -1007,29 +1095,90 @@
                                 assistantText += event.delta;
                                 currentAssistantDiv.innerHTML = marked.parse(assistantText) + '<span class="streaming-cursor"></span>';
                             } else if (event.type === 'response.output_text.done') {
-                                if (currentAssistantDiv) currentAssistantDiv.innerHTML = marked.parse(event.text); // Remove cursor
+                                if (currentAssistantDiv) currentAssistantDiv.innerHTML = marked.parse(event.text);
                                 conversation.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: event.text }] });
                                 updateStateUI(); currentAssistantDiv = null; assistantText = "";
                             } else if (event.type === 'response.output_item.added') {
                                 const item = event.item;
-                                if (item.type.includes('tool_call')) {
+                                if (item.type.includes('tool_call') || item.type.includes('function_call')) {
                                     currentToolCallDiv = appendMessageUI('tool-call', item, item.type);
                                     toolCallData = { type: item.type, name: item.name, call_id: item.call_id, arguments: "" };
                                 }
-                            } else if (event.type.includes('arguments.delta')) {
+                            } else if (event.type === 'response.output_item.done') {
+                                if (toolCallData) { conversation.push(toolCallData); updateStateUI(); toolCallData = null; currentToolCallDiv = null; }
+                            }
+
+                            // 2. OpenAI Chat Completions API (Standard 1 - passed through by serve_passthru.py)
+                            else if (event.choices && event.choices[0] && event.choices[0].delta) {
+                                const delta = event.choices[0].delta;
+
+                                if (delta.reasoning_content) {
+                                    if (!currentReasoningDiv) {
+                                        currentReasoningDiv = appendMessageUI('reasoning', '', 'reasoning');
+                                        if (currentAssistantDiv) {
+                                            messagesEl.insertBefore(currentReasoningDiv.parentElement, currentAssistantDiv.parentElement);
+                                        }
+                                    }
+                                    reasoningText += delta.reasoning_content;
+                                    currentReasoningDiv.innerHTML = escapeHtml(reasoningText) + '<span class="streaming-cursor"></span>';
+                                }
+
+                                if (delta.content) {
+                                    if (!currentAssistantDiv) currentAssistantDiv = appendMessageUI('assistant', '', 'assistant');
+                                    assistantText += delta.content;
+                                    currentAssistantDiv.innerHTML = marked.parse(assistantText) + '<span class="streaming-cursor"></span>';
+                                }
+
+                                if (delta.tool_calls) {
+                                    // Basic support for proxied tool calls if needed
+                                    delta.tool_calls.forEach(tc => {
+                                        if (tc.function) {
+                                            if (!currentToolCallDiv) {
+                                                currentToolCallDiv = appendMessageUI('tool-call', tc.function, 'function_call');
+                                                toolCallData = { type: 'function_call', name: tc.function.name, call_id: tc.id, arguments: "" };
+                                            }
+                                            if (tc.function.arguments) {
+                                                toolCallData.arguments += tc.function.arguments;
+                                                currentToolCallDiv.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${toolCallData.name}]<br><div style="margin-top:4px">${toolCallData.arguments}</div>`;
+                                            }
+                                        }
+                                    });
+                                }
+
+                                // Handling finish_reason implicitly at the end of stream
+                            }
+
+                            // Shared events or specific deltas
+                            else if (event.type && (event.type.includes('arguments.delta') || event.type.includes('input.delta'))) {
                                 if (currentToolCallDiv) {
                                     toolCallData.arguments += event.delta;
                                     currentToolCallDiv.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${toolCallData.name}]<br><div style="margin-top:4px">${toolCallData.arguments}</div>`;
                                 }
-                            } else if (event.type === 'response.output_item.done') {
-                                if (toolCallData) { conversation.push(toolCallData); updateStateUI(); toolCallData = null; currentToolCallDiv = null; }
                             }
                         } catch (e) {
                             console.error("Parse error:", e, line);
                         }
                     }
-                    messagesEl.scrollTop = messagesEl.scrollHeight;
+
+                    // Intelligent scroll: only scroll if the user is already at the bottom
+                    const isAtBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) < 100;
+                    if (isAtBottom) {
+                        messagesEl.scrollTop = messagesEl.scrollHeight;
+                    }
                 }
+
+                // Standard 1 Persistence: finalize any non-SSE formatted turns
+                if (reasoningText) {
+                    conversation.push({ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: reasoningText }] });
+                }
+                if (assistantText) {
+                    conversation.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: assistantText }] });
+                }
+                if (toolCallData) {
+                    conversation.push(toolCallData);
+                }
+                updateStateUI();
+
             } catch (e) {
                 appendMessageUI('assistant', `Transmission Interrupted: ${e.message}`, 'error');
             } finally { sendBtn.disabled = false; }
