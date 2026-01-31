@@ -134,7 +134,7 @@ def tool_call_output_message(
         function_name = f"functions.{function_name}"  # see above; dirty hack, address
 
     if function_name and "<|channel|>" in function_name:
-        x = 1
+        raise ValueError("FIXME: <|channel|> in function_name")
     message = Message(
         author=Author(role=Role.TOOL, name=function_name),  # TODO
         content=[TextContent(text=message_data.output)],
@@ -229,6 +229,7 @@ def map_input_tools(
                     description=tool.description or "",
                     format=fmt,
                 )
+                tools.append(tool)
 
             case AdapterWebSearchToolParamResponses():
                 continue  # we handle web search natively

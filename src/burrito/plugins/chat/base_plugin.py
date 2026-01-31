@@ -11,10 +11,13 @@ from openai.types.chat.chat_completion_message_custom_tool_call import (
     Custom,
 )
 
-
 from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunk,
     AdapterChatCompletionChunkChoice,
+    AdapterChatCompletionChunkChoiceDelta,
+    AdapterChoiceDeltaToolCall,
+    AdapterChoiceDeltaToolCallFunction,
+    AdapterChoiceDeltaCustomCallFunction,
 )
 
 from burrito.types.adapter.adapter_chat_completion import (
@@ -75,57 +78,71 @@ class BasePluginChat(BasePlugin):
         self.manager.output_object = [completion]
         return completion
 
-    def build_output_object(self) -> AdapterChatCompletion:
-        output_arr = self.manager.output_object
-        # dumped["object"] = "chat.completion"
+    def build_output_object(self) -> None:
+        assert isinstance(self.manager.output_object, list), (
+            f"Expected list, got {type(self.manager.output_object)}"
+        )
 
+        output_arr = self.manager.output_object
         content = ""
         reasoning_content = ""
-        tool_call_buffer = []
+        tool_call_buffer: List[AdapterChoiceDeltaToolCall] = []
         tools_called = {}
         tool_calls = []
 
-        for i in output_arr:
-            delta = i.choices[0].delta
-            if hasattr(delta, "content") and delta.content:
+        for chunk in output_arr:
+            assert isinstance(chunk, AdapterChatCompletionChunk), (
+                f"Expected AdapterChatCompletionChunk, got {type(chunk)}"
+            )
+            delta = chunk.choices[0].delta
+            if isinstance(delta, dict):
+                continue  # first and last deltas are empty dicts..
+            assert isinstance(delta, AdapterChatCompletionChunkChoiceDelta), (
+                f"Expected AdapterChatCompletionChunkChoiceDelta, got {type(delta)}"
+            )
+            if delta.content:
                 content += delta.content
-            if hasattr(delta, "reasoning_content") and delta.reasoning_content:  # type: ignore
-                reasoning_content += delta.reasoning_content  # type: ignore
-            if hasattr(delta, "tool_calls") and delta.tool_calls:
+            if delta.reasoning_content:
+                reasoning_content += delta.reasoning_content
+            if delta.tool_calls:
                 tool_call_buffer += delta.tool_calls
 
-        for i in tool_call_buffer:
-            if i.id not in tools_called:
-                tools_called[i.id] = {
-                    "id": i.id,
-                    "name": i.function.name,
+        for part in tool_call_buffer:
+            assert part.function is not None, "Expected a function, got None."
+            if part.id not in tools_called:
+                tools_called[part.id] = {
+                    "id": part.id,
+                    "name": part.function.name,
+                    "type": part.type,
+                    "content": "",
                 }
-
-                if hasattr(i.function, "arguments"):
-                    tools_called[i.id]["arguments"] = i.function.arguments
-
-                if hasattr(i.function, "input"):
-                    tools_called[i.id]["input"] = i.function.input
-            else:
-                if hasattr(i.function, "arguments"):
-                    tools_called[i.id]["arguments"] += i.function.arguments
-
-                if hasattr(i.function, "input"):
-                    tools_called[i.id]["input"] += i.function.input
+            match part.function:
+                case AdapterChoiceDeltaToolCallFunction():
+                    tools_called[part.id]["content"] += part.function.arguments
+                case AdapterChoiceDeltaCustomCallFunction():
+                    tools_called[part.id]["content"] += part.function.input
+                case _:
+                    raise TypeError(f"Expected ChoiceDeltaToolCall, got {type(part)}")
 
         for i in tools_called.values():
             tc = None
-            _name, _args, _input = i.get("name"), i.get("arguments"), i.get("input")
-            if _args:
-                tc = ChatCompletionMessageFunctionToolCall(
-                    id="abc",
-                    type="function",
-                    function=Function(arguments=_args, name=_name),
-                )
-            if _input:
-                tc = ChatCompletionMessageCustomToolCall(
-                    id=i["id"], type="custom", custom=Custom(input=_input, name=_name)
-                )
+            _id, _name, _type, _content = i["id"], i["name"], i["type"], i["content"]
+
+            match _type:
+                case "function":
+                    tc = ChatCompletionMessageFunctionToolCall(
+                        id=_id,
+                        type=_type,
+                        function=Function(arguments=_content, name=_name),
+                    )
+                case "custom":
+                    tc = ChatCompletionMessageCustomToolCall(
+                        id=i["id"],
+                        type="custom",
+                        custom=Custom(input=_content, name=_name),
+                    )
+                case _:
+                    raise TypeError(f"Expected `function` or `custom`, got {_type}")
             if tc:
                 tool_calls.append(tc)
 

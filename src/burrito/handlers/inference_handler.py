@@ -13,43 +13,47 @@ from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.types.adapter import AdapterCreateParams
 from burrito.common.config import settings
 
-# Global semaphore to limit concurrent inference requests
-inference_semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_INFERENCE_REQUESTS)
 
 
 async def run_inference(
     request: Request,
     params: AdapterCreateParams,
+    semaphore: asyncio.Semaphore,
+    generator: AdapterGenerationHandler,
 ) -> Union[StreamingResponse, JSONResponse]:
-    # Extract headers to forward
     forwarded_headers = {
-        k: v for k, v in request.headers.items()
+        k: v
+        for k, v in request.headers.items()
         if k.title() in [h.title() for h in settings.FORWARD_HEADERS]
     }
 
-    async with inference_semaphore:
-        try:
-            generation_handler = AdapterGenerationHandler()
-            handler = AdapterConversationHandler(
-                request=request,
-                params=params,
-                generator=generation_handler,
-                python_tool=BurritoPython(),
-                browser_tool=BurritoBrowser(),
-                forwarded_headers=forwarded_headers,
-            )
+    async def stream_with_semaphore(handler):
+        async with semaphore:
+            async for chunk in handler.return_stream():
+                yield chunk
+
+    try:
+        handler = AdapterConversationHandler(
+            request=request,
+            params=params,
+            generator=generator,
+            python_tool=BurritoPython(),
+            browser_tool=BurritoBrowser(),
+            forwarded_headers=forwarded_headers,
+        )
         if params.stream:
             return StreamingResponse(
-                content=handler.return_stream(),
+                content=stream_with_semaphore(handler),
                 status_code=status.HTTP_200_OK,
                 media_type="text/event-stream",
             )
         else:
-            return JSONResponse(
-                content=await handler.return_json(),
-                status_code=status.HTTP_200_OK,
-                media_type="application/json",
-            )
+            async with semaphore:
+                return JSONResponse(
+                    content=await handler.return_json(),
+                    status_code=status.HTTP_200_OK,
+                    media_type="application/json",
+                )
 
     except httpx.HTTPStatusError as exc:
         status_code, status_text = exc.response.status_code, exc.response.text

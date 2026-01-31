@@ -79,7 +79,6 @@ def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
     return completion
 
 
-# TODO remove hack with responses request type, add a proxy with completions too
 def build_payload(
     prompt_token_ids: list[int], params: AdapterCreateParams
 ) -> CompletionCreateParamsBase:
@@ -114,7 +113,7 @@ def build_payload(
     # default to logprobs for both vLLM and llama.cpp
     # WARNING: llama.cpp inference speed drops 3x as of 9.29.25 when logprobs >0
     # vLLM is less sensitive, seems to be unaffected by None, 0 or 20 logprobs
-    payload["logprobs"] = None #20
+    payload["logprobs"] = None  # 20
 
     # --- overrides, we ignore anything the caller sends here to preserve format
 

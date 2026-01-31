@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
 from .adapter_reasoning import AdapterReasoningParam
-from .adapter_function_tool_param import AdapterFunctionToolParam
-from .adapter_custom_tool_param import AdapterCustomToolParam
+from .adapter_function_tool_param import AdapterFunctionToolParamResponses
+from .adapter_custom_tool_param import AdapterCustomToolParamResponses
 from .adapter_web_search_tool_param import AdapterWebSearchToolParam
 
 
@@ -127,8 +127,8 @@ class AdapterCreateParamsResponses(BaseModel):
     tools: Optional[
         List[
             Union[
-                AdapterFunctionToolParam,
-                AdapterCustomToolParam,
+                AdapterFunctionToolParamResponses,
+                AdapterCustomToolParamResponses,
                 AdapterWebSearchToolParam,
             ]
         ]

@@ -32,6 +32,10 @@ from burrito.types.adapter.adapter_custom_tool_param import (
     CustomToolInputFormatGrammar,
 )
 
+from burrito.types.adapter.adapter_web_search_tool_param import (
+    AdapterWebSearchToolParamChat,
+)
+
 
 def user_message(message_data: UserMessageParamChat) -> Message:
     content: List[Content] = []
@@ -178,6 +182,9 @@ def map_input_tools(
                     description=tool.custom.description or "",
                     format=fmt,
                 )
+                tools.append(tool)
+            case AdapterWebSearchToolParamChat():
+                continue  # we handle native browser separately
             case _:
                 raise NotImplementedError(f"Unsupported tool type: {type(tool)}")
     return tools
@@ -189,7 +196,7 @@ def build_message_list_chat(
     instructions = parse_instructions(params)
     messages = parse_messages(params)
     tools = map_input_tools(params)
-    reasoning = params.reasoning or AdapterReasoningParam()
+    reasoning = AdapterReasoningParam(effort=params.reasoning_effort)
 
     conversation_inputs = AdapterConversationInputs(
         instructions=instructions,

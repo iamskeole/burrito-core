@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional
 
 
 from openai.types.chat.chat_completion import ChatCompletion, Choice
@@ -15,8 +15,8 @@ class AdapterChatCompletionChoiceMessage(ChatCompletionMessage):
 
 
 class AdapterChatCompletionChoice(Choice):
-    message: AdapterChatCompletionChoiceMessage
+    message: AdapterChatCompletionChoiceMessage  # type: ignore
 
 
 class AdapterChatCompletion(ChatCompletion):
-    choices: List[AdapterChatCompletionChoice]
+    choices: List[AdapterChatCompletionChoice]  # type: ignore

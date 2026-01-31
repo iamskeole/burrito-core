@@ -87,7 +87,7 @@ def build_system_message(
         SystemContent.new()
         .with_model_identity(system_prompt.text.strip())
         .with_conversation_start_date(yyyymmdd())
-        .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()]) # type: ignore
+        .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)
     )
 
@@ -106,14 +106,19 @@ def build_developer_message(inputs: AdapterConversationInputs) -> Message:
 
     tools = []
     for tool in inputs.tools or []:
-        if tool.type == "function":
-            tools.append(
-                ToolDescription.new(
-                    tool.name,
-                    tool.description or "",
-                    tool.parameters,
+        match tool.type:
+            case "function":
+                tools.append(
+                    ToolDescription.new(
+                        tool.name, tool.description or "", tool.parameters
+                    )
                 )
-            )
+            case "custom":
+                tools.append(
+                    ToolDescription.new(
+                        tool.name, tool.description or "", tool.parameters
+                    )
+                )
     if tools:
         dev_message = dev_message.with_function_tools(tools)
     return Message.from_role_and_content(Role.DEVELOPER, dev_message)

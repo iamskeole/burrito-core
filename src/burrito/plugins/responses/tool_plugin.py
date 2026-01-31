@@ -180,7 +180,10 @@ class ToolPluginResponses(BasePluginResponses):
             f"Expected a Response, but got {type(self.manager.output_object)}"
         )
 
-        output_item = self.manager.output_object.output[self.manager.output_index]
+        try:
+            output_item = self.manager.output_object.output[self.manager.output_index]
+        except IndexError:
+            raise # TODO: investigate, why out of range?
         if not output_item:
             return
 

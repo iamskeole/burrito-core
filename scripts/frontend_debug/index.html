@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Burrito Debug Pro</title>
+    <title>Burrito Debug</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -520,19 +520,6 @@
             }
         }
 
-        /* Streaming Cursor (Chef's Kiss) */
-        .streaming-cursor {
-            /* display: inline-block;
-            width: 7px;
-            height: 7px;
-            background: var(--accent-indigo);
-            border-radius: 50%;
-            margin-left: 4px;
-            vertical-align: middle;
-            animation: cursor-pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-            box-shadow: 0 0 8px var(--accent-indigo); */
-        }
-
         @keyframes cursor-pulse {
 
             0%,
@@ -651,7 +638,7 @@
                 <span class="min"></span>
                 <span class="max"></span>
             </div>
-            <div class="window-title">Burrito Debug Pro — v1.3</div>
+            <div class="window-title">Burrito Debug</div>
             <div class="status-pill">
                 <span class="status-dot"></span>
                 <span id="status-text">Handshaking...</span>
@@ -662,7 +649,18 @@
             <div id="sidebar">
                 <div class="sidebar-section">
                     <span class="sidebar-label">Connection</span>
-                    <input type="text" id="api-url" class="debug-input" value="http://localhost:8000/v1/responses">
+                    <input type="text" id="base-url" class="debug-input" value="http://localhost:8000/v1"
+                        oninput="updateFullUrl()">
+                    <div style="margin-bottom: 10px;">
+                        <span class="sidebar-label" style="font-size: 0.55rem; margin-bottom: 4px;">Endpoint</span>
+                        <select id="endpoint-choice" class="debug-input" onchange="onEndpointChange()"
+                            style="height: 32px; font-size: 0.7rem; cursor: pointer;">
+                            <option value="/responses" selected>Responses</option>
+                            <option value="/chat/completions">Chat Completions</option>
+                        </select>
+                    </div>
+                    <input type="text" id="api-url" class="debug-input" readonly
+                        style="opacity: 0.7; font-size: 0.6rem;">
                     <input type="text" id="model-name" class="debug-input" value="openai/gpt-oss-20b">
 
                     <div style="margin-bottom: 10px;">
@@ -696,6 +694,12 @@
       },
       "required": ["symbol"]
     }
+  },
+  {
+    "type": "custom",
+    "name": "get_weather",
+    "description": "Get current weather by specifying open ended location.",
+    "format": {"type": "text"}
   }
 ]</textarea>
                 </div>
@@ -752,6 +756,8 @@
         const lastRequestEl = document.getElementById('last-request');
         const payloadSection = document.getElementById('payload-section');
         const stateEditor = document.getElementById('state-editor');
+        const baseUrlEl = document.getElementById('base-url');
+        const endpointChoiceEl = document.getElementById('endpoint-choice');
         const apiUrlEl = document.getElementById('api-url');
         const modelNameEl = document.getElementById('model-name');
         const toolsConfigEl = document.getElementById('tools-config');
@@ -759,14 +765,32 @@
         const reasoningEffortEl = document.getElementById('reasoning-effort');
 
         const stateEditorEl = document.getElementById('state-editor');
-        const modalOverlay = document.getElementById('modal-overlay');
-        const modalTitle = document.getElementById('modal-title');
-        const modalContent = document.getElementById('modal-content');
-        const modalConfirm = document.getElementById('modal-confirm');
         const streamToggleWrap = document.getElementById('stream-toggle-wrap');
 
         let conversation = [];
         let isStreaming = true;
+
+        function updateFullUrl() {
+            const base = baseUrlEl.value.replace(/\/$/, '');
+            apiUrlEl.value = base + endpointChoiceEl.value;
+        }
+
+        function onEndpointChange() {
+            updateFullUrl();
+            updateDefaults();
+        }
+
+        function updateDefaults() {
+            const isResponses = endpointChoiceEl.value.includes('/v1/responses');
+
+            // Set default tools based on endpoint (though both now use flat format in registry)
+            if (isResponses) {
+                isStreaming = true;
+                streamToggleWrap.classList.add('active');
+            } else {
+                // isStreaming stays as is for chat for now
+            }
+        }
 
         function escapeHtml(unsafe) {
             return unsafe
@@ -809,7 +833,7 @@
                 }
                 input.value = f.value || '';
                 div.appendChild(input);
-                modalContent.appendChild(div);
+                mContent.appendChild(div);
                 inputs[f.key] = input;
             });
 
@@ -890,8 +914,8 @@
         async function testConnection() {
             try {
                 const res = await fetch(apiUrlEl.value
-                    .replace('/v1/responses', '/v1/models')
-                    .replace('/v1/chat/completions', '/v1/models'));
+                    .replace('/responses', '/models')
+                    .replace('/chat/completions', '/models'));
                 statusDot.className = res.ok ? 'status-dot online' : 'status-dot';
                 document.getElementById('status-text').textContent = res.ok ? 'Backend Active' : 'Link Offline';
             } catch (e) {
@@ -927,12 +951,9 @@
             if (target === 'responses') return conv;
 
             return conv.map(item => {
-                if (item.role === 'user') {
+                if (['user', 'assistant', 'developer', 'system'].includes(item.role)) {
                     const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
-                    return { role: 'user', content: text };
-                } else if (item.role === 'assistant') {
-                    const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
-                    return { role: 'assistant', content: text };
+                    return { role: item.role, content: text };
                 } else if (item.type === 'reasoning') {
                     // Chat API doesn't have a reasoning role, but we can send it as assistant for history preservation
                     const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
@@ -955,16 +976,32 @@
         }
 
         function transformTools(tools, target) {
-            if (target === 'responses') return tools;
+            if (target === 'responses') {
+                return tools.map(tool => {
+                    if (tool.type === 'function' && tool.function) {
+                        // If it's already wrapped, unwrap it (legacy safety)
+                        const { type, function: f } = tool;
+                        return { type: 'function', ...f };
+                    }
+                    if (tool.type === 'custom' && tool.custom) {
+                        // If it's already wrapped, unwrap it (legacy safety)
+                        const { type, custom: c } = tool;
+                        return { type: 'custom', ...c };
+                    }
+                    return tool;
+                });
+            }
 
             return tools.map(tool => {
                 if (tool.type === 'function') {
+                    if (tool.function) return tool; // Already wrapped
                     const { type, ...functionDef } = tool;
                     return {
                         type: 'function',
                         function: functionDef
                     };
                 } else if (tool.type === 'custom') {
+                    if (tool.custom) return tool; // Already wrapped
                     const { type, ...customDef } = tool;
                     return {
                         type: 'custom',
@@ -1085,7 +1122,7 @@
                                     }
                                 }
                                 reasoningText += event.delta;
-                                currentReasoningDiv.innerHTML = escapeHtml(reasoningText) + '<span class="streaming-cursor"></span>';
+                                currentReasoningDiv.innerHTML = escapeHtml(reasoningText);
                             } else if (event.type === 'response.reasoning_text.done') {
                                 if (currentReasoningDiv) currentReasoningDiv.textContent = event.text;
                                 conversation.push({ type: "reasoning", summary: [], content: [{ type: "reasoning_text", text: event.text }] });
@@ -1093,7 +1130,7 @@
                             } else if (event.type === 'response.output_text.delta') {
                                 if (!currentAssistantDiv) currentAssistantDiv = appendMessageUI('assistant', '', 'assistant');
                                 assistantText += event.delta;
-                                currentAssistantDiv.innerHTML = marked.parse(assistantText) + '<span class="streaming-cursor"></span>';
+                                currentAssistantDiv.innerHTML = marked.parse(assistantText);
                             } else if (event.type === 'response.output_text.done') {
                                 if (currentAssistantDiv) currentAssistantDiv.innerHTML = marked.parse(event.text);
                                 conversation.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: event.text }] });
@@ -1120,13 +1157,13 @@
                                         }
                                     }
                                     reasoningText += delta.reasoning_content;
-                                    currentReasoningDiv.innerHTML = escapeHtml(reasoningText) + '<span class="streaming-cursor"></span>';
+                                    currentReasoningDiv.innerHTML = escapeHtml(reasoningText);
                                 }
 
                                 if (delta.content) {
                                     if (!currentAssistantDiv) currentAssistantDiv = appendMessageUI('assistant', '', 'assistant');
                                     assistantText += delta.content;
-                                    currentAssistantDiv.innerHTML = marked.parse(assistantText) + '<span class="streaming-cursor"></span>';
+                                    currentAssistantDiv.innerHTML = marked.parse(assistantText);
                                 }
 
                                 if (delta.tool_calls) {
@@ -1192,7 +1229,10 @@
             sendBtn.disabled = !userInputEl.value.trim();
         };
 
-        renderHistory(); testConnection(); setInterval(testConnection, 8000);
+        renderHistory();
+        updateFullUrl();
+        testConnection();
+        setInterval(testConnection, 8000);
     </script>
     <div id="modal-overlay">
         <div id="modal-box">

@@ -26,6 +26,7 @@ class AdapterConversationHandler:
         self,
         request: Request,
         params: AdapterCreateParams,
+        generator: AdapterGenerationHandler,
         python_tool: PythonTool,
         browser_tool: BurritoBrowser,
         forwarded_headers: Dict[str, str] = {},
@@ -77,7 +78,6 @@ class AdapterConversationHandler:
         sm = self.state_handler
         try:
             while 1:
-                completion = "streaming"
                 # detect client disconnects
                 # TODO: handle generation stop, when client stops manually
                 if await self.request.is_disconnected():
@@ -178,9 +178,8 @@ class AdapterConversationHandler:
 
         if type(output_object[0]) is not AdapterChatCompletionChunk:
             return {
-                "error": f"Expected AdapterChatCompletionChunk, got {type(AdapterChatCompletionChunk)}"
+                "error": f"Expected AdapterChatCompletionChunk, got {type(output_object[0])}"
             }
-        x = 1
 
     async def return_json(self) -> Dict:
         async for _ in self.return_stream():

@@ -13,4 +13,4 @@ class AdapterToolType(Enum):
     PYTHON = "python"
     BROWSER = "browser"
     FUNCTION = "function"
-    CUSTOM = "custom_tool"
+    CUSTOM = "custom"

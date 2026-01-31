@@ -7,10 +7,14 @@ from burrito.common.logger import FastAPILogger
 if TYPE_CHECKING:
     from .conversation_handler import AdapterConversationHandler
 
-from openai.types.chat.chat_completion import ChatCompletion
-from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
+
+from burrito.types.adapter.adapter_chat_completion_chunk import (
+    AdapterChatCompletionChunk,
+)
+from burrito.types.adapter.adapter_chat_completion import AdapterChatCompletion
+
 from openai_harmony import (
     Conversation,
     HarmonyError,
@@ -90,8 +94,7 @@ class AdapterStateHandler:
 
         self.output_object: Union[
             Response,
-            List[ChatCompletionChunk],
-            ChatCompletion,
+            List[Union[AdapterChatCompletionChunk, AdapterChatCompletion]],
         ]
 
         self.plugins: List[BasePlugin]
@@ -193,7 +196,7 @@ class AdapterStateHandler:
 
     def _add_recovery_message(self, text: str):
         message = build_user_message(text, "HARNESS-SENTINEL-v1")
-        bfr = f"\n\n🚨🚨🚨\n\n{message.content[0].text}\n\n🚨🚨🚨\n\n"
+        bfr = f"\n\n🚨🚨🚨\n\n{message.content[0].text}\n\n🚨🚨🚨\n\n" # type: ignore
         self.response_buffer += bfr
         self.recovery_message = message
 

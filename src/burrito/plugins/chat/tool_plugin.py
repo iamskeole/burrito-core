@@ -6,18 +6,18 @@ if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
     from burrito.handlers.token_handler import AdapterCompletionToken
 
-from openai.types.chat.chat_completion_chunk import (
-    ChatCompletionChunk,
-    ChoiceDeltaToolCall,
-    ChoiceDeltaToolCallFunction,
-)
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunkChoice,
     AdapterChatCompletionChunkChoiceDelta,
+    AdapterChoiceDeltaToolCall,
+    AdapterChoiceDeltaToolCallFunction,
+    AdapterChoiceDeltaCustomCallFunction,
 )
 
 from burrito.types.adapter import AdapterConversationInputTool, AdapterConversationState
+from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
 
@@ -50,15 +50,37 @@ class ToolPluginChat(BasePluginChat):
         else:
             entry = self.manager.tool_handler.tool_calls[-1]
 
-        args = "" if do_register else self.output_delta_buffer
+        args_or_input = "" if do_register else self.output_delta_buffer
 
         tool: AdapterConversationInputTool = entry["tool"]
-        tool_call = ChoiceDeltaToolCall(
-            index=entry["index"],
-            id=entry["call_id"],
-            function=ChoiceDeltaToolCallFunction(arguments=args, name=tool.name),
-            type="function",
-        )
+        tool_type = tool.type
+
+        assert tool_type in [
+            AdapterToolType.FUNCTION.value,
+            AdapterToolType.CUSTOM.value,
+        ], f"Expected `function` or `custom`, got {tool_type}."
+
+        match tool_type:
+            case AdapterToolType.FUNCTION.value:
+                tool_call = AdapterChoiceDeltaToolCall(
+                    index=entry["index"],
+                    id=entry["call_id"],
+                    function=AdapterChoiceDeltaToolCallFunction(
+                        name=tool.name, arguments=args_or_input
+                    ),
+                    type=tool_type,
+                )
+            case AdapterToolType.CUSTOM.value:
+                tool_call = AdapterChoiceDeltaToolCall(
+                    index=entry["index"],
+                    id=entry["call_id"],
+                    function=AdapterChoiceDeltaCustomCallFunction(
+                        name=tool.name, input=args_or_input
+                    ),
+                    type=tool_type,
+                )
+            case _:
+                raise ValueError(f"Expected `function` or `custom`, got {tool_type}.")
 
         choice = AdapterChatCompletionChunkChoice(
             index=0,
