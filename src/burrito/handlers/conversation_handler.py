@@ -128,6 +128,9 @@ class AdapterConversationHandler:
             except Exception:
                 # Some generators may not support `aclose`.  Silently ignore.
                 pass
+            
+            # sentinel to wake up the consumer
+            self.output_queue.put_nowait(None)
 
     async def return_stream(self) -> AsyncGenerator[bytes, None]:
         # use TaskGroup for safe concurrency
@@ -137,24 +140,11 @@ class AdapterConversationHandler:
                 tg.create_task(self._stream_completions())
 
                 # consumer loop
-                while (
-                    not self.is_finished.is_set()
-                    or not self.output_queue.empty()
-                    or not sm.is_done
-                ):
-                    try:
-                        # TODO: figure out optimal timeout here
-                        item = await asyncio.wait_for(
-                            self.output_queue.get(), timeout=1.0
-                        )
-                        yield item
-                    except asyncio.TimeoutError:
-                        if (
-                            all(t.done() for t in tg._tasks)
-                            and self.output_queue.empty()
-                        ):
-                            break
-                        continue
+                while True:
+                    item = await self.output_queue.get()
+                    if item is None:
+                        break
+                    yield item
         except Exception as e:
             # if something in the TaskGroup (eg cancelation due to an error)
             # throws, we want to surface that as an error event and stop the
@@ -168,7 +158,7 @@ class AdapterConversationHandler:
         assert isinstance(output_object, Response), (
             f"Expected list, got {type(output_object)}"
         )
-        return self.state_handler.output_object.model_dump()
+        return output_object.model_dump()
 
     def _return_json_chat(self):
         output_object = self.state_handler.output_object

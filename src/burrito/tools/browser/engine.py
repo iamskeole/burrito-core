@@ -12,7 +12,7 @@ import trafilatura
 from burrito.common.logger import FastAPILogger
 from burrito.common.config import settings
 
-PAGE_LOAD_TIMEOUT = 3
+PAGE_LOAD_TIMEOUT = 3000
 DOM_LOAD_TIMEOUT = 10000
 
 
@@ -218,7 +218,6 @@ class BrowserEngine:
             content = trafilatura.extract(
                 html_content,
                 url=base_url,
-                fast=False,
                 include_links=True,
                 include_images=False,
                 include_tables=True,
@@ -226,8 +225,8 @@ class BrowserEngine:
                 favor_precision=False,
                 favor_recall=False,
                 output_format="json",
-                no_fallback=True,
                 with_metadata=True,
+                fast=False,
                 date_extraction_params=date_cfg,
             )
             loaded = json.loads(content) if content else {}

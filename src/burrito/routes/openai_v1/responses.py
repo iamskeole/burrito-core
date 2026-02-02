@@ -16,7 +16,6 @@ router = APIRouter()
 @router.post("/v1/responses", response_model=Response)
 async def v1_responses(
     request: Request,
-    # params: AdapterCreateParamsResponses,
     raw_params: dict,
     semaphore: asyncio.Semaphore = Depends(get_inference_semaphore),
     generator: AdapterGenerationHandler = Depends(get_generation_handler),
@@ -25,7 +24,7 @@ async def v1_responses(
         params = AdapterCreateParamsResponses(**raw_params)
     except Exception as e:
         print(e)
-        return 404
+        return JSONResponse(content={"error": str(e)}, status_code=422)
     return await run_inference(
         request=request,
         params=params,

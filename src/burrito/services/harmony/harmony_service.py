@@ -251,8 +251,8 @@ def render_conversation_for_completion(conversation: Conversation) -> list[int]:
     tokens_for_completion = ENCODING.render_conversation_for_completion(
         conversation=conversation, next_turn_role=Role.ASSISTANT
     )
-    # dec = ENCODING.decode(tokens_for_completion)
-    # _len = len(dec)
-    # from burrito.common.utils import simple_markdown_renderer
-    # print(simple_markdown_renderer(dec))
+    dec = ENCODING.decode(tokens_for_completion)
+    _len = len(dec)
+    from burrito.common.utils import simple_markdown_renderer
+    print(simple_markdown_renderer(dec))
     return tokens_for_completion

@@ -7,8 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from burrito.common.config import settings
 from .adapter_reasoning import AdapterReasoningParam
 from .adapter_function_tool_param import AdapterFunctionToolParamResponses
-from .adapter_custom_tool_param import AdapterCustomToolParamResponses
-from .adapter_web_search_tool_param import AdapterWebSearchToolParam
+from .adapter_web_search_tool_param import AdapterWebSearchToolParamResponses
+
+# TODO: investiagate whether we can support custom tools
+# harmony only seems to support defining regular function tools
+# with name, description, params; no special formatting instructions
+# for custom tools, so even if we implemented schemas and code, model
+# may not be trained to use them?
+# from .adapter_custom_tool_param import AdapterCustomToolParamResponses
 
 
 class UserMessageContentTextParamResponses(BaseModel):
@@ -127,9 +133,9 @@ class AdapterCreateParamsResponses(BaseModel):
     tools: Optional[
         List[
             Union[
-                AdapterFunctionToolParamResponses,
-                AdapterCustomToolParamResponses,
-                AdapterWebSearchToolParam,
+                AdapterFunctionToolParamResponses, AdapterWebSearchToolParamResponses
+                # see todo note above
+                # AdapterCustomToolParamResponses,
             ]
         ]
     ] = None

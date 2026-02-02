@@ -248,13 +248,14 @@ class TransitionHandler:
                 extra=self.log_extra,
             )
             return True
-
         # 4. bad channel or return token
         # llama.cpp issue mostly; tool calls on return channel or transition
         # without end token eg: analysis -> <|end|> -> commentary (missing end)
+        # TODO: think about this, may be valid?
+        # <|start|>assistant<|channel|>commentary<|message|>{"command":["bash","-lc","PYTHONPATH=src uv run pytest -q"],"timeout_ms":120000}<|return|>
         if new_state == state_completed and channel != channel_final:
             self.logger.warning(
-                "invalid state: assistant trying to return outside final channel",
+                f"invalid state: assistant trying to return outside final channel, on {channel}.\n{self.manager.response_buffer}",
                 extra=self.log_extra,
             )
             manager._add_recovery_message(

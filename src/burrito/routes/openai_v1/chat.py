@@ -15,10 +15,15 @@ router = APIRouter()
 @router.post("/v1/chat/completions", response_model=None)
 async def v1_chat_completions(
     request: Request,
-    params: AdapterCreateParamsChat,
+    raw_params: dict,
     semaphore: asyncio.Semaphore = Depends(get_inference_semaphore),
     generator: AdapterGenerationHandler = Depends(get_generation_handler),
 ) -> Union[StreamingResponse, JSONResponse]:
+    try:
+        params = AdapterCreateParamsChat(**raw_params)
+    except Exception as e:
+        print(e)
+        return JSONResponse(content={"error": str(e)}, status_code=422)
     return await run_inference(
         request=request,
         params=params,

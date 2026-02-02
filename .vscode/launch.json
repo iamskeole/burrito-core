@@ -12,6 +12,23 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }
+        },
+        {
+            "name": "Python: pytest – all tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "-s", // show print output
+                "--maxfail=1", // stop after first failure
+                "-vv", // very verbose
+                "." // run the whole repo
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "justMyCode": true // allow stepping into your own code
         }
     ]
 }

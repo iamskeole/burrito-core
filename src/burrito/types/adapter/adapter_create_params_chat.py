@@ -6,10 +6,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
 
-from .adapter_function_tool_param import AdapterFunctionToolParamChat
-from .adapter_custom_tool_param import AdapterCustomToolParamChat
-from .adapter_web_search_tool_param import AdapterWebSearchToolParamChat
 from .adapter_reasoning import ReasoningEffort
+from .adapter_function_tool_param import AdapterFunctionToolParamChat
+from .adapter_web_search_tool_param import AdapterWebSearchToolParamChat
+
+# TODO: investiagate whether we can support custom tools
+# harmony only seems to support defining regular function tools
+# with name, description, params; no special formatting instructions
+# for custom tools, so even if we implemented schemas and code, model
+# may not be trained to use them?
+# from .adapter_custom_tool_param import AdapterCustomToolParamChat
 
 
 class ContentPartText(BaseModel):
@@ -99,8 +105,11 @@ class AdapterCreateParamsChat(BaseModel):
             Annotated[
                 Union[
                     AdapterFunctionToolParamChat,
-                    AdapterCustomToolParamChat,
                     AdapterWebSearchToolParamChat,
+                    # disable custom tools, harmony only seems to support
+                    # defining regular function tools with name, description, params
+                    # no special formatting instructions for custom tools, so moot?
+                    # AdapterCustomToolParamChat
                 ],
                 Field(discriminator="type"),
             ]

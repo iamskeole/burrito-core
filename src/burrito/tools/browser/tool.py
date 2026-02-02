@@ -225,6 +225,9 @@ class BurritoBrowser(SimpleBrowserTool):
 
             if id >= 0:  # click a link
                 try:
+                    # TODO: figure out browser 'session' at request id / session level, 
+                    # otherwise the model thinks it has history, 
+                    # but refreshing browser will not, so wasted compute
                     url = curr_page.urls[str(id)]
                 except KeyError as e:
                     raise ToolUsageError(f"Invalid link id `{id}`.") from e
