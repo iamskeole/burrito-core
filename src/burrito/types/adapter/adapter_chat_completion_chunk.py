@@ -33,7 +33,7 @@ class AdapterChoiceDeltaToolCallFunction(BaseModel):
 
 
 class AdapterChoiceDeltaToolCall(BaseModel):
-    index: int
+    index: Optional[int] = None
 
     id: Optional[str] = None
     """The ID of the tool call."""
@@ -49,7 +49,7 @@ class AdapterChoiceDeltaToolCall(BaseModel):
     """The type of the tool. Monkey patching for `custom` support."""
 
 
-# extend so we can use in streaming chunks 
+# extend so we can use in streaming chunks
 # with reasoning + citations + custom tools
 class AdapterChatCompletionChunkChoiceDelta(ChoiceDelta):
     reasoning_content: Optional[str] = None
@@ -64,7 +64,7 @@ class AdapterChatCompletionChunkChoiceDelta(ChoiceDelta):
     [web search tool](https://platform.openai.com/docs/guides/tools-web-search?api-mode=chat).
     """
 
-    tool_calls: Optional[List[AdapterChoiceDeltaToolCall]] = None # type: ignore
+    tool_calls: Optional[List[AdapterChoiceDeltaToolCall]] = None  # type: ignore
 
 
 class AdapterChatCompletionChunkChoice(Choice):

@@ -12,7 +12,9 @@ if TYPE_CHECKING:
         AdapterCompletionToken,
     )
 
-
+from openai.types.responses.response_content_part_added_event import (
+    ResponseContentPartAddedEvent,
+)
 from openai.types.responses.response_content_part_done_event import (
     ResponseContentPartDoneEvent,
 )
@@ -32,7 +34,7 @@ from openai.types.responses.response_text_done_event import ResponseTextDoneEven
 from openai.types.responses.response_output_text_annotation_added_event import (
     ResponseOutputTextAnnotationAddedEvent,
 )
-
+from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
 
@@ -41,6 +43,8 @@ class OutputTextPluginResponses(BasePluginResponses):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
         self.manager = manager
+        # hardcoded, not incremented, to match gpt-oss reference implementation
+        # only one content item, which means somehow multiple are allowed in .content=[]?
         self.content_index = 0
 
         self.has_partial_citations = False
@@ -54,26 +58,44 @@ class OutputTextPluginResponses(BasePluginResponses):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        # return {"output_text", "tool_input", "tool_call"}
-        return {"output_text"}
+        return {AdapterConversationState.OUTPUT_TEXT}
 
     # TODO: handle content_part_added event
     async def handle_on_enter_state(self):
+        output_object = self.manager.output_object
+        assert isinstance(self.manager.output_object, Response), (
+            f"Expected a Response, but got {type(output_object)}"
+        )
         self.manager.output_index += 1
         output_item = ResponseOutputMessage(
             id=f"msg_{random_uuid()}",
-            content=[ResponseOutputText(annotations=[], text="", type="output_text")],
+            content=[],
             role="assistant",
             status="in_progress",
             type="message",
         )
-        event = ResponseOutputItemAddedEvent(
+        event_item = ResponseOutputItemAddedEvent(
             item=output_item,
             output_index=self.manager.output_index,
             type="response.output_item.added",
             sequence_number=self.manager.sequence_number,
         )
-        await self.push_event(event, output_item)
+        self.manager.output_object.output.append(output_item)
+        await self.put_event(event_item)
+
+        event_content = ResponseContentPartAddedEvent(
+            type="response.content_part.added",
+            content_index=self.content_index,
+            output_index=self.manager.output_index,
+            item_id=output_item.id,
+            sequence_number=self.manager.sequence_number,
+            part=ResponseOutputText(
+                annotations=self.current_annotations,
+                text=self.output_delta_buffer,
+                type="output_text",
+            ),
+        )
+        await self.put_event(event_content)
 
     async def handle_browser_annotations(self):
         if not self.manager.manager.browser_tool_used:
@@ -87,7 +109,9 @@ class OutputTextPluginResponses(BasePluginResponses):
             f"Expected a ResponseOutputMessage, but got {type(output_item)}"
         )
 
-        browser_tool = self.manager.manager.browser_tool
+        browser_tool = self.manager.tool_handler.browser_tool
+        if browser_tool is None:
+            return
 
         # we normalize on the full current text to get the right indices in citations
         (
@@ -129,8 +153,7 @@ class OutputTextPluginResponses(BasePluginResponses):
                 annotation_index=len(self.annotations),
                 annotation=citation,
             )
-            await self.push_event(event)
-            self.content_index += 1
+            await self.put_event(event)
 
     async def handle_on_token(self, token: AdapterCompletionToken):
         assert isinstance(self.manager.output_object, Response), (
@@ -149,12 +172,6 @@ class OutputTextPluginResponses(BasePluginResponses):
         if self.has_partial_citations:
             return
 
-        delta = ResponseOutputText(
-            annotations=[AnnotationURLCitation(**a) for a in self.annotations],
-            text=self.output_delta_buffer,
-            type="output_text",
-            logprobs=None,
-        )
         event = ResponseTextDeltaEvent(
             content_index=self.content_index,
             delta=self.output_delta_buffer,
@@ -164,10 +181,7 @@ class OutputTextPluginResponses(BasePluginResponses):
             type="response.output_text.delta",
             logprobs=[],
         )
-
-        output_item.content.append(delta)
-        await self.push_event(event)
-        self.content_index += 1
+        await self.put_event(event)
 
         self.current_output_text_content += self.output_delta_buffer
         self.output_delta_buffer = ""
@@ -189,9 +203,12 @@ class OutputTextPluginResponses(BasePluginResponses):
             f"Expected ResponseOutputText but got {[type(i) for i in output_item.content]}"
         )
 
-        text = "".join([i.text for i in output_item.content])  # type: ignore (handled above in assert)
+        text = self.current_output_text_content
         delta = ResponseOutputText(
-            annotations=[], text=text, type="output_text", logprobs=None
+            annotations=self.current_annotations,
+            text=text,
+            type="output_text",
+            logprobs=None,
         )
         output_item.content = [delta]
 
@@ -204,6 +221,8 @@ class OutputTextPluginResponses(BasePluginResponses):
             text=text,
             type="response.output_text.done",
         )
+        await self.put_event(event_text_done)
+
         event_content_part_done = ResponseContentPartDoneEvent(
             content_index=self.content_index,
             item_id=output_item.id,
@@ -212,16 +231,15 @@ class OutputTextPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.content_part.done",
         )
+        await self.put_event(event_content_part_done)
+
         event_output_item_done = ResponseOutputItemDoneEvent(
             item=output_item,
             output_index=self.manager.output_index,
             sequence_number=self.manager.sequence_number,
             type="response.output_item.done",
         )
-
-        await self.push_event(event_text_done)
-        await self.push_event(event_content_part_done)
-        await self.push_event(event_output_item_done)
+        await self.put_event(event_output_item_done)
 
         self.manager.manager.browser_tool_used = False
         self.annotations = []

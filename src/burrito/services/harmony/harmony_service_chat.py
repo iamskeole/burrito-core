@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from openai_harmony import Message, Author, Role, Content, TextContent
 
@@ -32,8 +32,8 @@ from burrito.types.adapter.adapter_custom_tool_param import (
     CustomToolInputFormatGrammar,
 )
 
-from burrito.types.adapter.adapter_web_search_tool_param import (
-    AdapterWebSearchToolParamChat,
+from burrito.types.adapter.adapter_browser_tool_param import (
+    AdapterBrowserToolParamChat,
 )
 
 
@@ -63,22 +63,41 @@ def assistant_message(
 ) -> Message:
     content: List[Content] = []
     channel = None
+    recipient = None
 
-    if message_data.content is None or message_data.tool_calls is not None:
-        channel = AdapterAssistantChannel.COMMENTARY
-    else:
-        channel = AdapterAssistantChannel.FINAL
+    if message_data.reasoning_content is not None:
+        channel = AdapterAssistantChannel.ANALYSIS
 
-    if message_data.tool_calls is None:
-        channel = AdapterAssistantChannel.FINAL
-    else:
+    elif message_data.tool_calls is not None:
         channel = AdapterAssistantChannel.COMMENTARY
 
-    content.append(TextContent(text=message_data.content or ""))
+    elif message_data.content is not None:
+        channel = AdapterAssistantChannel.FINAL
+
+    if message_data.content and isinstance(message_data.content, str):
+        content = [TextContent(text=message_data.content)]
+    elif message_data.content and isinstance(message_data.content, list):
+        content = [TextContent(text=i.text or "") for i in message_data.content]
+    elif message_data.reasoning_content is not None:
+        content = [TextContent(text=message_data.reasoning_content)]
+    elif (
+        not message_data.content
+        and not message_data.reasoning_content
+        and message_data.tool_calls is not None
+    ):
+        for tc in message_data.tool_calls:
+            tool_call = tool_calls.get(tc.id)
+            assert tool_call is not None, "Tool call can not be none."
+            recipient = "functions." + tool_call.function.name
+            content = [TextContent(text=tool_call.function.arguments)]
+    else:
+        raise ValueError("Should not happen.")
+
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
-
     if channel:
         message.with_channel(channel=channel.value)
+    if recipient:
+        message.with_recipient(recipient)
     return message
 
 
@@ -90,12 +109,8 @@ def tool_call_output_message(
     tool_call = tool_calls.get(call_id)
 
     assert tool_call is not None, f"tool_call is None: {message_data.model_dump()}"
-    function_name = tool_call.function.name
-    if "python" not in function_name and "browser" not in function_name:
-        function_name = f"functions.{function_name}"  # see above; dirty hack, address
-
     message = Message(
-        author=Author(role=Role.TOOL, name=function_name),  # TODO
+        author=Author(role=Role.TOOL, name=f"functions.{tool_call.function.name}"),
         content=[TextContent(text=message_data.content)],
     )
     message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
@@ -136,18 +151,19 @@ def parse_messages(params: AdapterCreateParamsChat) -> List[Message]:
 def parse_instructions(params: AdapterCreateParamsChat) -> str:
     instructions = ""
     for message in params.messages or []:
-        if isinstance(message, SystemMessageParamChat):
-            instructions = message.content
-        if isinstance(message, DeveloperMessageParamChat):
-            if not instructions:
-                instructions = message.content
-            else:
-                instructions += f"\n\n{message.content}"
-            break
+        match message:
+            case SystemMessageParamChat() | DeveloperMessageParamChat():
+                if isinstance(message.content, str):
+                    instructions += f"\n{message.content}"
+                else:
+                    for c in message.content:
+                        instructions += f"\n{c.text}"
+            case _:
+                pass
     return instructions
 
 
-def map_input_tools(
+def parse_tools(
     params: AdapterCreateParamsChat,
 ) -> List[AdapterConversationInputTool]:
     tools = []
@@ -183,7 +199,7 @@ def map_input_tools(
                     format=fmt,
                 )
                 tools.append(tool)
-            case AdapterWebSearchToolParamChat():
+            case AdapterBrowserToolParamChat():
                 continue  # we handle native browser separately
             case _:
                 raise NotImplementedError(f"Unsupported tool type: {type(tool)}")
@@ -195,13 +211,14 @@ def build_message_list_chat(
 ) -> AdapterConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params)
-    tools = map_input_tools(params)
+    tools = parse_tools(params)
+    # TODO: double check, seems to default to medium whatever caller sends?
     reasoning = AdapterReasoningParam(effort=params.reasoning_effort)
 
     conversation_inputs = AdapterConversationInputs(
         instructions=instructions,
         messages=messages,
-        tools=tools,  # TODO
-        reasoning=reasoning,  # TODO
+        tools=tools,
+        reasoning=reasoning,
     )
     return conversation_inputs

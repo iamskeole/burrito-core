@@ -20,6 +20,7 @@ from .adapter_parser_context import AdapterParserContext
 from .adapter_request_category import AdapterRequestCategory
 from .adapter_tool_namespace import AdapterToolNamespace, AdapterToolType
 from .adapter_reasoning import AdapterReasoningParam
+from .adapter_token_counts import AdapterTokenCounts
 
 __all__ = [
     "AdapterCreateParams",
@@ -41,4 +42,5 @@ __all__ = [
     "AdapterParserContext",
     "AdapterCompletionToken",
     "AdapterReasoningParam",
+    "AdapterTokenCounts",
 ]

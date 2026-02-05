@@ -1,19 +1,14 @@
-import json
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from openai.types.responses.response import Response
-from openai.types.responses.response_output_item import ResponseOutputItem
 from pydantic import BaseModel
 
 from burrito.common.utils import random_uuid, unix_timestamp
+from burrito.plugins.base_plugin import BasePlugin
 from burrito.types.adapter import AdapterConversationState
 
-from ..base_plugin import BasePlugin
-
 if TYPE_CHECKING:
-    from burrito.adapter.handlers.state_handler import (
-        AdapterStateHandler,
-    )
+    from burrito.handlers.state_handler import AdapterStateHandler
 
 
 class BasePluginResponses(BasePlugin):
@@ -45,17 +40,5 @@ class BasePluginResponses(BasePlugin):
         self.manager.output_object = response
         return response
 
-    async def push_event(
-        self, event: BaseModel, output_item: Optional[ResponseOutputItem] = None
-    ):
-        if output_item is not None:
-            self.manager.output_object.output.append(output_item)  # type: ignore
-        event_label = event.__getattribute__("type")
-        event_data = event.model_dump()
-        self.manager.events.append(event_data)
-
-        if self.manager.stream_to_caller:
-            encoded = (
-                f"event: {event_label}\ndata: {json.dumps(event_data)}\n\n"
-            ).encode("utf-8")
-            await self.manager.push_event(encoded)
+    async def put_event(self, event: BaseModel):
+        await self.manager.put_event(event)

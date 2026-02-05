@@ -1,12 +1,11 @@
+# TODO: implement proper reasoning summary plugin
 from __future__ import annotations
 
 import asyncio
 from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
-    from burrito.adapter.handlers.token_handler import (
-        AdapterCompletionToken,
-    )
+    from burrito.handlers.token_handler import AdapterCompletionToken
 from .responses.base_plugin import BasePlugin
 
 

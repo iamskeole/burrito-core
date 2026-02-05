@@ -38,10 +38,10 @@ async def limit_body_size(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ALLOWED_ORIGINS,  # Use configurable origins
-    allow_methods=["*"],  # Allows all methods (including OPTIONS)
-    allow_headers=["*"],  # Allows all headers
-    allow_credentials=True,
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,
+    allow_methods=settings.CORS_ALLOWED_METHODS,
+    allow_headers=settings.CORS_ALLOWED_HEADERS,
+    allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
 )
 app.include_router(models.router)
 app.include_router(chat.router)

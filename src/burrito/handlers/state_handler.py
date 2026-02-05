@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+import logging
+
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from pydantic import BaseModel
 
 from burrito.common.logger import FastAPILogger
 
@@ -28,20 +31,23 @@ from burrito.plugins.chat import (
     ContextManagerPluginChat,
     ReasoningTextPluginChat,
     OutputTextPluginChat,
-    ToolPluginChat,
+    ToolInputPluginChat,
 )
 from burrito.plugins.responses import (
     ContextManagerPluginResponses,
     ReasoningTextPluginResponses,
     OutputTextPluginResponses,
-    ToolPluginResponses,
+    ToolInputPluginResponses,
+    NativeToolCallPluginResponses,
 )
 
 from burrito.services.harmony import (
     ENCODING,
-    build_conversation,
+    build_conversation_from_params,
     build_user_message,
     render_conversation_for_completion,
+    build_conversation_from_messages,
+    get_prompt_cache_messages,
 )
 from burrito.common.config import settings
 from burrito.common.utils import unix_timestamp_in_ms
@@ -53,20 +59,18 @@ from burrito.types.adapter import (
     AdapterCreateParamsResponses,
 )
 
-from .token_handler import (
+from burrito.handlers.token_handler import (
     normalize_completion_token,
 )
-from .tool_handler import ToolHandler
-from .transition_handler import TransitionHandler
+from burrito.handlers.tool_handler import ToolHandler
+from burrito.handlers.transition_handler import TransitionHandler
+
+from burrito.tools.python.tool import BurritoPython
+from burrito.tools.browser.tool import BurritoBrowser
 
 
 class AdapterStateHandler:
-    def __init__(
-        self,
-        manager: AdapterConversationHandler,
-        stream_to_caller: bool,
-        log_id: str,
-    ):
+    def __init__(self, manager: AdapterConversationHandler, stream_to_caller: bool):
         self.manager = manager
         self.stream_to_caller = stream_to_caller
 
@@ -75,21 +79,26 @@ class AdapterStateHandler:
         self.prompt_tokens: List[int]
         self.parser: StreamableParser
 
-        self.events: List[Dict[str, Any]] = []
         self.completions: List[Completion] = []
-        self.response_tokens: List[AdapterCompletionToken] = []
-        self.reasoning_tokens: List[AdapterCompletionToken] = []
+        self.events: List[BaseModel] = []
         self.response_buffer: str = ""
 
-        self.log_id = log_id
-        self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"ash_{self.log_id}"}
+        # token stores for stats
+        self.response_tokens: List[AdapterCompletionToken] = []
+        self.reasoning_tokens: List[AdapterCompletionToken] = []
+        self.preamble_tokens: List[AdapterCompletionToken] = []
+        self.native_tool_input_tokens: List[AdapterCompletionToken] = []
+        self.caller_tool_input_tokens: List[AdapterCompletionToken] = []
+        self.output_text_tokens: List[AdapterCompletionToken] = []
+
+        self.log_id: str = ""
+        self.logger: logging.Logger
+        self.log_extra: Dict[str, str]
 
         self.parser_channel: Optional[str] = None
         self.parser_state = AdapterConversationState.INITIAL
         self.sequence_number = 0
         self.output_index = -1
-        self.created_event_fired: bool = False
         self.is_done: bool = False
 
         self.output_object: Union[
@@ -105,81 +114,115 @@ class AdapterStateHandler:
         self.recover_state_attempts = 0
         self.recovery_message: Optional[Message] = None
         self.extra_messages: List[Message] = []
-        self._init_conversation()
-        self._init_plugins()
 
-        self.tool_handler = ToolHandler(self)
-        self.transition_handler = TransitionHandler(self)
+        self.tool_handler: ToolHandler
+        self.transition_handler: TransitionHandler
+
+        python_tool, browser_tool = self._init_conversation()
+
+        self._init_tools(python_tool, browser_tool)
+        self._init_plugins()
+        self._init_logger()
+
+    def _init_logger(self):
+        self.logger = FastAPILogger.get_logger(__name__)
+        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
 
     def _init_plugins(self):
+        self.transition_handler = TransitionHandler(self)
         match self.manager.params:
             case AdapterCreateParamsChat():
                 self.plugins = [
                     ContextManagerPluginChat(self),
                     ReasoningTextPluginChat(self),
                     OutputTextPluginChat(self),
-                    ToolPluginChat(self),
-                    # TODO: continue, output, tool and then summaries, maybe
+                    ToolInputPluginChat(self),
                 ]
             case AdapterCreateParamsResponses():
                 self.plugins = [
                     ContextManagerPluginResponses(self),
                     ReasoningTextPluginResponses(self),
                     OutputTextPluginResponses(self),
-                    ToolPluginResponses(self),
+                    ToolInputPluginResponses(self),
+                    NativeToolCallPluginResponses(self),
                 ]
             case _:
-                pass  # TODO: maybe anthropic messages?
+                pass  # TODO: maybe anthropic messages, google genai?
         for plugin in self.plugins:
             for state in plugin.subscribed_states:
                 self._active_plugins_by_state.setdefault(state, []).append(plugin)
 
-    async def _fire_created_event(self):
-        if self.created_event_fired:
-            return
-        self.created_event_fired = True
+    # TODO: probably refactor, for now a dirty hack to enable session-ish
+    # storage of python and browser tools since it may help if they're not
+    # stateless (eg. assistant can reference previously opened pages or code cells)
+    # hacky, will not work when scaled horizontally, but we'll cross that bridge later
+    # TODO: get prompt cache key from request if available (responses does, chat doesn't?),
+    # fallback on generation; very unlikely but > 0 chance to share the same key
+    # across multiple users using exact same prompt, so eventually should address
+    def _init_tools(
+        self,
+        python_tool: Optional[BurritoPython],
+        browser_tool: Optional[BurritoBrowser],
+    ):
+        session_handler = self.manager.session_handler
+        messages = get_prompt_cache_messages(self.conversation.messages)
+        conversation = build_conversation_from_messages(messages)
+        prompt_tokens = render_conversation_for_completion(conversation)
+        prompt_text = ENCODING.decode(prompt_tokens)
+        prompt_hash = session_handler.hash_text(prompt_text)
 
-    def _init_conversation(self, extra_messages: Optional[List[Message]] = None):
+        self.log_id = prompt_hash
+        session_handler.set_python_tool(self.log_id, python_tool)
+        session_handler.set_browser_tool(self.log_id, browser_tool)
+
+        self.tool_handler = ToolHandler(
+            self,
+            python_tool=session_handler.get_python_tool(prompt_hash),
+            browser_tool=session_handler.get_browser_tool(prompt_hash),
+        )
+
+    def _init_conversation(
+        self, extra_messages: Optional[List[Message]] = None
+    ) -> tuple[Optional[BurritoPython], Optional[BurritoBrowser]]:
         params = self.manager.params
-        python_tool = self.manager.python_tool
-        browser_tool = self.manager.browser_tool
-        conversation, inputs = build_conversation(
-            params, extra_messages, python_tool, browser_tool
+        conversation, inputs, python_tool, browser_tool = (
+            build_conversation_from_params(params, extra_messages)
         )
         self.conversation = conversation
         self.conversation_inputs = inputs
-        self.prompt_tokens = render_conversation_for_completion(self.conversation)
+        self.prompt_tokens = render_conversation_for_completion(
+            conversation=self.conversation, is_on_init=True
+        )
         self.parser = StreamableParser(ENCODING, Role.ASSISTANT)
+        return (python_tool, browser_tool)
 
-    async def _push_event(self, event: bytes):
-        await self.manager.output_queue.put(event)
+    async def put_close_marker(self):
+        await self.manager.output_queue.put("data: [DONE]\n\n".encode())
+
+    async def put_event(self, event: BaseModel):
+        self.events.append(event)
         self.sequence_number += 1
 
-    async def push_event(self, event: bytes):
-        await self._push_event(event)
+        if not self.manager.stream_to_caller:
+            return
+
+        header = ""
+        try:
+            if hasattr(event, "type"):  # responses events
+                header = f"event: {event.type}\n"  # type: ignore
+            s = f"{header}data: {event.model_dump_json(indent=None)}\n\n"
+            b = s.encode()
+            await self.manager.output_queue.put(b)
+        except Exception as e:
+            print(e)
+            x= 1
+        if settings.DEBUG_OUTGOING_EVENTS:
+            self.logger.debug(b, extra=self.log_extra)
 
     # TODO: figure this out, only responses supports streamed errors?
-    async def push_error(self, message: str, code: str):
-        """Record an error and transition the state machine to *ERROR*.
-
-        The caller traditionally pushes errors directly from the conversation
-        handler (e.g. to signal a backend timeout or JSON decode failure).  The
-        state machine itself is agnostic to error details, but pushing an
-        error should:
-
-        1.  Transition the machine into :data:`~ProxyConversationState.ERROR`.
-        2.  Emit a structured SSE payload when running in streaming mode.
-        3.  Safely stop further token processing by marking the stream as
-            finished.
-        """
-
-        # Switch to the dedicated error state so that no further normal
-        # transitions are processed and plugins can hook into the error event.
+    async def put_error(self, message: str, code: str):
         self.parser_state = AdapterConversationState.ERROR
-        # Mark the state machine as finished to unblock the consumer loop.
         self.is_done = True
-        # Notify the ConversationHandler that the stream should finish.
-        # This ensures the consumer loop in ``generate_streamed`` exits.
         if hasattr(self.manager, "is_finished"):
             self.manager.is_finished.set()
 
@@ -190,13 +233,11 @@ class AdapterStateHandler:
             "param": None,
             "sequence_number": self.sequence_number,
         }
-        # Emit the error to the caller.  The BasePlugin implementation will
-        # decide if the payload should be streamed (SSE) or ignored (chat).
         await self.error_plugin.on_error(payload)
 
     def _add_recovery_message(self, text: str):
         message = build_user_message(text, "HARNESS-SENTINEL-v1")
-        bfr = f"\n\n🚨🚨🚨\n\n{message.content[0].text}\n\n🚨🚨🚨\n\n" # type: ignore
+        bfr = f"\n\n🚨🚨🚨\n\n{message.content[0].text}\n\n🚨🚨🚨\n\n"  # type: ignore
         self.response_buffer += bfr
         self.recovery_message = message
 
@@ -229,17 +270,44 @@ class AdapterStateHandler:
         self.manager._init_stream()
         self.recover_state_attempts += 1
 
-    def _count_reasoning_tokens(self, token: AdapterCompletionToken):
-        if self.parser_state in (
-            AdapterConversationState.INITIAL,
-            AdapterConversationState.CREATED,
-            AdapterConversationState.IN_PROGRESS,
-            AdapterConversationState.REASONING,
-            AdapterConversationState.TOOL_INPUT,
-        ):
-            self.reasoning_tokens.append(token)
-        else:
-            return
+    def _store_token(self, token: AdapterCompletionToken):
+        state = self.parser_state
+
+        match state:
+            case (
+                AdapterConversationState.INITIAL
+                | AdapterConversationState.CREATED
+                | AdapterConversationState.IN_PROGRESS
+                | AdapterConversationState.REASONING
+                | AdapterConversationState.REASONING_END
+            ):
+                self.reasoning_tokens.append(token)
+
+            case AdapterConversationState.PREAMBLE:
+                self.preamble_tokens.append(token)
+
+            case (
+                AdapterConversationState.NATIVE_TOOL_INPUT_START
+                | AdapterConversationState.NATIVE_TOOL_INPUT
+                | AdapterConversationState.NATIVE_TOOL_CALL
+            ):
+                self.native_tool_input_tokens.append(token)
+
+            case (
+                AdapterConversationState.TOOL_INPUT_START
+                | AdapterConversationState.TOOL_INPUT
+                | AdapterConversationState.TOOL_CALL
+            ):
+                self.caller_tool_input_tokens.append(token)
+
+            case (
+                AdapterConversationState.OUTPUT_TEXT
+                | AdapterConversationState.COMPLETED
+            ):
+                self.output_text_tokens.append(token)
+
+        self.response_tokens.append(token)
+        self.response_buffer += token.text
 
     async def _process_completion(
         self, completion: Union[Completion, str]
@@ -276,15 +344,13 @@ class AdapterStateHandler:
             # TODO: does this still happen? add recovery message to assistant?
             return
 
-        self.completions.append(completion)
-        self.response_tokens.append(token)
-        self.response_buffer
         try:
             self.parser.process(token.id)
         except HarmonyError as e:
-            self.logger.warning(f"_process_completion: {repr(e)}", extra=self.log_extra)
-            # no recovery message since it can be a variety of reasons,
-            # - HarmonyError('unexpected tokens remaining in message header: List[str]') (rare, mostly cahght by validations)
+            self.logger.error(f"_process_completion: {repr(e)}", extra=self.log_extra)
+            # generic recovery message since it can be a variety of reasons,
+            # - HarmonyError('unexpected tokens remaining in message header: List[str]')
+            #   (rare, mostly cahght by validations)
             # - HarmonyError('Unknown role: assistant<|channel|>commentary')
             # - anything else?
             self._add_recovery_message(
@@ -292,11 +358,14 @@ class AdapterStateHandler:
             )
             return self._recover_state()
 
-        self._count_reasoning_tokens(token)
-        self.response_buffer += token.text
+        # NOTE: moved AFTER parser.process so we only store valid tokens
+        # in case this needs to be fed into reports / stats later
+        # eg if we recover state, we don't count the "bad" tokens
+        self.completions.append(completion)
+        self._store_token(token)
+
         await self.transition_handler.transition(token)
         await self.tool_handler.maybe_call_native_tool()
-        await self._fire_created_event()
 
     def _log_stats(self):
         n_tokens_prompt = len(self.prompt_tokens)
@@ -313,7 +382,7 @@ class AdapterStateHandler:
         tps_pp = n_tokens_prompt / (delta_pp / 1000)
         tps_tg = n_tokens_response / (delta_tg / 1000)
 
-        self.logger.info(
+        self.logger.debug(
             (
                 f"{'prompt:':<12}"
                 f"{delta_pp / 1000:>10,.2f}s"
@@ -323,7 +392,7 @@ class AdapterStateHandler:
             ),
             extra=self.log_extra,
         )
-        self.logger.info(
+        self.logger.debug(
             (
                 f"{'eval: ':<12}"
                 f"{delta_tg / 1000:>10,.2f}s"
@@ -334,7 +403,7 @@ class AdapterStateHandler:
             extra=self.log_extra,
         )
 
-        self.logger.info(
+        self.logger.debug(
             (f"{'total:':<12}{delta_total:>10,.2f}s{n_tokens_total:>10,} tokens"),
             extra=self.log_extra,
         )
@@ -344,8 +413,17 @@ class AdapterStateHandler:
         if not self.is_done:
             return
         self._log_stats()
-        self.response_buffer
+        return
+
+    def _debug_completion(self, completion: Union[Completion, str]):
+        if not settings.DEBUG_COMPLETIONS:
+            return
+        if isinstance(completion, str):
+            self.logger.debug(completion)
+        else:
+            self.logger.debug(completion.choices[0])
 
     async def process_completion(self, completion: Union[Completion, str]):
+        self._debug_completion(completion)
         await self._process_completion(completion)
         self._cleanup_on_done(completion)

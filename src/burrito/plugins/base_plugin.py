@@ -4,15 +4,12 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import (
-        AdapterStateHandler,
-    )
-    from burrito.handlers.token_handler import (
-        AdapterCompletionToken,
-    )
+    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.token_handler import AdapterCompletionToken
+
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import populate_openai_typed_dict
-from burrito.types.adapter import AdapterConversationState
+from burrito.types.adapter import AdapterConversationState, AdapterTokenCounts
 
 
 class BasePlugin(ABC):
@@ -53,9 +50,31 @@ class BasePlugin(ABC):
 
         event = f"event: error\ndata: {json.dumps(payload, indent=None)}\n\n"
         encoded = event.encode("utf-8")
-        await self.manager.push_event(encoded)
+        await self.manager.put_event(
+            encoded
+        )  # TODO: change to new model for manager.put BaseModel
+
+    def get_token_counts(self) -> AdapterTokenCounts:
+        n_input = len(self.manager.prompt_tokens)
+        n_reasoning = len(self.manager.reasoning_tokens)
+        n_preamble = len(self.manager.preamble_tokens)
+        n_output_text = len(self.manager.output_text_tokens)
+        n_completion = len(self.manager.response_tokens)
+        n_total = n_input + n_completion
+
+        n_native_tool_input = len(self.manager.native_tool_input_tokens)
+        n_caller_tool_input = len(self.manager.caller_tool_input_tokens)
+
+        return AdapterTokenCounts(
+            n_input=n_input,
+            n_reasoning=n_reasoning,
+            n_preamble=n_preamble,
+            n_native_tool_input=n_native_tool_input,
+            n_caller_tool_input=n_caller_tool_input,
+            n_output_text=n_output_text,
+            n_completion=n_completion,
+            n_total=n_total,
+        )
 
     async def send_close_marker(self):
-        event = "data: [DONE]\n\n"
-        encoded = event.encode("utf-8")
-        await self.manager.push_event(encoded)
+        await self.manager.put_close_marker()

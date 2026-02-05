@@ -6,9 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
 
-from .adapter_reasoning import ReasoningEffort
-from .adapter_function_tool_param import AdapterFunctionToolParamChat
-from .adapter_web_search_tool_param import AdapterWebSearchToolParamChat
+from burrito.types.adapter.adapter_reasoning import ReasoningEffort
+from burrito.types.adapter.adapter_function_tool_param import (
+    AdapterFunctionToolParamChat,
+)
+from burrito.types.adapter.adapter_browser_tool_param import (
+    AdapterBrowserToolParamChat,
+)
+from burrito.types.adapter.adapter_python_tool_param import AdapterPythonToolParamChat
 
 # TODO: investiagate whether we can support custom tools
 # harmony only seems to support defining regular function tools
@@ -35,13 +40,13 @@ class ContentPartImageUrl(BaseModel):
 
 class SystemMessageParamChat(BaseModel):
     role: Literal["system"]
-    content: str
+    content: Union[str, List[ContentPartText]]
     name: Optional[str] = None
 
 
 class DeveloperMessageParamChat(BaseModel):
     role: Literal["developer"]
-    content: str
+    content: Union[str, List[ContentPartText]]
     name: Optional[str] = None
 
 
@@ -64,13 +69,14 @@ class AssistantToolCallParamChat(BaseModel):
 
 class AssistantMessageParamChat(BaseModel):
     role: Literal["assistant"]
-    content: Optional[str] = None
+    content: Optional[Union[str, List[ContentPartText]]] = None
+    reasoning_content: Optional[str] = None
     tool_calls: Optional[List[AssistantToolCallParamChat]] = None
 
 
 class ToolCallOutputParamChat(BaseModel):
-    role: Literal["tool"]
     content: str
+    role: Literal["tool"]
     tool_call_id: str
 
 
@@ -104,12 +110,10 @@ class AdapterCreateParamsChat(BaseModel):
         List[
             Annotated[
                 Union[
+                    AdapterBrowserToolParamChat,
+                    AdapterPythonToolParamChat,
                     AdapterFunctionToolParamChat,
-                    AdapterWebSearchToolParamChat,
-                    # disable custom tools, harmony only seems to support
-                    # defining regular function tools with name, description, params
-                    # no special formatting instructions for custom tools, so moot?
-                    # AdapterCustomToolParamChat
+                    # AdapterCustomToolParamChat, # see todo note above
                 ],
                 Field(discriminator="type"),
             ]

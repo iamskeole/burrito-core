@@ -19,9 +19,11 @@ from burrito.types.adapter.adapter_create_params_responses import (
     FunctionToolInputParamResponses,
     ToolCallOutputParamResponses,
     InputItemParamResponses,
-    UserMessageParamResponses,
-    UserMessageContentImageParamResponses,
-    UserMessageContentTextParamResponses,
+    UserInputMessageParamResponses,
+    DeveloperInputMessageParamResponses,
+    SystemInputMessageParamResponses,
+    InputImageParamResponses,
+    InputTextParamResponses,
 )
 
 from burrito.types.adapter.adapter_function_tool_param import (
@@ -33,8 +35,8 @@ from burrito.types.adapter.adapter_custom_tool_param import (
     CustomToolInputFormatGrammar,
 )
 
-from burrito.types.adapter.adapter_web_search_tool_param import (
-    AdapterWebSearchToolParamResponses,
+from burrito.types.adapter.adapter_browser_tool_param import (
+    AdapterBrowserToolParamResponses,
 )
 
 
@@ -47,13 +49,15 @@ def user_message_from_text_input(user_input: str) -> Message:
 
 
 # TODO: check oss implementation, individual messages PER content item? all other roles too
-def user_message_from_list_input(message_data: UserMessageParamResponses) -> Message:
+def user_message_from_list_input(
+    message_data: BaseInputMessageParamResponses,
+) -> Message:
     content = []
     for item in message_data.content:
         match item:
-            case UserMessageContentTextParamResponses():
+            case InputTextParamResponses():
                 content.append(TextContent(text=item.text))
-            case UserMessageContentImageParamResponses():
+            case InputImageParamResponses():
                 pass  # TODO, tbd, for now gpt-oss does not support image inputs
             case _:
                 pass  # maybe throw? shouldn't happen, probably too defensive
@@ -115,28 +119,18 @@ def tool_call_input_message(
     return message
 
 
-# TODO: handle custom tool calls and native tool calls
 def tool_call_output_message(
     message_data: ToolCallOutputParamResponses,
-    function_calls: Dict[
+    tool_calls: Dict[
         str,
         Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
     ],
 ) -> Message:
     call_id = message_data.call_id
-    function_call = function_calls.get(call_id)
-
-    assert function_call is not None, (
-        f"function_call is None: {message_data.model_dump()}"
-    )
-    function_name = function_call.name
-    if "python" not in function_name and "browser" not in function_name:
-        function_name = f"functions.{function_name}"  # see above; dirty hack, address
-
-    if function_name and "<|channel|>" in function_name:
-        raise ValueError("FIXME: <|channel|> in function_name")
+    tool_call = tool_calls.get(call_id)
+    assert tool_call is not None, f"tool_call is None: {message_data.model_dump()}"
     message = Message(
-        author=Author(role=Role.TOOL, name=function_name),  # TODO
+        author=Author(role=Role.TOOL, name=f"functions.{tool_call.name}"),
         content=[TextContent(text=message_data.output)],
     )
     message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
@@ -144,7 +138,7 @@ def tool_call_output_message(
     return message
 
 
-def input_params_to_messages(
+def parse_messages(
     inputs: Union[str, List[InputItemParamResponses]],
 ) -> List[Message]:
     if isinstance(inputs, str):
@@ -162,7 +156,7 @@ def input_params_to_messages(
 
     for i in inputs:
         match i:
-            case UserMessageParamResponses():
+            case UserInputMessageParamResponses():
                 messages.append(user_message_from_list_input(i))
 
             case AssistantMessageParamResponses() | AssistantReasoningParamResponses():
@@ -194,7 +188,7 @@ def input_params_to_messages(
     return messages
 
 
-def map_input_tools(
+def parse_tools(
     params: AdapterCreateParamsResponses,
 ) -> List[AdapterConversationInputTool]:
     # TODO: handle tool_choice from params, eg auto, specific etc
@@ -231,7 +225,7 @@ def map_input_tools(
                 )
                 tools.append(tool)
 
-            case AdapterWebSearchToolParamResponses():
+            case AdapterBrowserToolParamResponses():
                 continue  # we handle web search natively
 
             case _:
@@ -239,12 +233,25 @@ def map_input_tools(
     return tools
 
 
+def parse_instructions(params: AdapterCreateParamsResponses) -> str:
+    instructions = params.instructions or ""
+    messages = params.input if isinstance(params.input, list) else []
+
+    for message in messages:
+        match message:
+            case SystemInputMessageParamResponses():
+                instructions += f"\n{message.content}"
+            case DeveloperInputMessageParamResponses():
+                instructions += f"\n{message.content}"
+    return instructions
+
+
 def build_message_list_responses(
     params: AdapterCreateParamsResponses,
 ) -> AdapterConversationInputs:
-    instructions = params.instructions or ""
-    messages = input_params_to_messages(params.input)
-    tools = map_input_tools(params)
+    instructions = parse_instructions(params)
+    messages = parse_messages(params.input)
+    tools = parse_tools(params)
     reasoning = params.reasoning or AdapterReasoningParam()
 
     converation_inputs = AdapterConversationInputs(
@@ -253,5 +260,4 @@ def build_message_list_responses(
         tools=tools,
         reasoning=reasoning,
     )
-
     return converation_inputs

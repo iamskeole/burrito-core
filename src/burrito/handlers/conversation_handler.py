@@ -1,24 +1,23 @@
 import asyncio
 from typing import AsyncGenerator, Dict, List, Union
-
+import logging
 import async_timeout
 from fastapi import Request
 from openai.types.completion import Completion
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.responses import Response
 
-from gpt_oss.tools.python_docker.docker_tool import PythonTool
-
-from burrito.tools.browser.tool import BurritoBrowser
-
 from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import random_uuid, unix_timestamp_in_ms
+from burrito.common.utils import unix_timestamp_in_ms
 from burrito.types.adapter import AdapterCreateParams
-from burrito.types.adapter.adapter_chat_completion_chunk import AdapterChatCompletionChunk
+from burrito.types.adapter.adapter_chat_completion_chunk import (
+    AdapterChatCompletionChunk,
+)
 
-from .state_handler import AdapterStateHandler
+from burrito.handlers.state_handler import AdapterStateHandler
 
 
 class AdapterConversationHandler:
@@ -27,8 +26,7 @@ class AdapterConversationHandler:
         request: Request,
         params: AdapterCreateParams,
         generator: AdapterGenerationHandler,
-        python_tool: PythonTool,
-        browser_tool: BurritoBrowser,
+        session_handler: AdapterSessionHandler,
         forwarded_headers: Dict[str, str] = {},
     ):
         self.request = request
@@ -39,27 +37,30 @@ class AdapterConversationHandler:
         self.output_queue = asyncio.Queue()
         self.is_finished = asyncio.Event()
 
+        self.session_handler = session_handler
         self.generator = generator
         self.stream: AsyncGenerator[Union[Completion, Dict, str], None]
         self.prompt_tokens: List[int]
         self.state_handler: AdapterStateHandler
-        self.python_tool = python_tool
-        self.browser_tool = browser_tool
         self.browser_tool_used = False
         self.forwarded_headers = forwarded_headers
 
-        self.log_id = random_uuid()
-        self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"ach_{self.log_id}"}
+        self.log_id: str = ""
+        self.logger: logging.Logger
+        self.log_extra: Dict[str, str]
 
         self._init_state_handler()
+        self._init_logger()
         self._init_stream()
+
+    def _init_logger(self):
+        self.log_id = self.state_handler.log_id
+        self.logger = FastAPILogger.get_logger(__name__)
+        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
 
     def _init_state_handler(self):
         self.state_handler = AdapterStateHandler(
-            manager=self,
-            stream_to_caller=self.stream_to_caller,
-            log_id=self.log_id,
+            manager=self, stream_to_caller=self.stream_to_caller
         )
 
     def _init_stream(self):
@@ -83,10 +84,11 @@ class AdapterConversationHandler:
                 if await self.request.is_disconnected():
                     self._stop_stream()
                     msg = "Client disconnected, stopping generation."
-                    self.logger.info(msg, extra=self.log_extra)
+                    self.logger.debug(msg, extra=self.log_extra)
                     break
 
                 # handle backend stalls
+                completion = None
                 try:
                     async with async_timeout.timeout(
                         settings.BACKEND_INTER_TOKEN_TIMEOUT
@@ -102,13 +104,16 @@ class AdapterConversationHandler:
                     # TODO: increase timeout, prompt processing may kill this when cache misses
                     msg = "Backend timed out between tokens"
                     self.logger.error(msg, extra=self.log_extra)
-                    await sm.push_error(msg, "ERR_BACKEND_TIMEOUT")
-                    break  # TODO here, again, figure out if we retry to save to db
+                    await sm.put_error(msg, "ERR_BACKEND_TIMEOUT")
+                    break
 
                 if isinstance(completion, dict):
                     msg = f"Backend error: {completion.get('error')}"
                     self.logger.error(msg, extra=self.log_extra)
-                    await sm.push_error(msg, "ERR_BACKEND_EXCEPTION")
+                    await sm.put_error(msg, "ERR_BACKEND_EXCEPTION")
+                    break
+
+                if completion is None:
                     break
 
                 await sm.process_completion(completion)
@@ -119,16 +124,16 @@ class AdapterConversationHandler:
         except Exception as e:
             msg = f"Exception in stream processor:\n{repr(e)}"
             self.logger.exception(msg, extra=self.log_extra)
-            await sm.push_error(msg, "ERR_STREAM_PROCESSOR")
+            await sm.put_error(msg, "ERR_STREAM_PROCESSOR")
         finally:
             self.is_finished.set()
-            # Ensure the backend generator stream is closed if possible.
+            # ensure the backend generator stream is closed if possible
             try:
                 await self.stream.aclose()
             except Exception:
-                # Some generators may not support `aclose`.  Silently ignore.
+                # some generators may not support aclose, we silently ignore
                 pass
-            
+
             # sentinel to wake up the consumer
             self.output_queue.put_nowait(None)
 
@@ -151,7 +156,7 @@ class AdapterConversationHandler:
             # generator
             msg = f"TaskGroup caught an unhandled exception:\n{repr(e)}"
             self.logger.error(msg, extra=self.log_extra)
-            await sm.push_error(msg, "ERR_TASK_GROUP_EXCEPTION")
+            await sm.put_error(msg, "ERR_TASK_GROUP_EXCEPTION")
 
     def _return_json_responses(self):
         output_object = self.state_handler.output_object

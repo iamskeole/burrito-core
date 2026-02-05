@@ -1,8 +1,5 @@
 from typing import TYPE_CHECKING, List, Optional, Union, Dict, Any
 
-from gpt_oss.tools.python_docker.docker_tool import PythonTool
-
-from burrito.tools.browser.tool import BurritoBrowser
 
 from openai_harmony import Message
 
@@ -16,12 +13,20 @@ from burrito.types.adapter.adapter_tool_namespace import AdapterToolNamespace
 
 from burrito.common.utils import random_uuid
 
+from burrito.tools.python.tool import BurritoPython
+from burrito.tools.browser.tool import BurritoBrowser
+
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
 
 class ToolHandler:
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(
+        self,
+        manager: "AdapterStateHandler",
+        python_tool: Optional[BurritoPython],
+        browser_tool: Optional[BurritoBrowser],
+    ):
         self.manager = manager
         self.namespaces: List[str] = []
         self.tool_names: List[str] = []
@@ -29,21 +34,24 @@ class ToolHandler:
 
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"atl_{self.log_id}"}
+        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
 
         self.msg_namespaces: str = ""
         self.msg_tools: str = ""
 
         self.tool_calls: list[Dict[str, Any]] = []
 
+        self.python_tool = python_tool
+        self.browser_tool = browser_tool
+
         self._init_namespaces()
         self._init_tools()
 
     def _init_namespaces(self):
-        if settings.IS_PYTHON_TOOL_ENABLED:
+        if self.python_tool is not None:
             self.namespaces.append(AdapterToolNamespace.NATIVE_PYTHON.value)
 
-        if settings.IS_BROWSER_TOOL_ENABLED:
+        if self.browser_tool is not None:
             self.namespaces.append(AdapterToolNamespace.NATIVE_BROWSER.value)
 
         if self.manager.manager.params.tools:
@@ -54,8 +62,15 @@ class ToolHandler:
     def _init_tools(self):
         tools = self.manager.conversation_inputs.tools or []
         self.tools = {i.name: i for i in tools}
-        self.tool_names = [i.name for i in tools]
-
+        self.tool_names = [
+            i.name
+            for i in tools
+            if i.name
+            not in [
+                AdapterToolNamespace.NATIVE_PYTHON.value,
+                AdapterToolNamespace.NATIVE_BROWSER.value,
+            ]
+        ]
         self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
 
     def get_tool_model_is_trying_to_call(self) -> AdapterConversationInputTool | None:
@@ -96,7 +111,7 @@ class ToolHandler:
             if state is not None:
                 return False
             self.logger.warning(
-                f"invalid tool call: invalid or malformed namespace @@{recipient}@@",
+                f"invalid tool call: invalid or malformed namespace: `{recipient}`.",
                 extra=self.log_extra,
             )
             self.manager._add_recovery_message(
@@ -109,20 +124,44 @@ class ToolHandler:
             return False
         return True
 
+    def _is_python(
+        self, recipient: str, treat_functions_python_as_builtin: bool = True
+    ) -> bool:
+        _name = AdapterToolNamespace.NATIVE_PYTHON.value
+        return (
+            len(recipient) > 0
+            and _name in self.tools
+            and (
+                recipient.startswith(_name)
+                or (
+                    treat_functions_python_as_builtin
+                    and recipient == f"functions.{_name}"
+                )
+            )
+        )
+
+    def _is_browser(self, recipient: str) -> bool:
+        _name = AdapterToolNamespace.NATIVE_BROWSER.value
+        return (
+            len(recipient) > 0
+            and _name in self.tools
+            and recipient.startswith(f"{_name}")
+        )
+
+    def _is_native_tool(self, recipient: str) -> bool:
+        return self._is_python(recipient) or self._is_browser(recipient)
+
     def _is_valid_tool(self, recipient: str, state: Optional[str] = None) -> bool:
-        namespace = [i for i in self.namespaces if recipient.startswith(i)]
-        tool = recipient.split(f"{namespace[0]}.")[-1]
-        is_python = recipient.startswith("python")
-        is_browser = recipient.startswith("browser")
-        is_native_tool = is_python or is_browser
-        # TODO: handle python and browser, namespaces will get fucked
-        # but also need to patch original inputs to include native tools
-        # since downstream in tool_plugin_responses we'll check for tools present in inputs
-        if not is_native_tool and tool not in self.tool_names:
+        if self._is_native_tool(recipient):
+            return True
+
+        tool_name = recipient.split("functions.")[-1]
+        tool = self.tools.get(tool_name)
+        if not tool:
             if state is not None:
                 return False
             self.logger.warning(
-                f"invalid tool call: invalid or malformed tool name @@{recipient}@@",
+                f"invalid tool call: invalid or malformed tool name `{recipient}`",
                 extra=self.log_extra,
             )
             self.manager._add_recovery_message(
@@ -135,7 +174,6 @@ class ToolHandler:
                 "eg only `python` to execute python code or `browser.open` to visit a web page."
             )
             return False
-            self.manager.response_buffer
         return True
 
     def is_valid(self, recipient: Optional[str], state: Optional[str] = None) -> bool:
@@ -177,26 +215,38 @@ class ToolHandler:
 
     @staticmethod
     async def run_tool(
-        tool: Union[PythonTool, BurritoBrowser], message: Message
+        tool: Union[BurritoPython, BurritoBrowser], message: Message
     ) -> List[Message]:
         results = []
         async for msg in tool.process(message):
             results.append(msg)
-
         return results
 
     async def _call_native_tool(
-        self, tool: Union[PythonTool, BurritoBrowser], message: Message
+        self, tool: Union[BurritoPython, BurritoBrowser], message: Message
     ):
+        t_name, t_params = message.recipient, message.content[0].text  # type: ignore
         try:
-            # print(f"Calling tool: {tool.name} with params: {message.content[0].text}")
+            if settings.DEBUG_TOOL_IO:
+                self.logger.debug(
+                    f"Calling `{t_name}` tool params `{t_params}.", extra=self.log_extra
+                )
+            else:
+                self.logger.debug(
+                    f"calling tool `{t_name}`.", extra=self.log_extra
+                )
             tool_result = await self.run_tool(tool, message)
-            # txt = tool_result[0].content[0].text
-            # from burrito.common.utils import simple_markdown_renderer
-            # print(simple_markdown_renderer(txt))
+            if settings.DEBUG_TOOL_IO:
+                self.logger.debug(
+                    (
+                        f"Tool result for `{t_name}` tool with params `{t_params}:"
+                        f"{tool_result[0].content[0].text}"  # type: ignore
+                    ),
+                    extra=self.log_extra,
+                )
         except Exception as e:
-            msg = f"**Error calling {tool.name} tool**: {repr(e)}"
-            self.logger.warning(msg, extra=self.log_extra)
+            msg = f"**Error calling `{t_name}`**:{repr(e)}"
+            self.logger.error(msg, extra=self.log_extra)
             self.manager._add_recovery_message(msg)
             return self.manager._recover_state()
         self.manager._update_state_with_tool_result(tool_result)
@@ -215,17 +265,12 @@ class ToolHandler:
         if not recipient:
             return
 
-        is_python = recipient == "python" or recipient.startswith("functions.python")
-        is_browser = recipient.startswith("browser.")
-
         tool = None
-        if is_python:
-            tool = self.manager.manager.python_tool
-        if is_browser:
-            tool = self.manager.manager.browser_tool
+        if self._is_python(recipient):
+            tool = self.python_tool
+        if self._is_browser(recipient):
+            tool = self.browser_tool
             self.manager.manager.browser_tool_used = True
-
         if tool is None:
             return
-
         await self._call_native_tool(tool, last_message)

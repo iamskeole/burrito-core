@@ -5,10 +5,17 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
-from .adapter_reasoning import AdapterReasoningParam
-from .adapter_function_tool_param import AdapterFunctionToolParamResponses
-from .adapter_web_search_tool_param import AdapterWebSearchToolParamResponses
-
+from burrito.types.adapter.adapter_reasoning import AdapterReasoningParam
+from burrito.types.adapter.adapter_function_tool_param import (
+    AdapterFunctionToolParamResponses,
+)
+from burrito.types.adapter.adapter_browser_tool_param import (
+    AdapterBrowserToolParamResponses,
+)
+from burrito.types.adapter.adapter_python_tool_param import (
+    AdapterPythonToolParamResponses,
+)
+from openai.types.responses.easy_input_message_param import EasyInputMessageParam
 # TODO: investiagate whether we can support custom tools
 # harmony only seems to support defining regular function tools
 # with name, description, params; no special formatting instructions
@@ -17,18 +24,18 @@ from .adapter_web_search_tool_param import AdapterWebSearchToolParamResponses
 # from .adapter_custom_tool_param import AdapterCustomToolParamResponses
 
 
-class UserMessageContentTextParamResponses(BaseModel):
+class InputTextParamResponses(BaseModel):
     type: Literal["input_text"]
     text: str
 
 
-class UserMessageContentImageParamResponses(BaseModel):
+class InputImageParamResponses(BaseModel):
     type: Literal["input_image"]
     image_url: str
 
 
 ContentPartInputText = Annotated[
-    Union[UserMessageContentTextParamResponses, UserMessageContentImageParamResponses],
+    Union[InputTextParamResponses, InputImageParamResponses],
     Field(discriminator="type"),
 ]
 
@@ -39,21 +46,42 @@ class ContentPartOutputTextParamResponses(BaseModel):
     annotations: Optional[List[Any]] = None
 
 
-class UserMessageParamResponses(BaseModel):
-    type: Literal["message"]
-    role: Literal["user", "developer"]
+class BaseInputMessageParamResponses(BaseModel):
+    type: Literal["message"] = "message"
     content: Union[
         str,
         List[
             Annotated[
                 Union[
-                    UserMessageContentTextParamResponses,
-                    UserMessageContentImageParamResponses,
+                    InputTextParamResponses,
+                    InputImageParamResponses,
                 ],
                 Field(discriminator="type"),
             ],
         ],
     ]
+
+
+class UserInputMessageParamResponses(BaseInputMessageParamResponses):
+    role: Literal["user"]
+
+
+class DeveloperInputMessageParamResponses(BaseInputMessageParamResponses):
+    role: Literal["developer"]
+
+
+class SystemInputMessageParamResponses(BaseInputMessageParamResponses):
+    role: Literal["system"]
+
+
+EasyInputParamResponses = Annotated[
+    Union[
+        UserInputMessageParamResponses,
+        DeveloperInputMessageParamResponses,
+        SystemInputMessageParamResponses,
+    ],
+    Field(discriminator="role"),
+]
 
 
 class AssistantReasoningContent(BaseModel):
@@ -62,7 +90,7 @@ class AssistantReasoningContent(BaseModel):
 
 
 class AssistantReasoningParamResponses(BaseModel):
-    type: Literal["reasoning"]
+    type: Literal["reasoning"] = "reasoning"
     summary: List[Any]
     content: List[AssistantReasoningContent]
 
@@ -73,9 +101,9 @@ class AssistantMessageContentParamResponses(BaseModel):
 
 
 class AssistantMessageParamResponses(BaseModel):
-    type: Literal["message"]
+    type: Literal["message"] = "message"
     role: Literal["assistant"]
-    content: List[ContentPartOutputTextParamResponses]
+    content: Union[str, List[ContentPartOutputTextParamResponses]]
 
 
 class CustomToolCallOutputParamResponses(BaseModel):
@@ -110,13 +138,20 @@ ToolCallInputParamResponses = Annotated[
 ]
 
 
+class WebSearchCallOutputParamResponses(BaseModel):
+    type: Literal["web_search_call"]
+    status: Literal["in_progress", "searching", "completed"]
+    action: Optional[Dict[str, Any]] = None
+
+
 InputItemParamResponses = Union[
-    UserMessageParamResponses,
+    EasyInputParamResponses,
     AssistantMessageParamResponses,
     AssistantReasoningParamResponses,
     ToolCallInputParamResponses,
     ToolCallOutputParamResponses,
     CustomToolCallOutputParamResponses,
+    WebSearchCallOutputParamResponses,  # TODO: finish plugin implementation + code interpreter
 ]
 
 
@@ -133,9 +168,10 @@ class AdapterCreateParamsResponses(BaseModel):
     tools: Optional[
         List[
             Union[
-                AdapterFunctionToolParamResponses, AdapterWebSearchToolParamResponses
-                # see todo note above
-                # AdapterCustomToolParamResponses,
+                AdapterBrowserToolParamResponses,
+                AdapterPythonToolParamResponses,
+                AdapterFunctionToolParamResponses,
+                # AdapterCustomToolParamChat, # see todo note above
             ]
         ]
     ] = None

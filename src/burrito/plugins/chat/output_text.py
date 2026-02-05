@@ -14,7 +14,7 @@ from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunkChoice,
     AdapterChatCompletionChunkChoiceDelta,
 )
-
+from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.chat.base_plugin import BasePluginChat
 
 
@@ -22,7 +22,6 @@ class OutputTextPluginChat(BasePluginChat):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
         self.manager = manager
-        self.content_index = 0
 
         self.has_partial_citations = False
         self.annotations: list[dict[str, Any]] = []
@@ -44,8 +43,9 @@ class OutputTextPluginChat(BasePluginChat):
         # whereas my code creates
         #   msg 1 with blank content + tool calls and
         #   msg 2 with content == actual code for the tool
-        # need to figure this out, seems the last piece? before i can finalize message mapping ...
-        return {"output_text"}
+        # need to figure this out, seems the last piece?
+        # before i can finalize message mapping ...
+        return {AdapterConversationState.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         pass  # no enter event for chat/completions
@@ -61,7 +61,9 @@ class OutputTextPluginChat(BasePluginChat):
             f"Expected a ChatCompletionChunk, but got {type(self.manager.output_object[0])}"
         )
 
-        browser_tool = self.manager.manager.browser_tool
+        browser_tool = self.manager.tool_handler.browser_tool
+        if browser_tool is None:
+            return
 
         # we normalize on the full current text to get the right indices in citations
         (
@@ -93,18 +95,6 @@ class OutputTextPluginChat(BasePluginChat):
             if url not in self.current_citations:
                 self.current_citations.append(url)
             self.annotations.append(a)
-            # citation = AnnotationURLCitation(**a)
-            # event = ResponseOutputTextAnnotationAddedEvent(
-            #     type="response.output_text.annotation.added",
-            #     output_index=self.manager.output_index,
-            #     content_index=self.content_index,
-            #     sequence_number=self.manager.sequence_number,
-            #     item_id=output_item.id,
-            #     annotation_index=len(self.annotations),
-            #     annotation=citation,
-            # )
-            # await self.push_event(event)
-            # self.content_index += 1
 
     async def handle_on_token(self, token: AdapterCompletionToken):
         assert isinstance(self.manager.output_object, List), (
@@ -130,10 +120,8 @@ class OutputTextPluginChat(BasePluginChat):
             ),
         )
         chunk = self.build_chunk_object(choice)
-
         self.manager.output_object.append(chunk)
-        await self.push_event(chunk)
-        self.content_index += 1
+        await self.put_event(chunk)
 
         self.current_output_text_content += self.output_delta_buffer
         self.output_delta_buffer = ""

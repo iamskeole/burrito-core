@@ -81,7 +81,7 @@ class BurritoBrowser(SimpleBrowserTool):
                 _tool = i
                 break
 
-        if _tool is None:
+        if _tool is None or _tool.parameters is None:
             return
 
         _tool.parameters["properties"]["query"] = {
@@ -126,7 +126,7 @@ class BurritoBrowser(SimpleBrowserTool):
                 _tool = i
                 break
 
-        if _tool is None:
+        if _tool is None or _tool.parameters is None:
             return
 
         _tool.parameters["properties"]["is_docs_website"] = {
@@ -147,15 +147,14 @@ class BurritoBrowser(SimpleBrowserTool):
     # so we can use trafilatura for regular content and html parsing as a fallback for docs
     @function_the_model_can_call
     @handle_errors
-    async def search(# pyright: ignore[reportIncompatibleMethodOverride]
+    async def search(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         query: str,
-        # 4. Strict Python typing matches the TypeScript definition above
         locale: str = "en-US",
         language: str = "en",
         time_range: Literal["day", "week", "month", "year", "alltime"] = "alltime",
         topn: int = 10,
-        top_n: int = 10,  # Keep for backward compatibility (legacy param)
+        top_n: int = 10,
         source: str | None = None,
     ) -> AsyncIterator[Message]:
         limit = topn if topn != 10 else top_n
@@ -175,11 +174,10 @@ class BurritoBrowser(SimpleBrowserTool):
             msg = maybe_truncate(str(e))
             raise BackendError(f"Error during search for `{query}`: {msg}") from e
 
-        # 6. Add results to state and render the page
         self.tool_state.add_page(search_page)
         yield await self.show_page_safely(loc=0)
 
-    async def _open_url(# pyright: ignore[reportIncompatibleMethodOverride]
+    async def _open_url(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, url: str, direct_url_open: bool, is_docs_website: bool
     ) -> PageContents:
         """Use the cache, if available."""
@@ -225,8 +223,8 @@ class BurritoBrowser(SimpleBrowserTool):
 
             if id >= 0:  # click a link
                 try:
-                    # TODO: figure out browser 'session' at request id / session level, 
-                    # otherwise the model thinks it has history, 
+                    # TODO: figure out browser 'session' at request id / session level,
+                    # otherwise the model thinks it has history,
                     # but refreshing browser will not, so wasted compute
                     url = curr_page.urls[str(id)]
                 except KeyError as e:
@@ -263,6 +261,7 @@ class BurritoBrowser(SimpleBrowserTool):
 
         yield await self.show_page_safely(loc=loc, num_lines=num_lines)
 
+    # TODO: figure out why line split fails (very infrequently, but it does) and fix it.. somehow
     def augment_annotation(self, annotation: dict[str, Any]) -> dict[str, Any]:
         url = annotation["url"]
         page = self.tool_state.get_page_by_url(url)

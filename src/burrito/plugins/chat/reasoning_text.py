@@ -11,17 +11,24 @@ from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunkChoice,
     AdapterChatCompletionChunkChoiceDelta,
 )
+from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.chat.base_plugin import BasePluginChat
 
 
 class ReasoningTextPluginChat(BasePluginChat):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
-        self.content_index = 0
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {"reasoning"}
+        return {
+            # NOTE: if we comment out .REASONING, only shows preamble to users
+            # this is the official guideline for gpt-oss, but since we're
+            # running locally, responsibility should be client's, we expose
+            # everything here so caller can decide ui stuff
+            AdapterConversationState.REASONING,
+            AdapterConversationState.PREAMBLE,
+        }
 
     async def handle_on_enter_state(self):
         pass  # no enter event for chat/completions
@@ -43,10 +50,8 @@ class ReasoningTextPluginChat(BasePluginChat):
             ),
         )
         chunk = self.build_chunk_object(choice)
-
         self.manager.output_object.append(chunk)
-        await self.push_event(chunk)
-        self.content_index += 1
+        await self.put_event(chunk)
 
     async def handle_on_exit_state(self):
         pass  # no exit event for chat/completions

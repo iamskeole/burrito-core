@@ -7,15 +7,21 @@ if TYPE_CHECKING:
     from burrito.types.adapter import AdapterCompletionToken
 
 from openai.types.responses.response import Response
-from openai.types.responses.response_content_part_done_event import (
-    PartReasoningText,
-    ResponseContentPartDoneEvent,
-)
 from openai.types.responses.response_output_item_added_event import (
     ResponseOutputItemAddedEvent,
 )
 from openai.types.responses.response_output_item_done_event import (
     ResponseOutputItemDoneEvent,
+)
+from openai.types.responses.response_content_part_added_event import (
+    PartReasoningText as PartReasoningTextAdded,
+)
+from openai.types.responses.response_content_part_done_event import (
+    PartReasoningText as PartReasoningTextDone,
+    ResponseContentPartDoneEvent,
+)
+from openai.types.responses.response_content_part_added_event import (
+    ResponseContentPartAddedEvent,
 )
 from openai.types.responses.response_reasoning_item import (
     Content,
@@ -27,7 +33,7 @@ from openai.types.responses.response_reasoning_text_delta_event import (
 from openai.types.responses.response_reasoning_text_done_event import (
     ResponseReasoningTextDoneEvent,
 )
-
+from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
 
@@ -35,29 +41,55 @@ from burrito.common.utils import random_uuid
 class ReasoningTextPluginResponses(BasePluginResponses):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
+        # hardcoded, not incremented, to match gpt-oss reference implementation
+        # only one content item, which means somehow multiple are allowed in .content=[]?
         self.content_index = 0
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {"reasoning"}
+        return {
+            # NOTE: if we comment out .REASONING, only shows preamble to users
+            # this is the official guideline for gpt-oss, but since we're
+            # running locally, responsibility should be client's, we expose
+            # everything here so caller can decide ui stuff
+            AdapterConversationState.REASONING,
+            AdapterConversationState.PREAMBLE,
+        }
 
     # TODO: handle content_part_added event
     async def handle_on_enter_state(self):
+        output_object = self.manager.output_object
+        assert isinstance(self.manager.output_object, Response), (
+            f"Expected a Response, but got {type(output_object)}"
+        )
         self.manager.output_index += 1
         output_item = ResponseReasoningItem(
             id=f"rs_{random_uuid()}",
             summary=[],
             type="reasoning",
-            content=[Content(text="", type="reasoning_text")],
+            content=[],
             status="in_progress",
         )
-        event = ResponseOutputItemAddedEvent(
+        event_item = ResponseOutputItemAddedEvent(
             item=output_item,
             output_index=self.manager.output_index,
             type="response.output_item.added",
             sequence_number=self.manager.sequence_number,
         )
-        await self.push_event(event, output_item)
+        self.manager.output_object.output.append(output_item)
+        await self.put_event(event_item)
+
+        # sending blank text on content part added, per the reference
+        # implementation (api_server.py in gpt-oss responses)
+        event_content = ResponseContentPartAddedEvent(
+            type="response.content_part.added",
+            content_index=self.content_index,
+            output_index=self.manager.output_index,
+            item_id=output_item.id,
+            part=PartReasoningTextAdded(text="", type="reasoning_text"),
+            sequence_number=self.manager.sequence_number,
+        )
+        await self.put_event(event_content)
 
     async def handle_on_token(self, token: AdapterCompletionToken):
         assert isinstance(self.manager.output_object, Response), (
@@ -72,7 +104,6 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             f"Expected list[Content], but got {type(output_item.content)}"
         )
 
-        delta = Content(text=token.text, type="reasoning_text")
         event = ResponseReasoningTextDeltaEvent(
             content_index=self.content_index,
             delta=token.text,
@@ -81,9 +112,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.reasoning_text.delta",
         )
-        output_item.content.append(delta)
-        await self.push_event(event)
-        self.content_index += 1
+        await self.put_event(event)
 
     # TODO: do we override the output_item at the end to only include
     # a single content item with the full reasoning text, or do we leave
@@ -108,10 +137,9 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             f"Expected Cintent but got {[type(i) for i in output_item.content]}"
         )
 
-        text = "".join([i.text for i in output_item.content])
-
+        text = self.manager.parser.messages[-1].content[0].text  # type: ignore
         content = Content(text=text, type="reasoning_text")
-        delta = PartReasoningText(text=text, type="reasoning_text")
+        delta = PartReasoningTextDone(text=text, type="reasoning_text")
         output_item.content = [content]
 
         event_reasoning_done = ResponseReasoningTextDoneEvent(
@@ -122,6 +150,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             text=text,
             type="response.reasoning_text.done",
         )
+        await self.put_event(event_reasoning_done)
 
         event_content_part_done = ResponseContentPartDoneEvent(
             content_index=self.content_index,
@@ -131,6 +160,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.content_part.done",
         )
+        await self.put_event(event_content_part_done)
 
         event_output_item_done = ResponseOutputItemDoneEvent(
             item=output_item,
@@ -138,9 +168,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.output_item.done",
         )
-        await self.push_event(event_reasoning_done)
-        await self.push_event(event_content_part_done)
-        await self.push_event(event_output_item_done)
+        await self.put_event(event_output_item_done)
 
     async def on_enter_state(self, state: str):
         await self.handle_on_enter_state()

@@ -101,7 +101,7 @@ def is_native_tool(parser: StreamableParser) -> bool:
     last_message = messages[-1] if messages else None
     last_recipient = last_message.recipient if last_message else None
     last_channel = last_message.channel if last_message else None
-    
+
     this_recipient = parser.current_recipient
     this_channel = parser.current_channel
 
@@ -141,46 +141,57 @@ def is_native_tool_call(
     return is_tool_call(tokens) and is_native_tool(parser)
 
 
-def map_state(
-    parser: StreamableParser, tokens: List[AdapterCompletionToken]
-) -> AdapterConversationState:
-    if is_created(parser):
-        return AdapterConversationState.CREATED
-    elif is_in_progress(parser):
-        return AdapterConversationState.IN_PROGRESS
-    elif is_reasoning(parser):
-        return AdapterConversationState.REASONING
-    elif is_reasoning_end(parser, tokens):
-        return AdapterConversationState.REASONING_END
-    elif is_preamble(parser):
-        return AdapterConversationState.PREAMBLE
-    elif is_native_tool_input_start(parser):
-        return AdapterConversationState.NATIVE_TOOL_INPUT_START
-    elif is_native_tool_input(parser):
-        return AdapterConversationState.NATIVE_TOOL_INPUT
-    elif is_native_tool_call(parser, tokens):
-        return AdapterConversationState.NATIVE_TOOL_CALL
-    elif is_tool_input_start(parser):
-        return AdapterConversationState.TOOL_INPUT_START
-    elif is_tool_input(parser):
-        return AdapterConversationState.TOOL_INPUT
-    elif is_tool_call(tokens):
-        return AdapterConversationState.TOOL_CALL
-    elif is_output(parser):
-        return AdapterConversationState.OUTPUT_TEXT
-    elif is_return(tokens):
-        return AdapterConversationState.COMPLETED
-    else:
-        return AdapterConversationState.TRANSITION
-
-
 class TransitionHandler:
     def __init__(self, manager: "AdapterStateHandler"):
         self.manager = manager
 
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"ath_{self.log_id}"}
+        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
+
+    def map_state(self) -> AdapterConversationState:
+        parser = self.manager.parser
+        messages = parser.messages
+        tokens = self.manager.response_tokens
+        prev_recipient = messages[-1].recipient if messages else None
+        this_recipient = parser.current_recipient
+        recipient = this_recipient or prev_recipient or ""
+        is_native_tool = self.manager.tool_handler._is_native_tool(recipient)
+
+        if is_created(parser):
+            return AdapterConversationState.CREATED
+        elif is_in_progress(parser):
+            return AdapterConversationState.IN_PROGRESS
+        elif is_reasoning(parser):
+            return AdapterConversationState.REASONING
+        elif is_reasoning_end(parser, tokens):
+            return AdapterConversationState.REASONING_END
+        elif is_preamble(parser):
+            return AdapterConversationState.PREAMBLE
+        # elif is_native_tool_input_start(parser):
+        #     return AdapterConversationState.NATIVE_TOOL_INPUT_START
+        # elif is_native_tool_input(parser):
+        #     return AdapterConversationState.NATIVE_TOOL_INPUT
+        # elif is_native_tool_call(parser, tokens):
+        #     return AdapterConversationState.NATIVE_TOOL_CALL
+        elif is_tool_input_start(parser):
+            if is_native_tool:
+                return AdapterConversationState.NATIVE_TOOL_INPUT_START
+            return AdapterConversationState.TOOL_INPUT_START
+        elif is_tool_input(parser):
+            if is_native_tool:
+                return AdapterConversationState.NATIVE_TOOL_INPUT
+            return AdapterConversationState.TOOL_INPUT
+        elif is_tool_call(tokens):
+            if is_native_tool:
+                return AdapterConversationState.NATIVE_TOOL_CALL
+            return AdapterConversationState.TOOL_CALL
+        elif is_output(parser):
+            return AdapterConversationState.OUTPUT_TEXT
+        elif is_return(tokens):
+            return AdapterConversationState.COMPLETED
+        else:
+            return AdapterConversationState.TRANSITION
 
     def _is_valid_transition(self, new_state: AdapterConversationState) -> bool:
         manager = self.manager
@@ -190,6 +201,7 @@ class TransitionHandler:
         last_recipient = last_message.recipient if last_message else None
         current_recipient = parser.current_recipient
         channel = last_message.channel if last_message else None
+        self.manager.response_buffer
 
         state_tool_input_start = AdapterConversationState.TOOL_INPUT_START
         state_reasoning = AdapterConversationState.REASONING
@@ -201,12 +213,30 @@ class TransitionHandler:
         channel_commentary = AdapterAssistantChannel.COMMENTARY.value
         channel_final = AdapterAssistantChannel.FINAL.value
 
-        if new_state == state_tool_call:
-            self.logger.info(
-                (f"tool call: {last_recipient or parser.current_recipient}"),
+        # sometimes assistant will use tool name as channel, so we catch that before
+        # wasting tokens to complete the full command
+        # <|channel|>analysis<|message|>Check file.<|end|>
+        # <|start|>assistant<|channel|>bash to=functions.shell<|channel|>commentary<|message|>{"command":["bash","-lc","sed -n '1,200p' TODO.md"]}<|return|>
+        if messages and channel not in [channel_analysis, channel_commentary, channel_final]:
+            self.logger.warning(
+                f"Invalid output: bad channel `{channel}`.",
                 extra=self.log_extra,
             )
+            manager._add_recovery_message(
+                "**Invalid output**: bad channel\n"
+                "Valid channels: analysis, commentary, final. "
+                "Channel must be included for every message. "
+                "Calls to these tools must go to the commentary channel: 'functions'. "
+                f"You are trying to output on '{channel}'."
+            )
+            return False
 
+        if new_state == state_tool_call:
+            self.logger.debug(
+                (f"calling tool `{last_recipient or parser.current_recipient}`."),
+                extra=self.log_extra,
+            )
+        # TODO: check whether this is redundant with tool_handler._is_valid_tool?
         if new_state == state_tool_input_start and not manager.tool_handler.is_valid(
             current_recipient
         ):
@@ -258,25 +288,28 @@ class TransitionHandler:
                 f"invalid state: assistant trying to return outside final channel, on {channel}.\n{self.manager.response_buffer}",
                 extra=self.log_extra,
             )
+            last_token = manager.response_tokens[-1].text
             manager._add_recovery_message(
-                "**Invalid output**: bad channel or return token.\n"
-                "- user messages must be issued on the final channel "
+                "**Invalid output**: bad return token.\n"
+                "- user messages must be issued on the 'final' channel "
                 "and end in a <|return|> token.\n"
                 "- calls to tools or functions must be issued on one of "
-                "(analysis, commentary) channels, include a namespace and "
-                "recipient (eg.: functions.shell) and end in a special <|call|> token."
+                "'analysis' or 'commentary' channels, include a namespace and "
+                "recipient (e.g.: functions.shell) and end in a special <|call|> token.\n"
                 "- transitional messages, if any, (eg.: analysis to commentary) must "
-                "end in a special <|end|> token."
+                "end in a special <|end|> token.\n"
+                "You are trying to output the token "
+                f"'{last_token}' on the channel '{channel}'."
             )
             return False
         return True
 
     def _update_state(self) -> AdapterConversationState:
-        parser = self.manager.parser
-        tokens = self.manager.response_tokens
-        new_state = map_state(parser, tokens)
+        old_state = self.manager.parser_state
+        new_state = self.map_state()
+        is_transition = new_state != old_state
 
-        if not self._is_valid_transition(new_state):
+        if is_transition and not self._is_valid_transition(new_state):
             return AdapterConversationState.ERROR
 
         self.manager.parser_state = new_state
@@ -292,11 +325,10 @@ class TransitionHandler:
             return self.manager._recover_state()
 
         if new_state != old_state:
-            pass # TODO: log only if debug
-            # self.logger.info(
-            #     f"state change: {old_state.value:<14} -> {new_state.value}",
-            #     extra=self.log_extra,
-            # )
+            self.logger.debug(
+                f"state change: {old_state.value:<18} -> {new_state.value}",
+                extra=self.log_extra,
+            )
 
             for plugin in self.manager._active_plugins_by_state.get(old_state, []):
                 await plugin.on_exit_state(old_state)

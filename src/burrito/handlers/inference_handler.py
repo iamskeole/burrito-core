@@ -5,14 +5,11 @@ import httpx
 from fastapi import Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from burrito.tools.browser.tool import BurritoBrowser
-from burrito.tools.python.tool import BurritoPython
-
 from burrito.handlers.conversation_handler import AdapterConversationHandler
 from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.types.adapter import AdapterCreateParams
 from burrito.common.config import settings
-
 
 
 async def run_inference(
@@ -20,6 +17,7 @@ async def run_inference(
     params: AdapterCreateParams,
     semaphore: asyncio.Semaphore,
     generator: AdapterGenerationHandler,
+    session_handler: AdapterSessionHandler,
 ) -> Union[StreamingResponse, JSONResponse]:
     forwarded_headers = {
         k: v
@@ -27,7 +25,7 @@ async def run_inference(
         if k.title() in [h.title() for h in settings.FORWARD_HEADERS]
     }
 
-    async def stream_with_semaphore(handler):
+    async def stream_with_semaphore(handler: AdapterConversationHandler):
         async with semaphore:
             async for chunk in handler.return_stream():
                 yield chunk
@@ -37,8 +35,7 @@ async def run_inference(
             request=request,
             params=params,
             generator=generator,
-            python_tool=BurritoPython(),
-            browser_tool=BurritoBrowser(),
+            session_handler=session_handler,
             forwarded_headers=forwarded_headers,
         )
         if params.stream:

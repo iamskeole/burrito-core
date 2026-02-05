@@ -150,7 +150,8 @@ class BrowserEngine:
                     "Accept-Language": "en-US,en;q=0.5",
                 },
                 allow_redirects=True,
-                timeout=aiohttp.ClientTimeout(PAGE_LOAD_TIMEOUT),
+                # in seconds, NOT ms
+                timeout=aiohttp.ClientTimeout(PAGE_LOAD_TIMEOUT // 1000),
             ) as response:
                 if response.status == 200:
                     content_type = response.headers.get("Content-Type", "").lower()

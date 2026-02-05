@@ -41,11 +41,10 @@ from burrito.types.adapter import AdapterCompletionToken
 from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
 
 
-class ToolPluginResponses(BasePluginResponses):
+class ToolInputPluginResponses(BasePluginResponses):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
         self.manager = manager
-        self.content_index = 0
 
     @property
     def subscribed_states(self) -> Set[str]:
@@ -72,7 +71,8 @@ class ToolPluginResponses(BasePluginResponses):
                 break
 
         assert tool is not None, f"Could not map tool for {tool_name}"
-
+        # TODO: match the chat implementation, way more robust
+        # need to register tool call in tool_handler
         match tool.type:
             case AdapterToolType.PYTHON.value:
                 return  # always handle "internally" in model CoT
@@ -159,9 +159,12 @@ class ToolPluginResponses(BasePluginResponses):
                 return
 
     async def handle_on_enter_state(self):
-        entry = self.manager.tool_handler.register_tool_call()
+        output_object = self.manager.output_object
+        assert isinstance(self.manager.output_object, Response), (
+            f"Expected a Response, but got {type(output_object)}"
+        )
         self.manager.output_index += 1
-
+        entry = self.manager.tool_handler.register_tool_call()
         tool: AdapterConversationInputTool = entry["tool"]
         output_item = self.build_output_item(tool.name)
         if not output_item:
@@ -173,7 +176,8 @@ class ToolPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.output_item.added",
         )
-        await self.push_event(event, output_item)
+        self.manager.output_object.output.append(output_item)
+        await self.put_event(event)
 
     async def handle_on_token(self, token: AdapterCompletionToken):
         assert isinstance(self.manager.output_object, Response), (
@@ -183,7 +187,7 @@ class ToolPluginResponses(BasePluginResponses):
         try:
             output_item = self.manager.output_object.output[self.manager.output_index]
         except IndexError:
-            raise # TODO: investigate, why out of range?
+            raise  # TODO: investigate, why out of range?
         if not output_item:
             return
 
@@ -200,8 +204,7 @@ class ToolPluginResponses(BasePluginResponses):
 
         # TODO: figure out custom tools and native tools and mcp and fuckme..
         event = self.build_output_item_delta_event(token, output_item)
-        await self.push_event(event)
-        self.content_index += 1
+        await self.put_event(event)
 
     async def handle_on_exit_state(self):
         assert isinstance(self.manager.output_object, Response), (
@@ -229,7 +232,7 @@ class ToolPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.output_item.done",
         )
-        await self.push_event(event_output_item_done)
+        await self.put_event(event_output_item_done)
 
     async def on_enter_state(self, state: str):
         await self.handle_on_enter_state()

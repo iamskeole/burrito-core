@@ -14,7 +14,7 @@ class AdapterGenerationHandler:
         self.can_stream = True
         self.log_id = random_uuid()
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"agh_{self.log_id}"}
+        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
 
     async def _generate_native(
         self, prompt_token_ids: List[int], params: AdapterCreateParams
@@ -28,15 +28,13 @@ class AdapterGenerationHandler:
         headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         try:
-            async for completion in generate_hosted(
-                prompt_token_ids, params, headers
-            ):
+            async for completion in generate_hosted(prompt_token_ids, params, headers):
                 if not self.can_stream:
-                    self.logger.warning("generator: breaking loop", extra=self.log_extra)
+                    self.logger.debug("generator: breaking loop", extra=self.log_extra)
                     break
                 yield completion
         finally:
-            self.logger.info("generator: cleaning up", extra=self.log_extra)
+            self.logger.debug("generator: cleaning up", extra=self.log_extra)
 
     async def generate(
         self,

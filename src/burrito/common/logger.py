@@ -1,11 +1,10 @@
-# burrito/common/logger.py
 import logging
 from uvicorn.logging import DefaultFormatter
 import sys
 
+from burrito.common.config import settings
+
 class FastAPILogger:
-    """Logger that mimics Uvicorn style and supports extra fields like log_id."""
-    
     _initialized = {}
 
     @staticmethod
@@ -14,13 +13,14 @@ class FastAPILogger:
         if name in FastAPILogger._initialized:
             return logging.getLogger(name)
 
+        level = getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
         logger = logging.getLogger(name)
-        logger.setLevel(logging.INFO)
+        logger.setLevel(level)
         logger.propagate = False  # prevent double logs
 
         # create a stream handler that mimics Uvicorn style
         ch = logging.StreamHandler(sys.stdout)
-        ch.setLevel(logging.INFO)
+        ch.setLevel(level)
 
         class Formatter(DefaultFormatter):
             def format(self, record):

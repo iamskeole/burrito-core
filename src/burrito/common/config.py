@@ -5,7 +5,16 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DEBUG: bool = True
     LOG_LEVEL: str = "debug"
+
+    DEBUG_TOOL_IO: bool = False
+    DEBUG_COMPLETIONS: bool = False
+    DEBUG_PROMPT: bool = False
+    DEBUG_OUTGOING_EVENTS: bool = False
+
     CORS_ALLOWED_ORIGINS: list[str] = ["*"]
+    CORS_ALLOWED_METHODS: list[str] = ["*"]
+    CORS_ALLOWED_HEADERS: list[str] = ["*"]
+    CORS_ALLOWED_CREDENTIALS: bool = True
 
     MAX_REQUEST_BODY_SIZE: int = 1048576  # 1MB in bytes
     MAX_CONCURRENT_INFERENCE_REQUESTS: int = 4  # > this  wait in fifo queue
@@ -23,7 +32,7 @@ class Settings(BaseSettings):
     DEFAULT_MODEL_NAME: str = "openai/gpt-oss-20b"
     DEFAULT_MODEL_CTX_LEN: int = 131072
 
-    DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "high"
+    DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
     DEFAULT_COMPLETION_BEST_OF: Literal[1] = 1
@@ -33,6 +42,9 @@ class Settings(BaseSettings):
 
     IS_PYTHON_TOOL_ENABLED: bool = True
     IS_BROWSER_TOOL_ENABLED: bool = True
+
+    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
+    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
 
     PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
 

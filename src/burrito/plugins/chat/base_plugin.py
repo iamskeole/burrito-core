@@ -1,5 +1,7 @@
-import json
 from typing import TYPE_CHECKING, Optional, List
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import AdapterStateHandler
 
 from openai.types.completion_usage import CompletionUsage
 from openai.types.chat.chat_completion_message_function_tool_call import (
@@ -28,9 +30,6 @@ from burrito.types.adapter.adapter_chat_completion import (
 
 from burrito.common.utils import random_uuid, unix_timestamp, get_system_fingerprint
 from burrito.plugins.base_plugin import BasePlugin
-
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
 
 
 class BasePluginChat(BasePlugin):
@@ -70,7 +69,14 @@ class BasePluginChat(BasePlugin):
             "object": "chat.completion.chunk",
             "created": unix_timestamp(),
             "model": self.manager.manager.params.model,
-            "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}}],
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        # "role": "assistant", "content": "",
+                    },
+                }
+            ],
             "service_tier": "default",
             "system_fingerprint": f"{get_system_fingerprint()}",
         }
@@ -79,6 +85,11 @@ class BasePluginChat(BasePlugin):
         return completion
 
     def build_output_object(self) -> None:
+        # we build full response here as we're keeping track of
+        # streamed tools at the plugin level (state can be improved..)
+        # so return_json has a full object to just .model_dump()
+        if self.manager.stream_to_caller:
+            return
         assert isinstance(self.manager.output_object, list), (
             f"Expected list, got {type(self.manager.output_object)}"
         )
@@ -107,10 +118,13 @@ class BasePluginChat(BasePlugin):
             if delta.tool_calls:
                 tool_call_buffer += delta.tool_calls
 
+        # matching official openai implementation, keyed by idnex
+        # see https://platform.openai.com/docs/guides/function-calling?api-mode=chat
         for part in tool_call_buffer:
             assert part.function is not None, "Expected a function, got None."
-            if part.id not in tools_called:
-                tools_called[part.id] = {
+            if part.index not in tools_called:
+                tools_called[part.index] = {
+                    "index": part.index,
                     "id": part.id,
                     "name": part.function.name,
                     "type": part.type,
@@ -118,11 +132,16 @@ class BasePluginChat(BasePlugin):
                 }
             match part.function:
                 case AdapterChoiceDeltaToolCallFunction():
-                    tools_called[part.id]["content"] += part.function.arguments
+                    tools_called[part.index]["content"] += part.function.arguments
                 case AdapterChoiceDeltaCustomCallFunction():
-                    tools_called[part.id]["content"] += part.function.input
+                    tools_called[part.index]["content"] += part.function.input
                 case _:
-                    raise TypeError(f"Expected ChoiceDeltaToolCall, got {type(part)}")
+                    raise TypeError(
+                        "Expected "
+                        "`AdapterChoiceDeltaToolCallFunction` or "
+                        "`AdapterChoiceDeltaCustomCallFunction`, "
+                        f"got {type(part)}"
+                    )
 
         for i in tools_called.values():
             tc = None
@@ -149,7 +168,7 @@ class BasePluginChat(BasePlugin):
         message = AdapterChatCompletionChoiceMessage(
             content=content,
             reasoning_content=reasoning_content,
-            reasoning_summary=None,  # TODO?
+            reasoning_summary=None,  # TODO implement reasoning_text_summary plugin?
             tool_calls=tool_calls,
             role="assistant",
         )
@@ -171,10 +190,5 @@ class BasePluginChat(BasePlugin):
         )
         self.manager.output_object.append(completion)
 
-    async def push_event(self, event: AdapterChatCompletionChunk):
-        event_data = event.model_dump()
-        self.manager.events.append(event_data)
-
-        if self.manager.stream_to_caller:
-            encoded = (f"data: {json.dumps(event_data)}\n\n").encode("utf-8")
-            await self.manager.push_event(encoded)
+    async def put_event(self, event: AdapterChatCompletionChunk):
+        await self.manager.put_event(event)

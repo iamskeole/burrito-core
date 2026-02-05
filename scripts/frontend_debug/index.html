@@ -694,12 +694,6 @@
       },
       "required": ["symbol"]
     }
-  },
-  {
-    "type": "custom",
-    "name": "get_weather",
-    "description": "Get current weather by specifying open ended location.",
-    "format": {"type": "text"}
   }
 ]</textarea>
                 </div>
@@ -885,7 +879,8 @@
                 const text = Array.isArray(content) ? content.map(c => c.text || '').join('\n') : (typeof content === 'string' ? content : '');
                 div.textContent = text;
             } else if (role === 'tool-call') {
-                div.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${content.name}]<br><div style="margin-top:4px">${content.arguments || content.input || ''}</div>`;
+                console.log('toolcall', content)
+                div.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${content.call_id}] [${content.name}]<br><div style="margin-top:4px">${content.arguments || content.input || ''}</div>`;
             } else if (role === 'tool-output') {
                 div.innerHTML = `<span style="opacity:0.4">⬅️</span> <span style="font-weight:600">OUTPUT</span> [${content.call_id}]<br><div style="margin-top:4px">${content.output}</div>`;
             } else {
@@ -1033,10 +1028,12 @@
                 [isResponsesApi ? 'input' : 'messages']: transformedConv,
                 tools: tools.length > 0 ? transformedTools : undefined,
                 tool_choice: tools.length > 0 ? "auto" : undefined,
-                stream: isStreaming,
-                reasoning: {
-                    effort: reasoningEffortEl.value
-                }
+                stream: isStreaming
+            };
+            if (isResponsesApi) {
+                payload.reasoning = { effort: reasoningEffortEl.value }
+            } else {
+                payload.reasoning_effort = reasoningEffortEl.value
             };
             lastRequestEl.textContent = JSON.stringify(payload, null, 2);
             payloadSection.style.display = 'block';
@@ -1176,12 +1173,11 @@
                                             }
                                             if (tc.function.arguments) {
                                                 toolCallData.arguments += tc.function.arguments;
-                                                currentToolCallDiv.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${toolCallData.name}]<br><div style="margin-top:4px">${toolCallData.arguments}</div>`;
+                                                currentToolCallDiv.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${toolCallData.call_id}] [${toolCallData.name}]<br><div style="margin-top:4px">${toolCallData.arguments}</div>`;
                                             }
                                         }
                                     });
                                 }
-
                                 // Handling finish_reason implicitly at the end of stream
                             }
 
@@ -1189,7 +1185,7 @@
                             else if (event.type && (event.type.includes('arguments.delta') || event.type.includes('input.delta'))) {
                                 if (currentToolCallDiv) {
                                     toolCallData.arguments += event.delta;
-                                    currentToolCallDiv.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${toolCallData.name}]<br><div style="margin-top:4px">${toolCallData.arguments}</div>`;
+                                    currentToolCallDiv.innerHTML = `<span style="opacity:0.4">⚡</span> <span style="font-weight:600">CALL</span> [${toolCallData.call_id}] [${toolCallData.name}]<br><div style="margin-top:4px">${toolCallData.arguments}</div>`;
                                 }
                             }
                         } catch (e) {

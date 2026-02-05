@@ -1,38 +1,12 @@
-[   ] investigate custom tools; functionality implemented, up to the point of defining the tool using harmony, which doesn't seem to support anything outside 'standard' function tools; disabled in create params validation schema so requests using custom tools fail from start
+#### TODO
 
-[   ] structured outputs; figure out how openai does it, how is the schema enforced
+[o] [plugins/responses/tool_input.py](/src/burrito/plugins/responses/tool_input.py#L74)
++ refactor responses to match chat implementations (tool registry)
 
-[   ] stream=False in Codex CLI; doesn't seem to work, double check if client issue
+[o] [plugins/responses/native_tool_call.py](/src/burrito/plugins/responses/native_tool_call.py)
++ implement web search and code interpreter
++ do it properly, figure out a way to only call done event once successful
++ figure out if it can be replicated for chat (likely no)
 
-[   ] run benchmarks; see notes on phone for different tests collected, pick relevant; also, reproduce gpt-oss announcement / repo benchmarks first, as those give a reproducible target
-
-[   ] figure out why codex does repeats word-by-word model answer using /v1/chat/completions
-
-› tell me a joke
-• Why don't programmers like nature? Because it has too many bugs!
-
-• Why
-
-• don't
-
-• programmers
-
-• like
-
-• nature
-
-• ?
-
-• Because
-
-• it
-
-• has
-
-• too
-
-• many
-
-• bugs
-
-• !
+[x] [services/harmony/harmony_service_chat](/src/burrito/services/harmony/harmony_service_chat.py#L33)
++ prune reasoning: something still off with chat, responses ok
