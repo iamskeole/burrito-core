@@ -60,7 +60,6 @@ class OutputTextPluginResponses(BasePluginResponses):
     def subscribed_states(self) -> Set[str]:
         return {AdapterConversationState.OUTPUT_TEXT}
 
-    # TODO: handle content_part_added event
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object
         assert isinstance(self.manager.output_object, Response), (

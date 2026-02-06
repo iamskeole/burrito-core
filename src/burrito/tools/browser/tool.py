@@ -97,18 +97,15 @@ class BurritoBrowser(SimpleBrowserTool):
         _tool.parameters["properties"]["locale"] = {
             "type": "string",
             "description": browser_search_prompt.locale_description,
-            # "default": "en-US"
         }
         _tool.parameters["properties"]["language"] = {
             "type": "string",
             "description": browser_search_prompt.language_description,
-            # "default": "en-US"
         }
         _tool.parameters["properties"]["time_range"] = {
             "type": "string",
             "enum": ["day", "week", "month", "year", "alltime"],
             "description": "Restricts search results where relevant.",
-            # "default": "en-US"
         }
         _tool.parameters["required"] = [
             "query",
@@ -143,8 +140,6 @@ class BurritoBrowser(SimpleBrowserTool):
         self.patch_open_tool(config)
         return config
 
-    # TODO: do the same for .open() and add a param for is_docs_website
-    # so we can use trafilatura for regular content and html parsing as a fallback for docs
     @function_the_model_can_call
     @handle_errors
     async def search(  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -266,7 +261,10 @@ class BurritoBrowser(SimpleBrowserTool):
         url = annotation["url"]
         page = self.tool_state.get_page_by_url(url)
 
-        l_split = annotation["citation_marker"].split("-")
+        try:
+            l_split = annotation["citation_marker"].split("-")
+        except Exception:
+            return annotation
         l_start = int(l_split[0][1:])
         l_end = int(l_split[1][1:]) + 1
         lines_page = wrap_lines(text=page.text if page else "")

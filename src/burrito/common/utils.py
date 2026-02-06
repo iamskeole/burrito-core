@@ -9,6 +9,7 @@ import os
 from datetime import datetime, timezone
 from typing import get_type_hints
 
+from burrito import __version__
 
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
@@ -68,10 +69,7 @@ def get_stable_machine_id():
         return f"{platform.processor()}-{os.cpu_count()}"
 
 
-# TODO - get as dependency? taxing on each route or not?
-# TODO - remove hardcoded version string, figure out a way to run versions for burrito
-# and use that
-def get_system_fingerprint(version_string="1.0.0"):
+def get_system_fingerprint(version_string=__version__):
     # 1. Identify the Machine
     machine_id = get_stable_machine_id()
 

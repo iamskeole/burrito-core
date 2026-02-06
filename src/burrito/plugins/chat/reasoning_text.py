@@ -45,7 +45,7 @@ class ReasoningTextPluginChat(BasePluginChat):
         choice = AdapterChatCompletionChunkChoice(
             index=0,
             delta=AdapterChatCompletionChunkChoiceDelta(
-                role="assistant",  # TODO, maybe tool?
+                role="assistant",
                 reasoning_content=token.text,
             ),
         )

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 
+from burrito import __version__
 from burrito.routes.openai_v1 import chat, models, responses
 from burrito.common.config import settings
 
@@ -12,15 +13,16 @@ from burrito.common.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # start singletons / dependencies
-    # await browser_tool_singleton.start()
+    # eg: await some_singleton.start()
 
     yield
 
     # cleanup
-    # await browser_tool_singleton.stop()
+    # eg: await some_singleton.stop()
 
 
-app = FastAPI(lifespan=lifespan, title="burrito:harness", version="0.1.0")
+app = FastAPI(lifespan=lifespan, title="burrito:harness", version=__version__)
+
 
 @app.middleware("http")
 async def limit_body_size(request: Request, call_next):

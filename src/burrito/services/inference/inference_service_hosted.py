@@ -16,7 +16,7 @@ from burrito.types.adapter import AdapterCreateParams
 
 
 
-# TODO: handle cases where choices n > 1
+# TODO: handle cases where choices n > 1 ?
 def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
     # we exit if no logprobs, since we need logprobs to extract token ids
     choice_dict = data["choices"][0]
@@ -136,8 +136,6 @@ async def generate_hosted(
     url = settings.INFERENCE_BACKEND_BASE_URL.rstrip("/") + "/" + settings.INFERENCE_BACKEND_COMPLETIONS_PATH.lstrip("/")
     payload = build_payload(prompt_token_ids, params)
 
-    response_buffer = ""  # TODO: cleanup, debug only
-    # TODO try / except here, to catch unresponsive backend before post?
     try:
         async with httpx.AsyncClient(timeout=None) as client:
             async with client.stream(
@@ -194,7 +192,6 @@ async def generate_hosted(
                                     yield "[DONE]"
                                     break  # vllm sending usage on last message with no choices
                                 completion = map_completion_data(data, text_offset)
-                                response_buffer += completion.choices[0].text
                                 # typically to catch llama.cpp NOT sending
                                 # finish_reason on last completion, but adding a
                                 # new completion without an actual token attached

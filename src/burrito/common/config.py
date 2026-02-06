@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     LOG_LEVEL: str = "debug"
 
-    DEBUG_TOOL_IO: bool = False
+    DEBUG_TOOL_IO: bool = True
     DEBUG_COMPLETIONS: bool = False
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
@@ -35,9 +35,6 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
-    DEFAULT_COMPLETION_BEST_OF: Literal[1] = 1
-    DEFAULT_COMPLETION_N: Literal[1] = 1
-
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
 
     IS_PYTHON_TOOL_ENABLED: bool = True
@@ -46,7 +43,9 @@ class Settings(BaseSettings):
     IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
     IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
 
-    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
+    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = (
+        "dangerously_use_local_jupyter"
+    )
 
     USER_AGENT_BROWSE: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"
     USER_AGENT_SEARCH: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"

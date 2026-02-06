@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from openai_harmony import StreamableParser, StreamState
 
@@ -168,12 +168,6 @@ class TransitionHandler:
             return AdapterConversationState.REASONING_END
         elif is_preamble(parser):
             return AdapterConversationState.PREAMBLE
-        # elif is_native_tool_input_start(parser):
-        #     return AdapterConversationState.NATIVE_TOOL_INPUT_START
-        # elif is_native_tool_input(parser):
-        #     return AdapterConversationState.NATIVE_TOOL_INPUT
-        # elif is_native_tool_call(parser, tokens):
-        #     return AdapterConversationState.NATIVE_TOOL_CALL
         elif is_tool_input_start(parser):
             if is_native_tool:
                 return AdapterConversationState.NATIVE_TOOL_INPUT_START
@@ -203,6 +197,9 @@ class TransitionHandler:
         channel = last_message.channel if last_message else None
         self.manager.response_buffer
 
+        if new_state == AdapterConversationState.NATIVE_TOOL_DONE:
+            return True
+
         state_tool_input_start = AdapterConversationState.TOOL_INPUT_START
         state_reasoning = AdapterConversationState.REASONING
         state_tool_call = AdapterConversationState.TOOL_CALL
@@ -217,7 +214,11 @@ class TransitionHandler:
         # wasting tokens to complete the full command
         # <|channel|>analysis<|message|>Check file.<|end|>
         # <|start|>assistant<|channel|>bash to=functions.shell<|channel|>commentary<|message|>{"command":["bash","-lc","sed -n '1,200p' TODO.md"]}<|return|>
-        if messages and channel not in [channel_analysis, channel_commentary, channel_final]:
+        if messages and channel not in [
+            channel_analysis,
+            channel_commentary,
+            channel_final,
+        ]:
             self.logger.warning(
                 f"Invalid output: bad channel `{channel}`.",
                 extra=self.log_extra,
@@ -256,7 +257,7 @@ class TransitionHandler:
             return True
 
         # 2. tool call without prior input
-        # TODO: monitor, does it still happen or fixed with tool recovery msg?
+        # NOTE: monitor, does it still happen or fixed with tool recovery msg?
         if new_state == state_tool_call and channel != channel_commentary:
             if manager.tool_handler.is_valid(last_recipient, new_state):
                 return True
@@ -267,7 +268,7 @@ class TransitionHandler:
             return True  # it's ok to send on any channel since we flag it?
 
         # 3. preamble, unclear what to do with it so we just log for now
-        # TODO: see harmony docs, sometime assistant may decide to issue
+        # NOTE: see harmony docs, sometime assistant may decide to issue
         # a summary of what it will do next inside the analysis channel, which,
         # according to docs, SHOULD be shown to users
         if new_state == state_preamble:
@@ -281,8 +282,6 @@ class TransitionHandler:
         # 4. bad channel or return token
         # llama.cpp issue mostly; tool calls on return channel or transition
         # without end token eg: analysis -> <|end|> -> commentary (missing end)
-        # TODO: think about this, may be valid?
-        # <|start|>assistant<|channel|>commentary<|message|>{"command":["bash","-lc","PYTHONPATH=src uv run pytest -q"],"timeout_ms":120000}<|return|>
         if new_state == state_completed and channel != channel_final:
             self.logger.warning(
                 f"invalid state: assistant trying to return outside final channel, on {channel}.\n{self.manager.response_buffer}",
@@ -315,15 +314,17 @@ class TransitionHandler:
         self.manager.parser_state = new_state
         return new_state
 
-    async def transition(self, token: AdapterCompletionToken):
+    async def transition(
+        self,
+        token: Optional[AdapterCompletionToken],
+        state: Optional[AdapterConversationState] = None,  # handle native tool done
+    ):
         old_state = self.manager.parser_state
-        new_state = self._update_state()
-
-        self.manager.response_buffer
+        new_state = state or self._update_state()
 
         if new_state == AdapterConversationState.ERROR:
             return self.manager._recover_state()
-
+        self.manager.response_buffer
         if new_state != old_state:
             self.logger.debug(
                 f"state change: {old_state.value:<18} -> {new_state.value}",
@@ -334,6 +335,9 @@ class TransitionHandler:
                 await plugin.on_exit_state(old_state)
             for plugin in self.manager._active_plugins_by_state.get(new_state, []):
                 await plugin.on_enter_state(new_state)
+
+        if not token:
+            return
         if token.is_special_token:
             return
         for plugin in self.manager._active_plugins_by_state.get(new_state, []):

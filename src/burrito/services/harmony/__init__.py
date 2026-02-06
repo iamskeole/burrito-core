@@ -1,6 +1,5 @@
 from .harmony_service import (
     ENCODING,
-    PREFILL_TOKENS,
     SPECIAL_TOKENS,
     build_conversation_from_params,
     build_conversation_from_messages,
@@ -13,7 +12,6 @@ from .harmony_service import (
 __all__ = [
     "ENCODING",
     "SPECIAL_TOKENS",
-    "PREFILL_TOKENS",
     "build_user_message",
     "build_tool_message",
     "build_conversation_from_params",

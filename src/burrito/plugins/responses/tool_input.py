@@ -9,24 +9,21 @@ if TYPE_CHECKING:
 
 from openai.types.responses.response import Response
 
-from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
-
-# custom tools
-from openai.types.responses.response_custom_tool_call_input_delta_event import (
-    ResponseCustomToolCallInputDeltaEvent,
-)
-from openai.types.responses.response_custom_tool_call_input_done_event import (
-    ResponseCustomToolCallInputDoneEvent,
-)
-
-# function calls
+from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
 from openai.types.responses.response_function_call_arguments_delta_event import (
     ResponseFunctionCallArgumentsDeltaEvent,
 )
 from openai.types.responses.response_function_call_arguments_done_event import (
     ResponseFunctionCallArgumentsDoneEvent,
 )
-from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
+
+from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
+from openai.types.responses.response_custom_tool_call_input_delta_event import (
+    ResponseCustomToolCallInputDeltaEvent,
+)
+from openai.types.responses.response_custom_tool_call_input_done_event import (
+    ResponseCustomToolCallInputDoneEvent,
+)
 
 from openai.types.responses.response_output_item_added_event import (
     ResponseOutputItemAddedEvent,
@@ -52,53 +49,34 @@ class ToolInputPluginResponses(BasePluginResponses):
 
     def build_output_item(
         self,
-        tool_name: str,
     ) -> Optional[
         Union[
             ResponseFunctionToolCall,
             ResponseCustomToolCall,
         ]
     ]:
-        inputs = self.manager.conversation_inputs
-        tool: Optional[AdapterConversationInputTool] = None
-        for i in inputs.tools or []:
-            if i.name == "browser" and tool_name.startswith("browser."):
-                tool = i
-                break
-
-            if i.name == tool_name:
-                tool = i
-                break
-
-        assert tool is not None, f"Could not map tool for {tool_name}"
-        # TODO: match the chat implementation, way more robust
-        # need to register tool call in tool_handler
+        entry = self.manager.tool_handler.register_tool_call()
+        tool: AdapterConversationInputTool = entry["tool"]
         match tool.type:
-            case AdapterToolType.PYTHON.value:
-                return  # always handle "internally" in model CoT
-            case AdapterToolType.BROWSER.value:
-                return  # always handle "internally" in model CoT
             case AdapterToolType.FUNCTION.value:
-                fc_id, call_id = (f"fc_{random_uuid()}", f"call_{random_uuid()}")
                 return ResponseFunctionToolCall(
-                    call_id=call_id,
-                    name=tool_name,
+                    call_id=entry["call_id"],
+                    name=tool.name,
                     type="function_call",
-                    id=fc_id,
+                    id=f"fc_{random_uuid()}",
                     status="in_progress",
                     arguments="",
                 )
             case AdapterToolType.CUSTOM.value:
-                fc_id, call_id = (f"ctc_{random_uuid()}", f"call_{random_uuid()}")
                 return ResponseCustomToolCall(
-                    call_id=call_id,
+                    call_id=entry["call_id"],
                     input="",
-                    name=tool_name,
+                    name=tool.name,
                     type="custom_tool_call",
-                    id=fc_id,
+                    id=f"ctc_{random_uuid()}",
                 )
             case _:
-                raise ValueError(f"Unknown tool type: {tool.type}")
+                return # python and browser handled natively inside model CoT
 
     def build_output_item_delta_event(
         self,
@@ -110,7 +88,6 @@ class ToolInputPluginResponses(BasePluginResponses):
         self.manager.response_buffer
         assert output_item.id is not None, "output_item.id is None"
         if isinstance(output_item, ResponseFunctionToolCall):
-            # TODO: this looks sane, but double check if we're supposed to add to buffer
             output_item.arguments += token.text
             return ResponseFunctionCallArgumentsDeltaEvent(
                 delta=token.text,
@@ -164,9 +141,7 @@ class ToolInputPluginResponses(BasePluginResponses):
             f"Expected a Response, but got {type(output_object)}"
         )
         self.manager.output_index += 1
-        entry = self.manager.tool_handler.register_tool_call()
-        tool: AdapterConversationInputTool = entry["tool"]
-        output_item = self.build_output_item(tool.name)
+        output_item = self.build_output_item()
         if not output_item:
             return
 
@@ -187,7 +162,7 @@ class ToolInputPluginResponses(BasePluginResponses):
         try:
             output_item = self.manager.output_object.output[self.manager.output_index]
         except IndexError:
-            raise  # TODO: investigate, why out of range?
+            raise  # TODO: investigate, why sometimes out of range?
         if not output_item:
             return
 
@@ -201,8 +176,6 @@ class ToolInputPluginResponses(BasePluginResponses):
                 ResponseCustomToolCall,
             ),
         ), f"Expected a ResponseCustomToolCall, but got {type(output_item)}"
-
-        # TODO: figure out custom tools and native tools and mcp and fuckme..
         event = self.build_output_item_delta_event(token, output_item)
         await self.put_event(event)
 

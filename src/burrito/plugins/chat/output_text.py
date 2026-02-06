@@ -34,17 +34,6 @@ class OutputTextPluginChat(BasePluginChat):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        # TODO: responses had tool input too, but that seems wrong
-        # deleted from responses, so i should test
-        # but why do frontends capture TWO assistant messages for tool calls?
-        # seems we're formatting something wrong...
-        # if i switch to llamacpp it only captures a single assistant input
-        # with content being the command for tool call
-        # whereas my code creates
-        #   msg 1 with blank content + tool calls and
-        #   msg 2 with content == actual code for the tool
-        # need to figure this out, seems the last piece?
-        # before i can finalize message mapping ...
         return {AdapterConversationState.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
@@ -115,7 +104,7 @@ class OutputTextPluginChat(BasePluginChat):
         choice = AdapterChatCompletionChunkChoice(
             index=0,
             delta=AdapterChatCompletionChunkChoiceDelta(
-                role="assistant",  # TODO, maybe tool?
+                role="assistant",
                 content=self.output_delta_buffer,
             ),
         )

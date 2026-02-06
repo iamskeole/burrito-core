@@ -47,7 +47,7 @@ def user_message(message_data: UserMessageParamChat) -> Message:
                 case ContentPartText():
                     content.append(TextContent(text=item.text))
                 case ContentPartImageUrl():
-                    pass  # TODO: tbd, only text supported by gpt-oss
+                    pass  # throw? tbd, only text supported by gpt-oss
                 case _:
                     pass  # throw?
     else:
@@ -162,7 +162,7 @@ def parse_instructions(params: AdapterCreateParamsChat) -> str:
                 pass
     return instructions
 
-
+# TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(
     params: AdapterCreateParamsChat,
 ) -> List[AdapterConversationInputTool]:
@@ -212,7 +212,6 @@ def build_message_list_chat(
     instructions = parse_instructions(params)
     messages = parse_messages(params)
     tools = parse_tools(params)
-    # TODO: double check, seems to default to medium whatever caller sends?
     reasoning = AdapterReasoningParam(effort=params.reasoning_effort)
 
     conversation_inputs = AdapterConversationInputs(

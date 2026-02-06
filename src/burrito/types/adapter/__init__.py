@@ -21,6 +21,7 @@ from .adapter_request_category import AdapterRequestCategory
 from .adapter_tool_namespace import AdapterToolNamespace, AdapterToolType
 from .adapter_reasoning import AdapterReasoningParam
 from .adapter_token_counts import AdapterTokenCounts
+from .adapter_error_event import AdapterErrorEvent
 
 __all__ = [
     "AdapterCreateParams",
@@ -43,4 +44,5 @@ __all__ = [
     "AdapterCompletionToken",
     "AdapterReasoningParam",
     "AdapterTokenCounts",
+    "AdapterErrorEvent",
 ]

@@ -37,23 +37,6 @@ class BasePlugin(ABC):
     async def on_token(self, token: "AdapterCompletionToken"):
         pass
 
-    async def on_error(self, payload: dict):
-        """Emit an error event for SSE consumers.
-
-        The original implementation suppressed errors for the ``chat``
-        conversation type because *OpenAI’s chat endpoint historically never
-        returned a streamed error*.  In our implementation the consumer is a
-        generic SSE emitter that works for both chat and responses, so it is
-        safe to always stream the error.  The routing logic will decide how
-        to surface it to the final client.
-        """
-
-        event = f"event: error\ndata: {json.dumps(payload, indent=None)}\n\n"
-        encoded = event.encode("utf-8")
-        await self.manager.put_event(
-            encoded
-        )  # TODO: change to new model for manager.put BaseModel
-
     def get_token_counts(self) -> AdapterTokenCounts:
         n_input = len(self.manager.prompt_tokens)
         n_reasoning = len(self.manager.reasoning_tokens)

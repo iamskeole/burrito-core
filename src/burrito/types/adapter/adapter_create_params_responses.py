@@ -15,12 +15,12 @@ from burrito.types.adapter.adapter_browser_tool_param import (
 from burrito.types.adapter.adapter_python_tool_param import (
     AdapterPythonToolParamResponses,
 )
-from openai.types.responses.easy_input_message_param import EasyInputMessageParam
 # TODO: investiagate whether we can support custom tools
 # harmony only seems to support defining regular function tools
 # with name, description, params; no special formatting instructions
 # for custom tools, so even if we implemented schemas and code, model
 # may not be trained to use them?
+# so we disable that option as an input to force schema validation failure
 # from .adapter_custom_tool_param import AdapterCustomToolParamResponses
 
 

@@ -26,7 +26,7 @@ from openai_harmony import (
     StreamableParser,
 )
 
-from burrito.plugins import BasePlugin, ErrorPlugin
+from burrito.plugins import BasePlugin
 from burrito.plugins.chat import (
     ContextManagerPluginChat,
     ReasoningTextPluginChat,
@@ -57,6 +57,7 @@ from burrito.types.adapter import (
     AdapterConversationState,
     AdapterCreateParamsChat,
     AdapterCreateParamsResponses,
+    AdapterErrorEvent,
 )
 
 from burrito.handlers.token_handler import (
@@ -108,7 +109,6 @@ class AdapterStateHandler:
 
         self.plugins: List[BasePlugin]
         self._active_plugins_by_state: dict[str, list[BasePlugin]] = {}
-        self.error_plugin = ErrorPlugin(self)
 
         self.created_at = unix_timestamp_in_ms()
         self.recover_state_attempts = 0
@@ -156,7 +156,7 @@ class AdapterStateHandler:
     # storage of python and browser tools since it may help if they're not
     # stateless (eg. assistant can reference previously opened pages or code cells)
     # hacky, will not work when scaled horizontally, but we'll cross that bridge later
-    # TODO: get prompt cache key from request if available (responses does, chat doesn't?),
+    # TODO: get conversation id from request if available (responses does, chat doesn't?),
     # fallback on generation; very unlikely but > 0 chance to share the same key
     # across multiple users using exact same prompt, so eventually should address
     def _init_tools(
@@ -210,30 +210,29 @@ class AdapterStateHandler:
         try:
             if hasattr(event, "type"):  # responses events
                 header = f"event: {event.type}\n"  # type: ignore
-            s = f"{header}data: {event.model_dump_json(indent=None)}\n\n"
-            b = s.encode()
-            await self.manager.output_queue.put(b)
+            data = event.model_dump_json(indent=None)
+            out = f"{header}data: {data}\n\n".encode()
+            if settings.DEBUG_OUTGOING_EVENTS:
+                self.logger.debug(out, extra=self.log_extra)
+            await self.manager.output_queue.put(out)
         except Exception as e:
             print(e)
-            x= 1
-        if settings.DEBUG_OUTGOING_EVENTS:
-            self.logger.debug(b, extra=self.log_extra)
 
-    # TODO: figure this out, only responses supports streamed errors?
+    # only responses supports streamed errors
     async def put_error(self, message: str, code: str):
         self.parser_state = AdapterConversationState.ERROR
         self.is_done = True
         if hasattr(self.manager, "is_finished"):
             self.manager.is_finished.set()
 
-        payload = {
-            "type": "error",
-            "code": code,
-            "message": message,
-            "param": None,
-            "sequence_number": self.sequence_number,
-        }
-        await self.error_plugin.on_error(payload)
+        event = AdapterErrorEvent(
+            type="error",
+            code=code,
+            message=message,
+            param=None,
+            sequence_number=self.sequence_number,
+        )
+        await self.put_event(event)
 
     def _add_recovery_message(self, text: str):
         message = build_user_message(text, "HARNESS-SENTINEL-v1")
@@ -254,11 +253,11 @@ class AdapterStateHandler:
         self.manager._init_stream()
 
     def _recover_state(self):
-        # TODO: decide, allow assistant to continue or kill stream and bubble up
         if self.recover_state_attempts >= settings.MAX_RECOVER_STATE_ATTEMPTS:
             raise RecursionError("Reached maximum state recover attempts.")
 
         self.manager._stop_stream()
+        self.parser_state = AdapterConversationState.ERROR
         prev_messages = self.parser.messages
         if self.recovery_message:
             prev_messages.append(self.recovery_message)
@@ -328,7 +327,7 @@ class AdapterStateHandler:
         if not token or token.id == -1:
             return
 
-        # TODO: investigate, weird special case where assistant emitting same
+        # NOTE: weird special case where assistant emitting same
         # special token (<|message|>  or <|channel|> ?) twice?
         # if so, we skip that token since we already added it?
         # also, sometimes happens when assistant regresses into reasoning,
@@ -341,7 +340,6 @@ class AdapterStateHandler:
             self.logger.error(
                 "Bad token: back to back special token", extra=self.log_extra
             )
-            # TODO: does this still happen? add recovery message to assistant?
             return
 
         try:

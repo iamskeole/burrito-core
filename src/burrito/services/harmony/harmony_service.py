@@ -70,14 +70,7 @@ class SPECIAL_TOKENS(Enum):
         self.text = ENCODING.decode_utf8([self.id])
 
 
-# TODO: remove, used before figuring out proper role-based conversation
-PREFILL_TOKENS = [
-    SPECIAL_TOKENS.CHANNEL.id,
-    ENCODING.encode(AdapterConversationChannel.ANALYSIS.value)[0],
-    SPECIAL_TOKENS.MESSAGE.id,
-]
-
-
+# TODO: decide whether to allow caller to change vs. increment dev msg
 def build_system_message(
     inputs: AdapterConversationInputs,
     python_tool: Optional[BurritoPython],

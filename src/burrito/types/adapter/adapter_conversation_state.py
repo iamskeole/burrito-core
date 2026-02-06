@@ -11,19 +11,19 @@ class AdapterConversationState(str, Enum):
     REASONING = "reasoning"
     REASONING_END = "reasoning_end"
 
-    NATIVE_TOOL_INPUT_START = "native_tool_input" # NOTE: we may not be triggering on state changes here
+    NATIVE_TOOL_INPUT_START = "native_tool_input"
     NATIVE_TOOL_INPUT = "native_tool_input"
     NATIVE_TOOL_CALL = "native_tool_call"
+    NATIVE_TOOL_DONE = "native_tool_done"
 
     TOOL_INPUT_START = "tool_input"
     TOOL_INPUT = "tool_input"
     TOOL_CALL = "tool_call"
-    TOOL_RESULT = "tool_result"  # not needed?
 
     OUTPUT_TEXT = "output_text"
     COMPLETED = "completed"
     TRANSITION = "transition"
-    PREAMBLE = "preamble" # NOTE: we may not be triggering on state changes here
+    PREAMBLE = "preamble"
     ERROR = "error"
 
     @classmethod

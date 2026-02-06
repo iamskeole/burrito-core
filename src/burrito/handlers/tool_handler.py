@@ -207,12 +207,6 @@ class ToolHandler:
 
         return True
 
-    # TODO: native tools enabled by caller, not default / config; if default,
-    # it may confuse assistant if it also has eg. a shell tool (codex), and it
-    # will probably prioritize python over its native tools
-    # TODO: here, and maybe also caller tools, enable strict tool enforcement,
-    # eg only call shell, that gets to spec parity with openai?
-
     @staticmethod
     async def run_tool(
         tool: Union[BurritoPython, BurritoBrowser], message: Message
@@ -232,9 +226,8 @@ class ToolHandler:
                     f"Calling `{t_name}` tool params `{t_params}.", extra=self.log_extra
                 )
             else:
-                self.logger.debug(
-                    f"calling tool `{t_name}`.", extra=self.log_extra
-                )
+                self.logger.debug(f"calling tool `{t_name}`.", extra=self.log_extra)
+
             tool_result = await self.run_tool(tool, message)
             if settings.DEBUG_TOOL_IO:
                 self.logger.debug(
@@ -245,10 +238,15 @@ class ToolHandler:
                     extra=self.log_extra,
                 )
         except Exception as e:
-            msg = f"**Error calling `{t_name}`**:{repr(e)}"
+            msg = f"**Error calling tool `{t_name}`**:{repr(e)}"
             self.logger.error(msg, extra=self.log_extra)
             self.manager._add_recovery_message(msg)
             return self.manager._recover_state()
+        self.manager.response_buffer
+        # trigger plugin to send success event
+        await self.manager.transition_handler.transition(
+            token=None, state=AdapterConversationState.NATIVE_TOOL_DONE
+        )
         self.manager._update_state_with_tool_result(tool_result)
 
     async def maybe_call_native_tool(self):

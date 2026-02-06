@@ -80,7 +80,6 @@ class AdapterConversationHandler:
         try:
             while 1:
                 # detect client disconnects
-                # TODO: handle generation stop, when client stops manually
                 if await self.request.is_disconnected():
                     self._stop_stream()
                     msg = "Client disconnected, stopping generation."
@@ -101,7 +100,6 @@ class AdapterConversationHandler:
                     # need to recover from that
                     pass
                 except asyncio.TimeoutError:
-                    # TODO: increase timeout, prompt processing may kill this when cache misses
                     msg = "Backend timed out between tokens"
                     self.logger.error(msg, extra=self.log_extra)
                     await sm.put_error(msg, "ERR_BACKEND_TIMEOUT")

@@ -56,7 +56,6 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             AdapterConversationState.PREAMBLE,
         }
 
-    # TODO: handle content_part_added event
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object
         assert isinstance(self.manager.output_object, Response), (
@@ -114,12 +113,6 @@ class ReasoningTextPluginResponses(BasePluginResponses):
         )
         await self.put_event(event)
 
-    # TODO: do we override the output_item at the end to only include
-    # a single content item with the full reasoning text, or do we leave
-    # parts as they got appended?
-    # probably leave it as is with a full list of content items, otherwise
-    # there would be no point to have that attribute as a list, just add raw text
-    # instead of appending to list?
     async def handle_on_exit_state(self):
         assert isinstance(self.manager.output_object, Response), (
             f"Expected a Response, but got {type(self.manager.output_object)}"
@@ -137,7 +130,15 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             f"Expected Cintent but got {[type(i) for i in output_item.content]}"
         )
 
-        text = self.manager.parser.messages[-1].content[0].text  # type: ignore
+        try:
+            text = self.manager.parser.messages[-1].content[0].text  # type: ignore
+        except IndexError:
+            # should not happen?
+            # fixed by setting manager parser state to error on _recover_state()
+            msg = "handle_on_exit_state: missing parser messages."
+            self.logger.error(msg, extra=self.log_extra)
+            text = ""
+
         content = Content(text=text, type="reasoning_text")
         delta = PartReasoningTextDone(text=text, type="reasoning_text")
         output_item.content = [content]

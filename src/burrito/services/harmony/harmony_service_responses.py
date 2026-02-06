@@ -50,7 +50,7 @@ def user_message_from_text_input(user_input: str) -> Message:
 
 # TODO: check oss implementation, individual messages PER content item? all other roles too
 def user_message_from_list_input(
-    message_data: BaseInputMessageParamResponses,
+    message_data: UserInputMessageParamResponses,
 ) -> Message:
     content = []
     for item in message_data.content:
@@ -58,7 +58,7 @@ def user_message_from_list_input(
             case InputTextParamResponses():
                 content.append(TextContent(text=item.text))
             case InputImageParamResponses():
-                pass  # TODO, tbd, for now gpt-oss does not support image inputs
+                pass  # throw? tbd, for now gpt-oss does not support image inputs
             case _:
                 pass  # maybe throw? shouldn't happen, probably too defensive
     message = Message(
@@ -79,11 +79,14 @@ def assistant_message(
     match message_data:
         case AssistantMessageParamResponses():
             channel = AdapterAssistantChannel.FINAL
-            content = [TextContent(text=i.text) for i in message_data.content]
+            if isinstance(message_data.content, str):
+                content = [TextContent(text=message_data.content)]
+            else:
+                content = [TextContent(text=i.text) for i in message_data.content]
         case AssistantReasoningParamResponses():
             channel = AdapterAssistantChannel.ANALYSIS
             content = [TextContent(text=i.text) for i in message_data.content]
-        case _:  # tool calls handled in separate function; anything else?
+        case _:  # tool calls handled separately; anything else?
             pass
 
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
@@ -104,7 +107,6 @@ def tool_call_input_message(
             content = [TextContent(text=message_data.arguments)]
             recipient = message_data.name
         case CustomToolInputParamResponses():
-            # TODO: maybe handle custom namespaces?
             content = [TextContent(text=message_data.input)]
             recipient = message_data.name
         case _:
@@ -162,7 +164,7 @@ def parse_messages(
             case AssistantMessageParamResponses() | AssistantReasoningParamResponses():
                 messages.append(assistant_message(i))
 
-            # TODO: browser, python, other "native" tools
+            # NOTE: browser, python, other "native" tools
             # native can mean two things:
             # (1) browser and python, that the model has been trained with
             # (2) augment functions we init in designated sys prompt namespace
@@ -170,28 +172,20 @@ def parse_messages(
             # so we "pause" generation, call tool, feed to model, resume
             # and only once model processes native tool call, send back to caller
             # hence all will have to be in the analysis channel, NOT commentary
-            # since that way caller will see tools called transparently but
-            # will not expect to process their results, meaning we can separate
-            # tools called natively from caller expectations
             case FunctionToolInputParamResponses() | CustomToolInputParamResponses():
-                # tool_calls[i.call_id] = i
                 messages.append(tool_call_input_message(i))
 
             case ToolCallOutputParamResponses():
-                # TODO: defend? output should follow call, but there's
-                # a chance this will crash if the prev message is not a
-                # tool call?
-                # should be handled by keeping the running tally of calls?
                 messages.append(tool_call_output_message(i, tool_calls))
             case CustomToolCallOutputParamResponses():
                 pass
     return messages
 
 
+# TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(
     params: AdapterCreateParamsResponses,
 ) -> List[AdapterConversationInputTool]:
-    # TODO: handle tool_choice from params, eg auto, specific etc
     tools: List[AdapterConversationInputTool] = []
     for tool in params.tools or []:
         match tool:

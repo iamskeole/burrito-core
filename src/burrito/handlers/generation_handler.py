@@ -42,7 +42,7 @@ class AdapterGenerationHandler:
         params: AdapterCreateParams,
         headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
-        # TODO: implement native, for now default to false for type checks and speed of debug
+        # TODO: implement native
         if settings.INFERENCE_BACKEND_IS_NATIVE:
             generator = self._generate_native(prompt_token_ids, params)
         else:
