@@ -103,6 +103,7 @@ class AdapterStateHandler:
         self.is_done: bool = False
 
         self.output_object: Union[
+            AdapterErrorEvent,
             Response,
             List[Union[AdapterChatCompletionChunk, AdapterChatCompletion]],
         ]
@@ -152,33 +153,38 @@ class AdapterStateHandler:
             for state in plugin.subscribed_states:
                 self._active_plugins_by_state.setdefault(state, []).append(plugin)
 
-    # TODO: probably refactor, for now a dirty hack to enable session-ish
-    # storage of python and browser tools since it may help if they're not
-    # stateless (eg. assistant can reference previously opened pages or code cells)
-    # hacky, will not work when scaled horizontally, but we'll cross that bridge later
-    # TODO: get conversation id from request if available (responses does, chat doesn't?),
-    # fallback on generation; very unlikely but > 0 chance to share the same key
-    # across multiple users using exact same prompt, so eventually should address
+    # NOTE: this enables session-ish storage of python and browser tools 
+    # should help assistant if these tools are not stateless
+    # (eg. assistant can reference previously opened pages or code cells)
+    # bit hacky, hashing first few prompt messages will not work 
+    # if scaled horizontally, but we'll cross that bridge later
     def _init_tools(
         self,
         python_tool: Optional[BurritoPython],
         browser_tool: Optional[BurritoBrowser],
     ):
         session_handler = self.manager.session_handler
-        messages = get_prompt_cache_messages(self.conversation.messages)
-        conversation = build_conversation_from_messages(messages)
-        prompt_tokens = render_conversation_for_completion(conversation)
-        prompt_text = ENCODING.decode(prompt_tokens)
-        prompt_hash = session_handler.hash_text(prompt_text)
+        params = self.manager.params
 
-        self.log_id = prompt_hash
+        if params.conversation and params.conversation.id:
+            session_id = params.conversation.id
+        elif params.prompt_cache_key:
+            session_id = params.prompt_cache_key
+        else:
+            messages = get_prompt_cache_messages(self.conversation.messages)
+            conversation = build_conversation_from_messages(messages)
+            prompt_tokens = render_conversation_for_completion(conversation)
+            prompt_text = ENCODING.decode(prompt_tokens)
+            session_id = session_handler.hash_text(prompt_text)
+
+        self.log_id = session_id
         session_handler.set_python_tool(self.log_id, python_tool)
         session_handler.set_browser_tool(self.log_id, browser_tool)
 
         self.tool_handler = ToolHandler(
             self,
-            python_tool=session_handler.get_python_tool(prompt_hash),
-            browser_tool=session_handler.get_browser_tool(prompt_hash),
+            python_tool=session_handler.get_python_tool(session_id),
+            browser_tool=session_handler.get_browser_tool(session_id),
         )
 
     def _init_conversation(
@@ -232,13 +238,17 @@ class AdapterStateHandler:
             param=None,
             sequence_number=self.sequence_number,
         )
+        self.output_object = event
         await self.put_event(event)
 
     def _add_recovery_message(self, text: str):
         message = build_user_message(text, "HARNESS-SENTINEL-v1")
+        self.recovery_message = message
+
+        if not settings.DEBUG_RESPONSE_BUFFER:
+            return
         bfr = f"\n\n🚨🚨🚨\n\n{message.content[0].text}\n\n🚨🚨🚨\n\n"  # type: ignore
         self.response_buffer += bfr
-        self.recovery_message = message
 
     def _update_state_with_tool_result(self, tool_result: List[Message]):
         if not tool_result:
@@ -306,7 +316,9 @@ class AdapterStateHandler:
                 self.output_text_tokens.append(token)
 
         self.response_tokens.append(token)
-        self.response_buffer += token.text
+
+        if settings.DEBUG_RESPONSE_BUFFER:
+            self.response_buffer += token.text
 
     async def _process_completion(
         self, completion: Union[Completion, str]

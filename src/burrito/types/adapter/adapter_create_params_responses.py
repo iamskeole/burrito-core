@@ -155,16 +155,24 @@ InputItemParamResponses = Union[
 ]
 
 
+class Conversation(BaseModel):
+    id: str
+
+
 class AdapterCreateParamsResponses(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     input: Union[str, List[InputItemParamResponses]]
+    instructions: Optional[str] = None
+    conversation: Optional[Conversation] = None
 
     reasoning: Optional[AdapterReasoningParam] = None
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
 
-    instructions: Optional[str] = None
+    max_output_tokens: Optional[int] = None
+    prompt_cache_key: Optional[str] = None
+
     tools: Optional[
         List[
             Union[

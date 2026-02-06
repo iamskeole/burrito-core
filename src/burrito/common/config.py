@@ -8,8 +8,9 @@ class Settings(BaseSettings):
 
     DEBUG_TOOL_IO: bool = True
     DEBUG_COMPLETIONS: bool = False
-    DEBUG_PROMPT: bool = False
+    DEBUG_PROMPT: bool = True
     DEBUG_OUTGOING_EVENTS: bool = False
+    DEBUG_RESPONSE_BUFFER: bool = False
 
     CORS_ALLOWED_ORIGINS: list[str] = ["*"]
     CORS_ALLOWED_METHODS: list[str] = ["*"]

@@ -65,7 +65,10 @@ class NativeToolCallPluginResponses(BasePluginResponses):
         if not tool:
             return
 
-        args = tool.process_arguments(last_message)
+        try:
+            args = tool.process_arguments(last_message)
+        except Exception as e:
+            return # TODO: why does this sometime break?
 
         _, function_name = recipient.split(".")
         if function_name not in ["search", "open", "find"]:

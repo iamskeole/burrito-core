@@ -92,9 +92,14 @@ InputItemParamChat = Annotated[
 ]
 
 
+class Conversation(BaseModel):
+    id: str
+
+
 class AdapterCreateParamsChat(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     messages: List[InputItemParamChat]
+    conversation: Optional[Conversation] = None
 
     reasoning_effort: Optional[ReasoningEffort] = ReasoningEffort(
         settings.DEFAULT_REASONING_EFFORT
@@ -105,6 +110,9 @@ class AdapterCreateParamsChat(BaseModel):
     stream: Optional[bool] = False
     stop: Optional[Union[str, List[str]]] = None
     max_tokens: Optional[int] = None
+    max_completion_tokens: Optional[int] = None
+
+    prompt_cache_key: Optional[str] = None
 
     tools: Optional[
         List[

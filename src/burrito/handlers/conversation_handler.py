@@ -16,6 +16,7 @@ from burrito.types.adapter import AdapterCreateParams
 from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunk,
 )
+from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
 
 from burrito.handlers.state_handler import AdapterStateHandler
 
@@ -156,24 +157,6 @@ class AdapterConversationHandler:
             self.logger.error(msg, extra=self.log_extra)
             await sm.put_error(msg, "ERR_TASK_GROUP_EXCEPTION")
 
-    def _return_json_responses(self):
-        output_object = self.state_handler.output_object
-        assert isinstance(output_object, Response), (
-            f"Expected list, got {type(output_object)}"
-        )
-        return output_object.model_dump()
-
-    def _return_json_chat(self):
-        output_object = self.state_handler.output_object
-        assert isinstance(output_object, list), (
-            f"Expected list, got {type(output_object)}"
-        )
-
-        if type(output_object[0]) is not AdapterChatCompletionChunk:
-            return {
-                "error": f"Expected AdapterChatCompletionChunk, got {type(output_object[0])}"
-            }
-
     async def return_json(self) -> Dict:
         async for _ in self.return_stream():
             pass
@@ -190,5 +173,8 @@ class AdapterConversationHandler:
         ):
             out = output_object[-1].model_dump()
             return out
+
+        if isinstance(output_object, AdapterErrorEvent):
+            return output_object.model_dump()
 
         raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

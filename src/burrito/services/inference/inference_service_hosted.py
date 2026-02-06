@@ -14,8 +14,6 @@ from burrito.common.config import settings
 from burrito.types.adapter import AdapterCreateParams
 
 
-
-
 # TODO: handle cases where choices n > 1 ?
 def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
     # we exit if no logprobs, since we need logprobs to extract token ids
@@ -102,8 +100,13 @@ def build_payload(
         params_dumped.get("max_tokens") or 0,
     )
     max_tokens_possible = ctx_len - len(prompt_token_ids)
-    max_tokens = min(max_tokens_params, max_tokens_possible)
 
+    if max_tokens_possible <= 0:
+        raise OverflowError(
+            f"Request excedes context length of {ctx_len:,} by {-max_tokens_possible:,} tokens."
+        )
+
+    max_tokens = min(max_tokens_params, max_tokens_possible)
     payload_default["max_tokens"] = max_tokens or max_tokens_possible
 
     payload = CompletionCreateParamsStreaming(**payload_default, stream=True)
@@ -115,7 +118,7 @@ def build_payload(
     # vLLM is less sensitive, seems to be unaffected by None, 0 or 20 logprobs
     payload["logprobs"] = None  # 20
 
-    # --- overrides, we ignore anything the caller sends here to preserve format
+    # overrides: we ignore anything the caller sends here to preserve format
 
     # vLLM - include all tokens, we're processing locally
     payload["skip_special_tokens"] = False  # type: ignore
@@ -133,7 +136,11 @@ async def generate_hosted(
     params: AdapterCreateParams,
     headers: Dict[str, str] = {},
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
-    url = settings.INFERENCE_BACKEND_BASE_URL.rstrip("/") + "/" + settings.INFERENCE_BACKEND_COMPLETIONS_PATH.lstrip("/")
+    url = (
+        settings.INFERENCE_BACKEND_BASE_URL.rstrip("/")
+        + "/"
+        + settings.INFERENCE_BACKEND_COMPLETIONS_PATH.lstrip("/")
+    )
     payload = build_payload(prompt_token_ids, params)
 
     try:

@@ -28,7 +28,7 @@ from gpt_oss.tools.simple_browser.simple_browser_tool import (
     CITATION_OUTPUT_PATTERN,
 )
 
-from burrito.prompts import browser_search_prompt, browser_open_prompt
+from burrito.prompts import browser_tool_description, browser_search_prompt, browser_open_prompt
 
 CLEANUP_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
 
@@ -132,10 +132,15 @@ class BurritoBrowser(SimpleBrowserTool):
         }
         _tool.parameters["required"] = ["is_docs_website"]
         return config
+    
+    def patch_tool_description(self, config: ToolNamespaceConfig):
+        config.description = browser_tool_description.text
+        x = 1
 
     @property
     def tool_config(self) -> ToolNamespaceConfig:
         config = super().tool_config
+        self.patch_tool_description(config)
         self.patch_search_tool(config)
         self.patch_open_tool(config)
         return config
@@ -263,7 +268,7 @@ class BurritoBrowser(SimpleBrowserTool):
 
         try:
             l_split = annotation["citation_marker"].split("-")
-        except Exception:
+        except Exception as e:
             return annotation
         l_start = int(l_split[0][1:])
         l_end = int(l_split[1][1:]) + 1

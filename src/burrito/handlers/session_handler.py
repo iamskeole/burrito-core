@@ -37,8 +37,8 @@ class AdapterSessionHandler:
             return
         self.browser_tools[session_id] = tool
 
-    def get_python_tool(self, prompt_hash: str) -> Optional[BurritoPython]:
-        return self.python_tools.get(prompt_hash)
+    def get_python_tool(self, session_id: str) -> Optional[BurritoPython]:
+        return self.python_tools.get(session_id)
 
-    def get_browser_tool(self, prompt_hash: str) -> Optional[BurritoBrowser]:
-        return self.browser_tools.get(prompt_hash)
+    def get_browser_tool(self, session_id: str) -> Optional[BurritoBrowser]:
+        return self.browser_tools.get(session_id)

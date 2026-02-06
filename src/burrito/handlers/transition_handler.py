@@ -324,7 +324,7 @@ class TransitionHandler:
 
         if new_state == AdapterConversationState.ERROR:
             return self.manager._recover_state()
-        self.manager.response_buffer
+
         if new_state != old_state:
             self.logger.debug(
                 f"state change: {old_state.value:<18} -> {new_state.value}",
