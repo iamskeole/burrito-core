@@ -6,9 +6,9 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     LOG_LEVEL: str = "debug"
 
-    DEBUG_TOOL_IO: bool = True
+    DEBUG_TOOL_IO: bool = False
     DEBUG_COMPLETIONS: bool = False
-    DEBUG_PROMPT: bool = True
+    DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
 
@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
+
+    MODEL_IDENTITY: Literal["default", "experimental"] = "experimental"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
 

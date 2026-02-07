@@ -23,7 +23,7 @@ from burrito.tools.python.tool import BurritoPython
 
 from burrito.common.config import settings
 from burrito.common.utils import yyyymmdd, simple_markdown_renderer
-from burrito.prompts import system_prompt
+from burrito.prompts.model_identity import MODEL_IDENTITY
 from burrito.types.adapter import (
     AdapterConversationChannel,
     AdapterConversationInputs,
@@ -87,7 +87,7 @@ def build_system_message(
 
     sys_message = (
         SystemContent.new()
-        .with_model_identity(system_prompt.text.strip())
+        .with_model_identity(MODEL_IDENTITY.get(settings.MODEL_IDENTITY, "").strip())
         .with_conversation_start_date(yyyymmdd())
         .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)
@@ -245,6 +245,7 @@ def resolve_python_tool(params: AdapterCreateParams) -> Optional[BurritoPython]:
     if not params.tools and has_default:
         should_enable = True
 
+    # special case where config set up to override always enable
     if settings.IS_PYTHON_TOOL_ALWAYS_ENABLED:
         should_enable = True
 
@@ -275,6 +276,7 @@ def resolve_browser_tool(params: AdapterCreateParams) -> Optional[BurritoBrowser
     if not params.tools and has_default:
         should_enable = True
 
+    # special case where config set up to override always enable
     if settings.IS_BROWSER_TOOL_ALWAYS_ENABLED:
         should_enable = True
 

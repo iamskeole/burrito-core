@@ -1,7 +1,6 @@
 import textwrap
 
-text = textwrap.dedent("""
-Tool for browsing the web.
+text = textwrap.dedent("""Tool for browsing the web.
 The `cursor` appears in brackets before each browsing display: `[{cursor}]`.
 Cite information from the tool using the following format:
 `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.

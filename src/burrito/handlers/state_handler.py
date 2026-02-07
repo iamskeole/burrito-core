@@ -153,10 +153,10 @@ class AdapterStateHandler:
             for state in plugin.subscribed_states:
                 self._active_plugins_by_state.setdefault(state, []).append(plugin)
 
-    # NOTE: this enables session-ish storage of python and browser tools 
+    # NOTE: this enables session-ish storage of python and browser tools
     # should help assistant if these tools are not stateless
     # (eg. assistant can reference previously opened pages or code cells)
-    # bit hacky, hashing first few prompt messages will not work 
+    # bit hacky, hashing first few prompt messages will not work
     # if scaled horizontally, but we'll cross that bridge later
     def _init_tools(
         self,
