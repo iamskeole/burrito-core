@@ -389,8 +389,8 @@ class AdapterStateHandler:
         delta_tg = last_token.created_at - first_token.created_at
         delta_total = (delta_pp + delta_tg) / 1000
 
-        tps_pp = n_tokens_prompt / (delta_pp / 1000)
-        tps_tg = n_tokens_response / (delta_tg / 1000)
+        tps_pp = n_tokens_prompt / (delta_pp / 1000) if delta_pp else 0
+        tps_tg = n_tokens_response / (delta_tg / 1000) if delta_tg else 0
 
         self.logger.debug(
             (

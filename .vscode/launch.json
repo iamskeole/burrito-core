@@ -5,30 +5,32 @@
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
-            "justMyCode": true,
             "preLaunchTask": "setup-dev-environment",
             "program": "${file}",
             "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env.disable",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
-            }
+            },
         },
         {
-            "name": "Python: pytest – all tests",
-            "type": "python",
+            "name": "Python: pytest - all tests",
+            "type": "debugpy",
             "request": "launch",
             "module": "pytest",
             "cwd": "${workspaceFolder}",
+            "justMyCode": true,
             "args": [
                 "-s", // show print output
                 "--maxfail=1", // stop after first failure
                 "-vv", // very verbose
                 "." // run the whole repo
             ],
+            "envFile": "${workspaceFolder}/.env.disable",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             },
-            "justMyCode": true // allow stepping into your own code
         }
     ]
 }

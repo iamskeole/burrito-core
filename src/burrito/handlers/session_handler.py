@@ -10,7 +10,6 @@ class AdapterSessionHandler:
     def __init__(self):
         self.python_tools: Dict[str, Optional[BurritoPython]] = {}
         self.browser_tools: Dict[str, Optional[BurritoBrowser]] = {}
-        x = 1
 
     @staticmethod
     def int_to_bytes(n: int) -> bytes:

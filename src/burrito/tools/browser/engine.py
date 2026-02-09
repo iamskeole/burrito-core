@@ -3,24 +3,22 @@ import asyncio
 from typing import Optional
 from datetime import date
 import json
-import aiohttp
 from playwright.async_api import async_playwright, Browser, Route, Playwright
 
 from lxml import html
 import trafilatura
 
 from burrito.common.logger import FastAPILogger
-from burrito.common.config import settings
-
-PAGE_LOAD_TIMEOUT = 3000
-DOM_LOAD_TIMEOUT = 10000
 
 
-class BrowserEngine:
+class BurritoBrowserEngine:
     _playwright: Optional[Playwright] = None
     _browser: Optional[Browser] = None
-    _user_agent: str = settings.USER_AGENT_BROWSE
+    _user_agent: Optional[str] = None
     _logger = FastAPILogger.get_logger(__name__)
+    _fetch_lock = asyncio.Lock()
+
+    _started = False
 
     @classmethod
     async def start(cls):
@@ -60,19 +58,12 @@ class BrowserEngine:
             cls._playwright = None
 
     @classmethod
-    async def fetch(
-        cls, url: str, is_docs_website: bool, session: aiohttp.ClientSession
-    ) -> str:
-        # fast path
-        raw_html = await cls._fetch_aiohttp(url, session)
-
-        if raw_html:
-            if cls._is_spa(raw_html):
-                raw_html = None  # fallback to playwright
-
-        # slow path (playwright) if needed
-        if not raw_html:
-            await cls.start()
+    async def fetch(cls, url: str, is_docs_website: bool, timeout: float) -> str:
+        raw_html = None
+        async with cls._fetch_lock:
+            if not cls._browser:
+                # should not happen, we boot it together with app, but defend here
+                await cls.start()
             if not cls._browser:
                 raise RuntimeError("Failed to start browser")
 
@@ -80,7 +71,7 @@ class BrowserEngine:
                 user_agent=cls._user_agent,
                 viewport={"width": 1920, "height": 1080},
                 locale="en-US",
-                timezone_id="America/New_York",  # Or match your server location
+                timezone_id="America/New_York",
                 has_touch=False,
                 is_mobile=False,
                 device_scale_factor=1,
@@ -114,15 +105,7 @@ class BrowserEngine:
             await page.route("**/*", route_handler)
 
             try:
-                await page.goto(
-                    url, wait_until="domcontentloaded", timeout=DOM_LOAD_TIMEOUT
-                )
-                try:
-                    await page.wait_for_load_state(
-                        "networkidle", timeout=PAGE_LOAD_TIMEOUT
-                    )
-                except Exception:
-                    pass
+                await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
 
                 title = await page.title()
                 if "Just a moment" in title or "Cloudflare" in title:
@@ -130,44 +113,13 @@ class BrowserEngine:
                     await asyncio.sleep(3)
 
                 raw_html = await page.content()
-            except Exception:
-                await context.close()
             finally:
+                try:
+                    await page.unroute("**/*")
+                except Exception:
+                    pass
                 await context.close()
         return cls.preprocess_html(raw_html, is_docs_website, url)
-
-    @classmethod
-    async def _fetch_aiohttp(
-        cls, url: str, session: aiohttp.ClientSession
-    ) -> Optional[str]:
-        try:
-            async with session.get(
-                url,
-                headers={
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                    "Upgrade-Insecure-Requests": "1",
-                    "User-Agent": cls._user_agent,
-                    "Accept-Language": "en-US,en;q=0.5",
-                },
-                allow_redirects=True,
-                # in seconds, NOT ms
-                timeout=aiohttp.ClientTimeout(PAGE_LOAD_TIMEOUT // 1000),
-            ) as response:
-                if response.status == 200:
-                    content_type = response.headers.get("Content-Type", "").lower()
-                    if "text/html" in content_type:
-                        return await response.text()
-        except Exception:
-            pass
-        return None
-
-    @staticmethod
-    def _is_spa(html: str) -> bool:
-        if len(html) < 600:
-            return True
-        if '<div id="app"></div>' in html or '<div id="root"></div>' in html:
-            return True
-        return False
 
     @staticmethod
     def _preprocess_docs_website(tree: html.HtmlElement) -> str:

@@ -3,14 +3,14 @@ from typing import List
 import aiohttp
 from aiohttp import ClientSession
 import chz
-from gpt_oss.tools.simple_browser.backend import Backend, BackendError
+from gpt_oss.tools.simple_browser.backend import Backend
 from gpt_oss.tools.simple_browser.page_contents import (
     PageContents,
     process_html,
     get_domain,
 )
 
-from .engine import BrowserEngine
+from .engine import BurritoBrowserEngine
 
 from burrito.common.config import settings
 
@@ -18,28 +18,22 @@ logger = logging.getLogger("browser_backend")
 
 
 @chz.chz(typecheck=True)
-class BurritoBackend(Backend):
+class BurritoBrowserBackend(Backend):
     source: str = chz.field(default="general,news,it,science,files,social media")
-
-    async def start(self):
-        await BrowserEngine.start()
-
-    async def stop(self):
-        await BrowserEngine.stop()
+    engine = BurritoBrowserEngine()
 
     async def fetch(
         self, url: str, is_docs_website: bool, session: aiohttp.ClientSession
     ) -> PageContents:
-        try:
-            text = await BrowserEngine.fetch(url, is_docs_website, session)
+        async with session:
+            text = await self.engine.fetch(url, is_docs_website, session.timeout.total)  # type: ignore
             processed = process_html(html=text, url=url, title=None)
 
             if not processed.text:
                 domain = get_domain(url).replace("www.", "")
                 processed.text = f"No content available. {domain} is likely blocking headless access."
-            return processed
-        except Exception as e:
-            raise BackendError(f"Error fetching or processing content: {str(e)}")
+
+        return processed
 
     async def _search_searxng(
         self,
@@ -65,7 +59,7 @@ class BurritoBackend(Backend):
             payload.pop("time_range", None)
         headers = {
             "x-api-key": self._get_api_key(),
-            "user-agent": settings.USER_AGENT_SEARCH,
+            "user-agent": self.engine._user_agent or settings.USER_AGENT_SEARCH,
         }
 
         async with session.post(
@@ -89,15 +83,36 @@ class BurritoBackend(Backend):
             ]
 
     async def _search_brave(
-        self, query: str, topn: int, session: ClientSession
+        self,
+        query: str,
+        topn: int,
+        session: ClientSession,
+        locale: str,
+        language: str,
+        time_range: str,
+        source: str,
     ) -> List[tuple]:
         headers = {
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "X-Subscription-Token": settings.BRAVE_API_KEY,
-            "User-Agent": settings.USER_AGENT_SEARCH,
+            "User-Agent": self.engine._user_agent or settings.USER_AGENT_SEARCH,
         }
-        params = {"q": query, "count": min(topn, 20)}
+        params = {
+            "q": query,
+            "count": min(topn, 20),
+            "country": locale[-2:],
+            "language": language,
+            "freshness": {
+                "day": "pd",
+                "week": "pw",
+                "month": "pm",
+                "year": "py",
+            }.get(time_range),
+        }
+
+        if not params["freshness"]:
+            params.pop("freshness", None)
 
         async with session.get(
             settings.BRAVE_API_URL, headers=headers, params=params
@@ -130,12 +145,16 @@ class BurritoBackend(Backend):
     ) -> PageContents:
         titles_and_urls = []
 
+        # try brave if an api key is set
         if settings.BRAVE_API_KEY:
             try:
-                titles_and_urls = await self._search_brave(query, topn, session)
+                titles_and_urls = await self._search_brave(
+                    query, topn, session, locale, language, time_range, source
+                )
             except Exception as e:
                 logger.error(f"Brave search failed, falling back: {e}")
 
+        # fallback on searxng
         if not titles_and_urls:
             titles_and_urls = await self._search_searxng(
                 query, topn, session, locale, language, time_range, source

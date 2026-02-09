@@ -33,21 +33,21 @@ def openai_client_e2e():
 
 SCENARIOS = [
     # "basic",
-    # "native_python",
-    # "native_browser_open",
-    # "native_browser_search",
     # "function",
+    # "native_python",
+    "native_browser_open",
+    # "native_browser_search",
     # "custom_text",
-    "custom_grammar"
+    # "custom_grammar"
 ]
 
 ENDPOINTS = [
-    "/v1/chat/completions",
-    # "/v1/responses"
+    # "/v1/chat/completions",
+    "/v1/responses"
 ]
 
 STREAMS = [
-    # True,
+    True,
     False
 ]
 
@@ -58,3 +58,5 @@ STREAMS = [
 async def test_e2e_scenario(openai_client_e2e, scenario, endpoint, stream):
     success = await run_test_scenario(openai_client_e2e, scenario, endpoint, stream)
     assert success, f"Failed: {scenario} | {endpoint} | Stream={stream}"
+
+# PYTHONPATH=src uv run -m pytest -vv

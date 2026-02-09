@@ -138,8 +138,7 @@ async def generate_hosted(
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
     url = (
         settings.INFERENCE_BACKEND_BASE_URL.rstrip("/")
-        + "/"
-        + settings.INFERENCE_BACKEND_COMPLETIONS_PATH.lstrip("/")
+        + "/v1/completions"
     )
     payload = build_payload(prompt_token_ids, params)
 

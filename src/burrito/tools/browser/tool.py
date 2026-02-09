@@ -5,9 +5,9 @@ from typing import Any, AsyncIterator, Literal
 
 from urllib.parse import quote, unquote
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 
-from burrito.tools.browser.backend import BurritoBackend
+from burrito.tools.browser.backend import BurritoBrowserBackend
 
 from gpt_oss.tools.simple_browser.simple_browser_tool import (
     wrap_lines,
@@ -34,7 +34,12 @@ from burrito.prompts import (
     browser_open_prompt,
 )
 
+from burrito.common.config import settings
+
 CLEANUP_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
+
+TIMEOUT_FETCH = settings.BROWSER_TIMEOUT_FETCH
+TIMEOUT_SEARCH = settings.BROWSER_TIMEOUT_SEARCH
 
 logger = logging.getLogger("browser_backend")
 
@@ -75,8 +80,10 @@ def generate_highlight_url(base_url: str, lines_cited: str) -> str:
 
 
 class BurritoBrowser(SimpleBrowserTool):
+    backend: BurritoBrowserBackend
+
     def __init__(self):
-        super().__init__(backend=BurritoBackend())
+        super().__init__(backend=BurritoBrowserBackend())
 
     def patch_search_tool(self, config: ToolNamespaceConfig):
         _tool = None
@@ -164,7 +171,9 @@ class BurritoBrowser(SimpleBrowserTool):
         limit = topn if topn != 10 else top_n
 
         try:
-            async with ClientSession() as session:
+            async with ClientSession(
+                timeout=ClientTimeout(total=TIMEOUT_SEARCH)
+            ) as session:
                 search_page = await self.backend.search(
                     query=query,
                     topn=limit,
@@ -175,7 +184,7 @@ class BurritoBrowser(SimpleBrowserTool):
                     source=source,
                 )
         except Exception as e:
-            msg = maybe_truncate(str(e))
+            msg = f"{e.__class__} | {e.__doc__}" + maybe_truncate(str(e))
             raise BackendError(f"Error during search for `{query}`: {msg}") from e
 
         self.tool_state.add_page(search_page)
@@ -185,19 +194,22 @@ class BurritoBrowser(SimpleBrowserTool):
         self, url: str, direct_url_open: bool, is_docs_website: bool
     ) -> PageContents:
         """Use the cache, if available."""
-        backend = self.backend
+        backend: BurritoBrowserBackend = self.backend
         # direct_url_open should be regarded as a refresh
         if not direct_url_open and (page := self.tool_state.get_page_by_url(url)):
             assert page.url == url
             return page
 
         try:
-            async with ClientSession() as session:
+            async with ClientSession(
+                timeout=ClientTimeout(
+                    total=TIMEOUT_FETCH * 1000
+                )  # playwright expects ms
+            ) as session:
                 page = await backend.fetch(url, is_docs_website, session=session)
             return page
         except Exception as e:
             msg = maybe_truncate(str(e))
-            logger.warning("Error fetching URL in lean browser tool", exc_info=e)
             raise BackendError(
                 f"Error fetching URL `{maybe_truncate(url)}`: {msg}"
             ) from e
@@ -227,9 +239,6 @@ class BurritoBrowser(SimpleBrowserTool):
 
             if id >= 0:  # click a link
                 try:
-                    # TODO: figure out browser 'session' at request id / session level,
-                    # otherwise the model thinks it has history,
-                    # but refreshing browser will not, so wasted compute
                     url = curr_page.urls[str(id)]
                 except KeyError as e:
                     raise ToolUsageError(f"Invalid link id `{id}`.") from e

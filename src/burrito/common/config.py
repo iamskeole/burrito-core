@@ -1,8 +1,16 @@
 from typing import Literal
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
     DEBUG: bool = True
     LOG_LEVEL: str = "debug"
 
@@ -21,12 +29,8 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_INFERENCE_REQUESTS: int = 4  # > this  wait in fifo queue
     FORWARD_HEADERS: list[str] = ["Authorization", "X-Api-Key"]
 
-    BURRITO_HOST: str = "0.0.0.0"
-    BURRITO_PORT: int = 8000
-
     INFERENCE_BACKEND_IS_NATIVE: bool = False
     INFERENCE_BACKEND_BASE_URL: str = "changeme"
-    INFERENCE_BACKEND_COMPLETIONS_PATH: str = "/v1/completions"
 
     BACKEND_INTER_TOKEN_TIMEOUT: int = 120  # allow for large prompt preprocessing
 
@@ -46,11 +50,13 @@ class Settings(BaseSettings):
     IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
     IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
 
+    BROWSER_TIMEOUT_FETCH: int = 3
+    BROWSER_TIMEOUT_SEARCH: int = 10
+
     PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = (
         "dangerously_use_local_jupyter"
     )
 
-    USER_AGENT_BROWSE: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"
     USER_AGENT_SEARCH: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"
 
     BRAVE_API_KEY: str = ""
@@ -58,10 +64,10 @@ class Settings(BaseSettings):
 
     SEARXNG_API_URL: str = "changeme"
 
-    model_config = {
-        "env_file": ".env",
-        "env_file_encoding": "utf-8",
-    }
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 
 settings = Settings()  # type: ignore[reportCallIssue]

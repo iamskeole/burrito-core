@@ -8,8 +8,8 @@ from burrito.common.config import settings
 def serve():
     uvicorn.run(
         app,
-        host=settings.BURRITO_HOST,
-        port=settings.BURRITO_PORT,
+        host=settings.HOST,
+        port=settings.PORT,
         log_level=settings.LOG_LEVEL,
     )
 

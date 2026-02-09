@@ -9,16 +9,18 @@ from burrito import __version__
 from burrito.routes.openai_v1 import chat, models, responses
 from burrito.common.config import settings
 
+from burrito.tools.browser.engine import BurritoBrowserEngine
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # start singletons / dependencies
-    # eg: await some_singleton.start()
+    await BurritoBrowserEngine.start()
 
     yield
 
     # cleanup
-    # eg: await some_singleton.stop()
+    await BurritoBrowserEngine.stop()
 
 
 app = FastAPI(lifespan=lifespan, title="burrito:harness", version=__version__)
