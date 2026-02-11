@@ -7,6 +7,8 @@ from openai.types.completion import Completion
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.responses import Response
 
+from anthropic.types.message import Message
+
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.common.config import settings
@@ -175,6 +177,9 @@ class AdapterConversationHandler:
             return out
 
         if isinstance(output_object, AdapterErrorEvent):
+            return output_object.model_dump()
+        
+        if isinstance(output_object, Message):
             return output_object.model_dump()
 
         raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

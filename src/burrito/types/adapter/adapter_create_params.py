@@ -6,6 +6,11 @@ if TYPE_CHECKING:
     from burrito.types.adapter import (
         AdapterCreateParamsChat,
         AdapterCreateParamsResponses,
+        AdapterCreateParamsAnthropic,
     )
 
-AdapterCreateParams = Union["AdapterCreateParamsChat", "AdapterCreateParamsResponses"]
+AdapterCreateParams = Union[
+    "AdapterCreateParamsChat",
+    "AdapterCreateParamsResponses",
+    "AdapterCreateParamsAnthropic",
+]

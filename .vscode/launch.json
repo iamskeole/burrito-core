@@ -22,10 +22,10 @@
             "cwd": "${workspaceFolder}",
             "justMyCode": true,
             "args": [
-                "-s", // show print output
-                "--maxfail=1", // stop after first failure
-                "-vv", // very verbose
-                "." // run the whole repo
+                "-s",
+                "--maxfail=1",
+                "-vv",
+                "."
             ],
             "envFile": "${workspaceFolder}/.env.disable",
             "env": {

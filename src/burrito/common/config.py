@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     CORS_ALLOWED_CREDENTIALS: bool = True
 
     MAX_REQUEST_BODY_SIZE: int = 1048576  # 1MB in bytes
-    MAX_CONCURRENT_INFERENCE_REQUESTS: int = 4  # > this  wait in fifo queue
+    # TODO: check python on concurrent requests, running aime broke it?
+    MAX_CONCURRENT_INFERENCE_REQUESTS: int = 16  # > this  wait in fifo queue
     FORWARD_HEADERS: list[str] = ["Authorization", "X-Api-Key"]
 
     INFERENCE_BACKEND_IS_NATIVE: bool = False
@@ -47,15 +48,13 @@ class Settings(BaseSettings):
     IS_PYTHON_TOOL_ENABLED: bool = True
     IS_BROWSER_TOOL_ENABLED: bool = True
 
-    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
-    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
+    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = False
+    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = False
 
     BROWSER_TIMEOUT_FETCH: int = 3
     BROWSER_TIMEOUT_SEARCH: int = 10
 
-    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = (
-        "dangerously_use_local_jupyter"
-    )
+    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
 
     USER_AGENT_SEARCH: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"
 

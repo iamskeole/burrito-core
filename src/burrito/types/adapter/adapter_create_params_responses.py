@@ -184,6 +184,6 @@ class AdapterCreateParamsResponses(BaseModel):
         ]
     ] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = "auto"
-    stream: Optional[bool] = True
+    stream: Optional[bool] = False
 
     model_config = ConfigDict(extra="allow")

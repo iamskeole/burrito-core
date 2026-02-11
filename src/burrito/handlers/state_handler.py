@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
+from anthropic.types.message import Message as AnthropicMessage
 
 from burrito.types.adapter.adapter_chat_completion_chunk import (
     AdapterChatCompletionChunk,
@@ -40,6 +41,13 @@ from burrito.plugins.responses import (
     ToolInputPluginResponses,
     NativeToolCallPluginResponses,
 )
+from burrito.plugins.anthropic import (
+    ContextManagerPluginAnthropic,
+    ReasoningTextPluginAnthropic,
+    OutputTextPluginAnthropic,
+    ToolInputPluginAnthropic,
+    NativeToolCallPluginAnthropic,
+)
 
 from burrito.services.harmony import (
     ENCODING,
@@ -57,6 +65,7 @@ from burrito.types.adapter import (
     AdapterConversationState,
     AdapterCreateParamsChat,
     AdapterCreateParamsResponses,
+    AdapterCreateParamsAnthropic,
     AdapterErrorEvent,
 )
 
@@ -105,6 +114,7 @@ class AdapterStateHandler:
         self.output_object: Union[
             AdapterErrorEvent,
             Response,
+            AnthropicMessage,
             List[Union[AdapterChatCompletionChunk, AdapterChatCompletion]],
         ]
 
@@ -146,6 +156,18 @@ class AdapterStateHandler:
                     OutputTextPluginResponses(self),
                     ToolInputPluginResponses(self),
                     NativeToolCallPluginResponses(self),
+                ]
+            case AdapterCreateParamsAnthropic():
+                self.plugins = [
+                    ContextManagerPluginAnthropic(self),
+                    ReasoningTextPluginAnthropic(self),
+                    OutputTextPluginAnthropic(self),
+                    ToolInputPluginAnthropic(self),
+                    # disable this, anthropic implementation of browser 
+                    # is weird at least as of claude code v2.1.37
+                    # we just use native in assistant chain of thought
+                    # without issuing anthropic-specific events
+                    # NativeToolCallPluginAnthropic(self),
                 ]
             case _:
                 pass  # TODO: maybe anthropic messages, google genai?
@@ -423,7 +445,7 @@ class AdapterStateHandler:
         if not self.is_done:
             return
         self._log_stats()
-        return
+        return self.response_buffer
 
     def _debug_completion(self, completion: Union[Completion, str]):
         if not settings.DEBUG_COMPLETIONS:

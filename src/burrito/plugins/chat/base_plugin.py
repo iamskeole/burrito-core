@@ -189,6 +189,3 @@ class BasePluginChat(BasePlugin):
             usage=output_arr[-1].usage,
         )
         self.manager.output_object.append(completion)
-
-    async def put_event(self, event: AdapterChatCompletionChunk):
-        await self.manager.put_event(event)

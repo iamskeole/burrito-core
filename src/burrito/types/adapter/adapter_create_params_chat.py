@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
 
-from burrito.types.adapter.adapter_reasoning import ReasoningEffort
+from burrito.types.adapter.adapter_reasoning import AdapterReasoningEffort
 from burrito.types.adapter.adapter_function_tool_param import (
     AdapterFunctionToolParamChat,
 )
@@ -101,13 +101,12 @@ class AdapterCreateParamsChat(BaseModel):
     messages: List[InputItemParamChat]
     conversation: Optional[Conversation] = None
 
-    reasoning_effort: Optional[ReasoningEffort] = ReasoningEffort(
+    reasoning_effort: Optional[AdapterReasoningEffort] = AdapterReasoningEffort(
         settings.DEFAULT_REASONING_EFFORT
     )
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
-    stream: Optional[bool] = False
     stop: Optional[Union[str, List[str]]] = None
     max_tokens: Optional[int] = None
     max_completion_tokens: Optional[int] = None
@@ -128,5 +127,7 @@ class AdapterCreateParamsChat(BaseModel):
         ]
     ] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+
+    stream: Optional[bool] = False
 
     model_config = ConfigDict(extra="allow")

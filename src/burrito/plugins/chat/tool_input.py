@@ -28,7 +28,6 @@ class ToolInputPluginChat(BasePluginChat):
         self.manager = manager
 
         self.content_index = 0
-        self.current_annotations = []
         self.current_output_text_content = ""
         self.output_delta_buffer = ""
 

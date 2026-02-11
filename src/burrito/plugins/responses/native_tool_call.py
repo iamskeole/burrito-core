@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Set, Optional
+from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
-
-
-from openai_harmony import Message
 
 from openai.types.responses.response import Response
 
@@ -26,7 +23,6 @@ from openai.types.responses.response_function_web_search import (
     ActionFind,
     ActionOpenPage,
     ActionSearch,
-    ActionSearchSource,
 )
 
 from burrito.types.adapter import AdapterConversationState
@@ -61,14 +57,16 @@ class NativeToolCallPluginResponses(BasePluginResponses):
         if not tool_handler._is_browser(recipient):
             return
 
-        tool = tool_handler.browser_tool
-        if not tool:
-            return
+        if state == AdapterConversationState.NATIVE_TOOL_CALL:
+            entry = self.manager.tool_handler.register_tool_call()
+        else:
+            entry = self.manager.tool_handler.tool_calls[-1]
 
+        tool = entry["tool"]
         try:
             args = tool.process_arguments(last_message)
         except Exception as e:
-            return # TODO: why does this sometime break?
+            return  # TODO: why does this sometime break?
 
         _, function_name = recipient.split(".")
         if function_name not in ["search", "open", "find"]:
@@ -81,7 +79,7 @@ class NativeToolCallPluginResponses(BasePluginResponses):
         elif function_name == "find":
             action = ActionFind(
                 type="find",
-                pattern=args["pattern"],
+                pattern=f"**{args['pattern']}**",
                 url=args.get("url", "Unknown"),
             )
         else:

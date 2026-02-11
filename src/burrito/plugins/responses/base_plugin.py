@@ -39,6 +39,3 @@ class BasePluginResponses(BasePlugin):
         response = Response(**init_data)
         self.manager.output_object = response
         return response
-
-    async def put_event(self, event: BaseModel):
-        await self.manager.put_event(event)

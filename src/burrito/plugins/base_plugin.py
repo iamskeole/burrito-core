@@ -1,7 +1,6 @@
-# core/plugins/base.py
-import json
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Set
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
@@ -61,3 +60,6 @@ class BasePlugin(ABC):
 
     async def send_close_marker(self):
         await self.manager.put_close_marker()
+
+    async def put_event(self, event: BaseModel):
+        await self.manager.put_event(event)

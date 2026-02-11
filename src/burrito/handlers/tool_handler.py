@@ -1,3 +1,4 @@
+import json
 from typing import TYPE_CHECKING, List, Optional, Union, Dict, Any
 
 
@@ -73,17 +74,24 @@ class ToolHandler:
         ]
         self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
 
-    def get_tool_model_is_trying_to_call(self) -> AdapterConversationInputTool | None:
-        recipient = self.manager.parser.current_recipient
+    def get_tool_model_is_trying_to_call(
+        self,
+    ) -> Optional[Union[AdapterConversationInputTool, BurritoBrowser, BurritoPython]]:
+        current_recipient = self.manager.parser.current_recipient
+        prev_recipient = None
+        parser_messages = self.manager.parser.messages
+        if parser_messages:
+            prev_recipient = parser_messages[-1].recipient
+        recipient = current_recipient or prev_recipient
         if not recipient:
             return
 
         tool_name = recipient
 
         if tool_name == AdapterToolNamespace.NATIVE_PYTHON.value:
-            pass
+            return self.python_tool
         elif recipient.startswith(AdapterToolNamespace.NATIVE_BROWSER.value + "."):
-            pass
+            return self.browser_tool
         else:
             # see if we have a tool with a namespace prefix
             try_split = recipient.split(".")
@@ -98,10 +106,13 @@ class ToolHandler:
         assert tool is not None, (
             "Expected a AdapterConversationInputTool, but got `None`"
         )
-
         call_id = f"call_{random_uuid()}"
         self.tool_calls.append(
-            {"index": len(self.tool_calls), "call_id": call_id, "tool": tool}
+            {
+                "index": len(self.tool_calls),
+                "call_id": call_id,
+                "tool": tool,
+            }
         )
         return self.tool_calls[-1]
 
@@ -244,6 +255,7 @@ class ToolHandler:
             return self.manager._recover_state()
         self.manager.response_buffer
         # trigger plugin to send success event
+
         await self.manager.transition_handler.transition(
             token=None, state=AdapterConversationState.NATIVE_TOOL_DONE
         )

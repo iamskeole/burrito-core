@@ -53,14 +53,17 @@ def user_message_from_list_input(
     message_data: UserInputMessageParamResponses,
 ) -> Message:
     content = []
-    for item in message_data.content:
-        match item:
-            case InputTextParamResponses():
-                content.append(TextContent(text=item.text))
-            case InputImageParamResponses():
-                pass  # throw? tbd, for now gpt-oss does not support image inputs
-            case _:
-                pass  # maybe throw? shouldn't happen, probably too defensive
+    if isinstance(message_data.content, str):
+        content.append(TextContent(text=message_data.content))
+    else:
+        for item in message_data.content:
+            match item:
+                case InputTextParamResponses():
+                    content.append(TextContent(text=item.text))
+                case InputImageParamResponses():
+                    pass  # throw? tbd, for now gpt-oss does not support image inputs
+                case _:
+                    pass  # maybe throw? shouldn't happen, probably too defensive
     message = Message(
         author=Author(role=Role.USER),
         content=content,
@@ -117,7 +120,8 @@ def tool_call_input_message(
 
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
     message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
-    message.with_recipient(recipient)
+    if recipient:
+        message.with_recipient(recipient)
     return message
 
 
@@ -174,11 +178,12 @@ def parse_messages(
             # hence all will have to be in the analysis channel, NOT commentary
             case FunctionToolInputParamResponses() | CustomToolInputParamResponses():
                 messages.append(tool_call_input_message(i))
-
             case ToolCallOutputParamResponses():
                 messages.append(tool_call_output_message(i, tool_calls))
             case CustomToolCallOutputParamResponses():
-                pass
+                continue
+            case _:
+                continue
     return messages
 
 
@@ -237,7 +242,7 @@ def parse_instructions(params: AdapterCreateParamsResponses) -> str:
                 instructions += f"\n{message.content}"
             case DeveloperInputMessageParamResponses():
                 instructions += f"\n{message.content}"
-    return instructions
+    return instructions.strip()
 
 
 def build_message_list_responses(

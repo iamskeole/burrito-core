@@ -111,6 +111,11 @@ async def proxy_models(request: Request):
     )
 
 
+@app.post("/v1/messages")
+async def proxy_messages(request: Request):
+    return await proxy_post_request(request, "/v1/messages")
+
+
 @app.post("/v1/chat/completions")
 async def proxy_chat(request: Request):
     return await proxy_post_request(request, "/v1/chat/completions")

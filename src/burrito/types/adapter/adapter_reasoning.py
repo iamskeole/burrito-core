@@ -6,22 +6,22 @@ from pydantic import BaseModel
 from burrito.common.config import settings
 
 
-class ReasoningEffort(str, Enum):
+class AdapterReasoningEffort(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
 
-class ReasoningSummary(str, Enum):
+class AdapterReasoningSummary(str, Enum):
     AUTO = "auto"
     CONCISE = "concise"
     DETAILED = "detailed"
 
 
 class AdapterReasoningParam(BaseModel):
-    effort: Optional[ReasoningEffort] = ReasoningEffort(
+    effort: Optional[AdapterReasoningEffort] = AdapterReasoningEffort(
         settings.DEFAULT_REASONING_EFFORT
     )
-    summary: Optional[ReasoningSummary] = ReasoningSummary(
+    summary: Optional[AdapterReasoningSummary] = AdapterReasoningSummary(
         settings.DEFAULT_REASONING_SUMMARY
     )
