@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 from openai_harmony import Message, Author, Role, Content, TextContent
 
@@ -161,6 +161,7 @@ def parse_instructions(params: AdapterCreateParamsChat) -> str:
             case _:
                 pass
     return instructions
+
 
 # TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(

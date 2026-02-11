@@ -11,7 +11,6 @@ from openai.types.responses.response_usage import (
 )
 
 from burrito.types.adapter import AdapterConversationState
-
 from burrito.plugins.responses.base_plugin import BasePluginResponses
 
 

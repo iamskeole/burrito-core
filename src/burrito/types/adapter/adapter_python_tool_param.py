@@ -9,7 +9,7 @@ class AdapterPythonToolParamChat(BaseModel):
 
 
 class AdapterPythonToolParamResponses(BaseModel):
-    type: Literal["web_search", "browser_search"]
+    type: Literal["python", "code_interpreter"]
     backend: Optional[Literal["docker", "dangerously_use_local_jupyter"]] = "docker"
 
 

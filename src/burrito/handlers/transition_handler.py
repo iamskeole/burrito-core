@@ -2,14 +2,15 @@ from typing import TYPE_CHECKING, List, Optional
 
 from openai_harmony import StreamableParser, StreamState
 
-from burrito.services.harmony import SPECIAL_TOKENS
-from burrito.common.logger import FastAPILogger
 from burrito.types.adapter import (
     AdapterAssistantChannel,
     AdapterCompletionToken,
     AdapterConversationState,
     AdapterToolType,
 )
+
+from burrito.common.logger import FastAPILogger
+from burrito.services.harmony import SPECIAL_TOKENS
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler

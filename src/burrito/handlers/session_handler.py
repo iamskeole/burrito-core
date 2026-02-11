@@ -22,19 +22,13 @@ class AdapterSessionHandler:
         n = sum(prompt_tokens)
         return hashlib.sha256(self.int_to_bytes(n)).digest().hex()
 
-    def set_python_tool(
-        self, session_id: str, tool: Optional[BurritoPython]
-    ) -> Optional[BurritoPython]:
-        if session_id in self.python_tools:
-            return
-        self.python_tools[session_id] = tool
+    def set_python_tool(self, session_id: str, tool: Optional[BurritoPython]) -> None:
+        if session_id not in self.python_tools:
+            self.python_tools[session_id] = tool
 
-    def set_browser_tool(
-        self, session_id: str, tool: Optional[BurritoBrowser]
-    ) -> Optional[BurritoBrowser]:
-        if session_id in self.browser_tools:
-            return
-        self.browser_tools[session_id] = tool
+    def set_browser_tool(self, session_id: str, tool: Optional[BurritoBrowser]) -> None:
+        if session_id not in self.browser_tools:
+            self.browser_tools[session_id] = tool
 
     def get_python_tool(self, session_id: str) -> Optional[BurritoPython]:
         return self.python_tools.get(session_id)

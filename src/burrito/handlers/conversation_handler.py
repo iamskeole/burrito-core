@@ -7,19 +7,15 @@ from openai.types.completion import Completion
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.responses import Response
 
-from anthropic.types.message import Message
+from burrito.types.adapter import AdapterCreateParams
+from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
 
-from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import unix_timestamp_in_ms
-from burrito.types.adapter import AdapterCreateParams
-from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunk,
-)
-from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
 
+from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.handlers.state_handler import AdapterStateHandler
 
 
@@ -177,9 +173,6 @@ class AdapterConversationHandler:
             return out
 
         if isinstance(output_object, AdapterErrorEvent):
-            return output_object.model_dump()
-        
-        if isinstance(output_object, Message):
             return output_object.model_dump()
 
         raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

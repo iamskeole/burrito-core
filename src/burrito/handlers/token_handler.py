@@ -4,9 +4,10 @@ from typing import List, Optional
 
 from openai.types.completion import Completion
 
-from burrito.services.harmony import ENCODING, SPECIAL_TOKENS
-from burrito.common.utils import unix_timestamp_in_ms
 from burrito.types.adapter import AdapterAssistantChannel, AdapterCompletionToken
+
+from burrito.common.utils import unix_timestamp_in_ms
+from burrito.services.harmony import ENCODING, SPECIAL_TOKENS
 
 
 def create_return_token(

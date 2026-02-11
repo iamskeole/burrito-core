@@ -2,11 +2,13 @@ from typing import AsyncGenerator, Dict, List, Union
 
 from openai.types.completion import Completion
 
-from burrito.services.inference import generate_hosted
+from burrito.types.adapter import AdapterCreateParams
+
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid
-from burrito.types.adapter import AdapterCreateParams
+
+from burrito.services.inference import generate_hosted
 
 
 class AdapterGenerationHandler:

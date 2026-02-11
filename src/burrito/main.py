@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 
 from burrito import __version__
 from burrito.routes.openai_v1 import chat, models, responses
-from burrito.routes.anthropic_v1 import messages
 from burrito.common.config import settings
 
 from burrito.tools.browser.engine import BurritoBrowserEngine
@@ -48,7 +47,6 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOWED_HEADERS,
     allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
 )
-app.include_router(models.router)
 app.include_router(chat.router)
 app.include_router(responses.router)
-app.include_router(messages.router)
+app.include_router(models.router)
