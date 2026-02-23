@@ -137,7 +137,8 @@ Infer which sources are most relevant to the query and use those sources.
 ## When to use
 
 ### browser.search
-Works best for general purpose search. Returns top results with snippets.                                                                        
+Works best for general purpose search. Returns top results with snippets.
+
 ### browser.open
 Opens a specific URL and displays its content, allowing you to access and analyze web pages.
 

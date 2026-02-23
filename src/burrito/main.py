@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from burrito import __version__
-from burrito.routes.openai_v1 import chat, models, responses
+from burrito.routes import chat, models, responses
 from burrito.common.config import settings
 
 from burrito.tools.browser.engine import BurritoBrowserEngine

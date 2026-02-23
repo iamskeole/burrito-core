@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     DEBUG_COMPLETIONS: bool = False
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
-    DEBUG_RESPONSE_BUFFER: bool = False
+    DEBUG_RESPONSE_BUFFER: bool = True
 
     CORS_ALLOWED_ORIGINS: list[str] = ["*"]
     CORS_ALLOWED_METHODS: list[str] = ["*"]
@@ -35,21 +35,28 @@ class Settings(BaseSettings):
 
     BACKEND_INTER_TOKEN_TIMEOUT: int = 120  # allow for large prompt preprocessing
 
-    DEFAULT_MODEL_NAME: str = "openai/gpt-oss-20b"
+    DEFAULT_MODEL_NAME: Literal[
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-20b-chat",
+        "openai/gpt-oss-20b-responses",
+    ] = "openai/gpt-oss-20b"
     DEFAULT_MODEL_CTX_LEN: int = 131072
 
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
-    MODEL_IDENTITY: Literal["default", "experimental"] = "experimental"
+    MODEL_IDENTITY: Literal["default", "experimental"] = "default"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
+    MAX_REASONING_LOOPS: int = (
+        50  # NOTE: set temperature to 0.001 and this likely happens more often?
+    )
 
     IS_PYTHON_TOOL_ENABLED: bool = True
     IS_BROWSER_TOOL_ENABLED: bool = True
 
-    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = False
-    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = False
+    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
+    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
 
     BROWSER_TIMEOUT_FETCH: int = 3
     BROWSER_TIMEOUT_SEARCH: int = 10

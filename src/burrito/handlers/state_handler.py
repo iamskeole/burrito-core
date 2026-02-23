@@ -50,7 +50,7 @@ from burrito.services.harmony import (
     get_prompt_cache_messages,
 )
 from burrito.common.config import settings
-from burrito.common.utils import unix_timestamp_in_ms
+from burrito.common.utils import unix_timestamp_in_ms, random_uuid
 from burrito.types.adapter import (
     AdapterCompletionToken,
     AdapterConversationInputs,
@@ -171,11 +171,12 @@ class AdapterStateHandler:
         elif params.prompt_cache_key:
             session_id = params.prompt_cache_key
         else:
-            messages = get_prompt_cache_messages(self.conversation.messages)
-            conversation = build_conversation_from_messages(messages)
-            prompt_tokens = render_conversation_for_completion(conversation)
-            prompt_text = ENCODING.decode(prompt_tokens)
-            session_id = session_handler.hash_text(prompt_text)
+            session_id = random_uuid()
+            # messages = get_prompt_cache_messages(self.conversation.messages)
+            # conversation = build_conversation_from_messages(messages)
+            # prompt_tokens = render_conversation_for_completion(conversation)
+            # prompt_text = ENCODING.decode(prompt_tokens)
+            # session_id = session_handler.hash_text(prompt_text)
 
         self.log_id = session_id
         session_handler.set_python_tool(self.log_id, python_tool)
@@ -433,7 +434,14 @@ class AdapterStateHandler:
         else:
             self.logger.debug(completion.choices[0])
 
-    async def process_completion(self, completion: Union[Completion, str]):
+    async def process_completion(self, completion: Union[Completion, Dict, str]):
+        if isinstance(completion, dict):
+            msg = f"Backend error: {completion.get('error')}"
+            self.logger.error(msg, extra=self.log_extra)
+            await self.put_error(msg, "ERR_BACKEND_EXCEPTION")
+            self.is_done = True
+            return
+
         self._debug_completion(completion)
         await self._process_completion(completion)
         self._cleanup_on_done(completion)

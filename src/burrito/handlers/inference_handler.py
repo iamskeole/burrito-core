@@ -13,6 +13,7 @@ from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
 
 
+# TODO: non-stream should also disconnect when client disconnects
 async def run_inference(
     request: Request,
     params: AdapterCreateParams,

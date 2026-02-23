@@ -26,7 +26,8 @@ class BurritoBrowserBackend(Backend):
         self, url: str, is_docs_website: bool, session: aiohttp.ClientSession
     ) -> PageContents:
         async with session:
-            text = await self.engine.fetch(url, is_docs_website, session.timeout.total)  # type: ignore
+            timeout_ms = (session.timeout.total or 1) * 1000 # playwright expects ms, aiohttp in s
+            text = await self.engine.fetch(url, is_docs_website, timeout_ms)  # type: ignore
             processed = process_html(html=text, url=url, title=None)
 
             if not processed.text:

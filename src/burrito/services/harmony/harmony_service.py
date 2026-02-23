@@ -87,7 +87,7 @@ def build_system_message(
 
     sys_message = (
         SystemContent.new()
-        .with_model_identity(MODEL_IDENTITY.get(settings.MODEL_IDENTITY, "").strip())
+        .with_model_identity(MODEL_IDENTITY.get(settings.MODEL_IDENTITY, "default").strip())
         .with_conversation_start_date(yyyymmdd())
         .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)

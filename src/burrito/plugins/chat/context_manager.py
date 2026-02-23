@@ -1,7 +1,6 @@
 from typing import Set, List
 
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
-from openai.types.completion_usage import CompletionUsage, CompletionTokensDetails
 
 from burrito.types.adapter import AdapterConversationState
 from burrito.types.adapter.adapter_chat_completion_chunk import (
@@ -62,26 +61,13 @@ class ContextManagerPluginChat(BasePluginChat):
         if state == AdapterConversationState.TOOL_CALL:
             finish_reason = "tool_calls"
 
-        counts = self.get_token_counts()
-
         choice = AdapterChatCompletionChunkChoice(
             index=0,
             finish_reason=finish_reason,  # type: ignore
             # empty choice, we don't rebuild full message like responses
             delta={},
         )
-
-        usage = CompletionUsage(
-            prompt_tokens=counts.n_input,
-            completion_tokens=counts.n_completion,
-            total_tokens=counts.n_total,
-            completion_tokens_details=CompletionTokensDetails(
-                reasoning_tokens=sum(
-                    [counts.n_reasoning, counts.n_preamble, counts.n_native_tool_input]
-                )
-            ),
-        )
-        chunk = self.build_chunk_object(choice, usage)
+        chunk = self.build_chunk_object(choice)
         self.manager.output_object.append(chunk)
         await self.put_event(chunk)
         await self.send_close_marker()

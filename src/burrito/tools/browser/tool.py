@@ -202,9 +202,7 @@ class BurritoBrowser(SimpleBrowserTool):
 
         try:
             async with ClientSession(
-                timeout=ClientTimeout(
-                    total=TIMEOUT_FETCH * 1000
-                )  # playwright expects ms
+                timeout=ClientTimeout(total=TIMEOUT_FETCH)
             ) as session:
                 page = await backend.fetch(url, is_docs_website, session=session)
             return page

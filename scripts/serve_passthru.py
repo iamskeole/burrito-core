@@ -83,6 +83,7 @@ async def proxy_post_request(request: Request, path: str):
         backend_response = await client.request(
             request.method, url, headers=headers, json=payload
         )
+        # jsn = backend_response.json()
         return Response(
             content=backend_response.content,
             status_code=backend_response.status_code,

@@ -15,6 +15,8 @@ from burrito.services.harmony import SPECIAL_TOKENS
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
+from burrito.common.config import settings
+
 
 def is_created(parser: StreamableParser) -> bool:
     return len(parser.tokens) == 1 and parser.state == StreamState.HEADER
@@ -146,6 +148,8 @@ class TransitionHandler:
     def __init__(self, manager: "AdapterStateHandler"):
         self.manager = manager
 
+        self.reasoning_loops = 0
+
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
         self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
@@ -187,7 +191,7 @@ class TransitionHandler:
             return AdapterConversationState.COMPLETED
         else:
             return AdapterConversationState.TRANSITION
-
+    # TODO: maybe allow functions without the functions. namespace? map it back in tool handler if it's a valid tool?
     def _is_valid_transition(self, new_state: AdapterConversationState) -> bool:
         manager = self.manager
         parser = manager.parser
@@ -197,6 +201,24 @@ class TransitionHandler:
         current_recipient = parser.current_recipient
         channel = last_message.channel if last_message else None
         self.manager.response_buffer
+
+        if new_state == AdapterConversationState.REASONING:
+            self.reasoning_loops += 1
+
+        # TODO: if this helps break the loop, make it a config var
+        if self.reasoning_loops >= settings.MAX_REASONING_LOOPS:
+            self.reasoning_loops = 0
+            self.logger.warning(
+                "Invalid output: max reasoning loops.",
+                extra=self.log_extra,
+            )
+            manager._add_recovery_message(
+                "**Invalid output**: you seem to be stuck inside the analysis channel.\n"
+                "Valid channels: analysis, commentary, final. "
+                "Channel must be included for every message. "
+                "Calls to these tools must go to the commentary channel: 'functions'. "
+            )
+            return False
 
         if new_state == AdapterConversationState.NATIVE_TOOL_DONE:
             return True

@@ -3,14 +3,20 @@ import asyncio
 from typing import Optional
 from datetime import date
 import json
-from playwright.async_api import async_playwright, Browser, Route, Playwright
-
+from playwright.async_api import (
+    async_playwright,
+    Browser,
+    Route,
+    Playwright,
+    TimeoutError,
+)
 from lxml import html
 import trafilatura
 
 from burrito.common.logger import FastAPILogger
 
 
+# TODO: maybe? async ping to check internet connectivity
 class BurritoBrowserEngine:
     _playwright: Optional[Playwright] = None
     _browser: Optional[Browser] = None
@@ -113,11 +119,12 @@ class BurritoBrowserEngine:
                     await asyncio.sleep(3)
 
                 raw_html = await page.content()
+            except TimeoutError:
+                raw_html = (
+                    f"<html>Timeout error while loading {url}:\n"
+                    f"wait_until='domcontentloaded' timed out after {timeout}ms.</html>"
+                )
             finally:
-                try:
-                    await page.unroute("**/*")
-                except Exception:
-                    pass
                 await context.close()
         return cls.preprocess_html(raw_html, is_docs_website, url)
 

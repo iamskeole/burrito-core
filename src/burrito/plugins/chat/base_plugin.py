@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Optional, List
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
-from openai.types.completion_usage import CompletionUsage
+from openai.types.completion_usage import CompletionUsage, CompletionTokensDetails
 from openai.types.chat.chat_completion_message_function_tool_call import (
     ChatCompletionMessageFunctionToolCall,
     Function,
@@ -38,11 +38,24 @@ class BasePluginChat(BasePlugin):
         self.manager = manager
         self.log_extra = {"log_id": f"apr_{self.log_id}"}
 
-    def build_chunk_object(
-        self,
-        choice: AdapterChatCompletionChunkChoice,
-        usage: Optional[CompletionUsage] | None = None,
-    ):
+    def get_usage_details(self) -> CompletionUsage:
+        counts = self.get_token_counts()
+
+        usage = CompletionUsage(
+            prompt_tokens=counts.n_input,
+            completion_tokens=counts.n_completion,
+            total_tokens=counts.n_total,
+            completion_tokens_details=CompletionTokensDetails(
+                accepted_prediction_tokens=counts.n_completion,
+                rejected_prediction_tokens=0,
+                reasoning_tokens=sum(
+                    [counts.n_reasoning, counts.n_preamble, counts.n_native_tool_input]
+                )
+            ),
+        )
+        return usage
+
+    def build_chunk_object(self, choice: AdapterChatCompletionChunkChoice):
         assert isinstance(self.manager.output_object, List), (
             f"Expected a List, but got {type(self.manager.output_object)}"
         )
@@ -59,7 +72,7 @@ class BasePluginChat(BasePlugin):
             service_tier=first_chunk.service_tier,
             system_fingerprint=first_chunk.system_fingerprint,
             choices=[choice],
-            usage=usage,
+            usage=self.get_usage_details(),
         )
         return chunk_object
 
@@ -72,13 +85,12 @@ class BasePluginChat(BasePlugin):
             "choices": [
                 {
                     "index": 0,
-                    "delta": {
-                        # "role": "assistant", "content": "",
-                    },
+                    "delta": {},
                 }
             ],
             "service_tier": "default",
             "system_fingerprint": f"{get_system_fingerprint()}",
+            "usage": self.get_usage_details().model_dump(),
         }
         completion = AdapterChatCompletionChunk(**init_data)
         self.manager.output_object = [completion]

@@ -48,6 +48,8 @@ class AdapterConversationHandler:
         self.logger: logging.Logger
         self.log_extra: Dict[str, str]
 
+        self._is_stopped = False
+
         self._init_state_handler()
         self._init_logger()
         self._init_stream()
@@ -63,8 +65,9 @@ class AdapterConversationHandler:
         )
 
     def _init_stream(self):
-        self.generator.log_id = self.log_id
+        self._is_stopped = False
         self.generator.can_stream = True
+        self.generator.log_id = self.log_id
         prompt_token_ids = self.state_handler.prompt_tokens
         params = self.params
         self.stream = self.generator.generate(
@@ -72,42 +75,49 @@ class AdapterConversationHandler:
         )
 
     def _stop_stream(self):
+        if self._is_stopped:
+            return
+        self._is_stopped = True
+        self.logger.debug(
+            "Client disconnected, stopping generation.", extra=self.log_extra
+        )
         self.generator.can_stream = False
+
+    async def _watch_disconnect(self):
+        try:
+            while True:
+                message = await self.request.receive()
+                if message.get("type") == "http.disconnect":
+                    self._stop_stream()
+                    break
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self.logger.debug(f"Watcher exited with error: {e}", extra=self.log_extra)
+            self._stop_stream()
 
     async def _stream_completions(self):
         sm = self.state_handler
+        timeout = settings.BACKEND_INTER_TOKEN_TIMEOUT
         try:
             while 1:
-                # detect client disconnects
-                if await self.request.is_disconnected():
-                    self._stop_stream()
-                    msg = "Client disconnected, stopping generation."
-                    self.logger.debug(msg, extra=self.log_extra)
-                    break
+                completion = None
+
+                try:
+                    async with async_timeout.timeout(timeout):
+                        completion = await anext(self.stream)
 
                 # handle backend stalls
-                completion = None
-                try:
-                    async with async_timeout.timeout(
-                        settings.BACKEND_INTER_TOKEN_TIMEOUT
-                    ):
-                        completion = await anext(self.stream)
-                except StopAsyncIteration:
-                    # break  # stream finished successfully
-                    # we pass instead of breaking, so we keep the main loop to
-                    # the caller still open if the model goes haywire and we
-                    # need to recover from that
-                    pass
                 except asyncio.TimeoutError:
                     msg = "Backend timed out between tokens"
                     self.logger.error(msg, extra=self.log_extra)
                     await sm.put_error(msg, "ERR_BACKEND_TIMEOUT")
                     break
-
-                if isinstance(completion, dict):
-                    msg = f"Backend error: {completion.get('error')}"
-                    self.logger.error(msg, extra=self.log_extra)
-                    await sm.put_error(msg, "ERR_BACKEND_EXCEPTION")
+                # stream finished successfully; pass instead of break
+                # to keep connection to caller alive in case the model
+                # goes haywire and we need to _recover_state() from that
+                except StopAsyncIteration:
+                    # pass
                     break
 
                 if completion is None:
@@ -124,7 +134,7 @@ class AdapterConversationHandler:
             await sm.put_error(msg, "ERR_STREAM_PROCESSOR")
         finally:
             self.is_finished.set()
-            # ensure the backend generator stream is closed if possible
+            # best efforts ensure the backend generator stream is closed
             try:
                 await self.stream.aclose()
             except Exception:
@@ -135,22 +145,30 @@ class AdapterConversationHandler:
             self.output_queue.put_nowait(None)
 
     async def return_stream(self) -> AsyncGenerator[bytes, None]:
-        # use TaskGroup for safe concurrency
         sm = self.state_handler
         try:
             async with asyncio.TaskGroup() as tg:
                 tg.create_task(self._stream_completions())
 
-                # consumer loop
+                watch_task = None
+                if not self.stream_to_caller:
+                    watch_task = tg.create_task(self._watch_disconnect())
+
                 while True:
                     item = await self.output_queue.get()
                     if item is None:
                         break
                     yield item
+
+                if watch_task:
+                    watch_task.cancel()
+
+        except asyncio.CancelledError:
+            # this triggers automatically when a STREAMED client disconnects
+            self._stop_stream()
+            raise  # re-raise the cancellation so fastapi cleans up
+
         except Exception as e:
-            # if something in the TaskGroup (eg cancelation due to an error)
-            # throws, we want to surface that as an error event and stop the
-            # generator
             msg = f"TaskGroup caught an unhandled exception:\n{repr(e)}"
             self.logger.error(msg, extra=self.log_extra)
             await sm.put_error(msg, "ERR_TASK_GROUP_EXCEPTION")
