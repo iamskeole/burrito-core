@@ -76,7 +76,7 @@ def generate_highlight_url(base_url: str, lines_cited: str) -> str:
         end_anchor = clean_anchor(words[-3:])
         fragment = f"{start_anchor},{end_anchor}"
 
-    return f"{base_url}#:~:text={fragment}#:~:cite={lines_cited}"
+    return f"{base_url}#:~:text={fragment}"
 
 
 class BurritoBrowser(SimpleBrowserTool):
@@ -299,8 +299,7 @@ class BurritoBrowser(SimpleBrowserTool):
         old_content: str,
         hide_partial_citations: bool = False,
         current_citations: list[dict[str, Any]] = [],
-        current_citation_index: int = 0,
-    ) -> tuple[str, list[dict[str, Any]], bool, int]:
+    ) -> tuple[str, list[dict[str, Any]], bool]:
         """
         Returns a tuple of (new_message, annotations, has_partial_citations)
         - new_message: Message with citations replaced by ([domain](url))
@@ -344,13 +343,22 @@ class BurritoBrowser(SimpleBrowserTool):
         last_idx = 0
         annotations = []
 
-        cited_urls = set(i["url"] for i in current_citations)
-        # running_offset = 0  # Offset due to length changes in replacements
+        cited_urls = []
+        for i in current_citations:
+            url_to_index = i["url"].split("/find?pattern=")[0].rstrip("/")
+            if VIEW_SOURCE_PREFIX in url_to_index:
+                url_to_index = url_to_index.replace(VIEW_SOURCE_PREFIX, "")
+            if url_to_index not in cited_urls:
+                cited_urls.append(url_to_index)
 
+        # running_offset = 0  # Offset due to length changes in replacements
         for m in matches:
             cursor = m["cursor"]
             url = cursor_to_url.get(cursor, "")
             url_clean = url.split("/find?pattern=")[0].rstrip("/")
+
+            if VIEW_SOURCE_PREFIX in url_clean:
+                url_clean = url_clean.replace(VIEW_SOURCE_PREFIX, "")
 
             orig_start = m["start"]
             orig_end = m["end"]
@@ -368,13 +376,16 @@ class BurritoBrowser(SimpleBrowserTool):
                 }
                 annotation = self.augment_annotation(annotation)
 
-                replacement = ""
-                if annotation["url"] not in cited_urls:
-                    current_citation_index += 1
-                    replacement = (
-                        f" [**`[{current_citation_index}]`**]({annotation['url']})"  # whole citation is the link
-                        # f" [[**`{current_citation_index}`**]({annotation['url']})]" # only the number is the link
-                    )
+                if url_clean not in cited_urls:
+                    citation_index = len(cited_urls) + 1
+                else:
+                    citation_index = cited_urls.index(url_clean) + 1
+
+                replacement = f" [[{citation_index}]]({url_clean})"
+                if cited_urls and url_clean == cited_urls[-1]:
+                    # avoid back to back citations eg [1][1][2]
+                    replacement = ""
+
                 new_content += replacement
 
                 # The start and end indices in the new content
@@ -395,4 +406,4 @@ class BurritoBrowser(SimpleBrowserTool):
             last_idx = orig_end
 
         new_content += old_content[last_idx:]
-        return new_content, annotations, has_partial_citations, current_citation_index
+        return new_content, annotations, has_partial_citations

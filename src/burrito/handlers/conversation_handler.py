@@ -1,11 +1,13 @@
 import asyncio
-from typing import AsyncGenerator, Dict, List, Union
+from typing import AsyncGenerator, Dict, List, Union, Optional
 import logging
 import async_timeout
 from fastapi import Request
 from openai.types.completion import Completion
 from openai.types.chat.chat_completion import ChatCompletion
 from openai.types.responses import Response
+
+from anthropic.types.message import Message as AnthropicMessage
 
 from burrito.types.adapter import AdapterCreateParams
 from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
@@ -74,27 +76,26 @@ class AdapterConversationHandler:
             prompt_token_ids, params, self.forwarded_headers
         )
 
-    def _stop_stream(self):
+    def _stop_stream(self, msg: Optional[str] = None):
         if self._is_stopped:
             return
         self._is_stopped = True
-        self.logger.debug(
-            "Client disconnected, stopping generation.", extra=self.log_extra
-        )
         self.generator.can_stream = False
+        if msg is None:
+            return
+        self.logger.debug(msg, extra=self.log_extra)
 
     async def _watch_disconnect(self):
         try:
             while True:
                 message = await self.request.receive()
                 if message.get("type") == "http.disconnect":
-                    self._stop_stream()
+                    self._stop_stream("Client disconnected inside _watch_disconnect.")
                     break
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            self.logger.debug(f"Watcher exited with error: {e}", extra=self.log_extra)
-            self._stop_stream()
+            self._stop_stream(f"_watch_disconnect exited with error: {e}")
 
     async def _stream_completions(self):
         sm = self.state_handler
@@ -165,7 +166,7 @@ class AdapterConversationHandler:
 
         except asyncio.CancelledError:
             # this triggers automatically when a STREAMED client disconnects
-            self._stop_stream()
+            self._stop_stream("Client disconnected outside _watch_disconnect.")
             raise  # re-raise the cancellation so fastapi cleans up
 
         except Exception as e:
@@ -189,6 +190,9 @@ class AdapterConversationHandler:
         ):
             out = output_object[-1].model_dump()
             return out
+
+        if isinstance(output_object, AnthropicMessage):
+            return output_object.model_dump()
 
         if isinstance(output_object, AdapterErrorEvent):
             return output_object.model_dump()

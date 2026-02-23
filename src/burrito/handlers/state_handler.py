@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
+from anthropic.types.message import Message as AnthropicMessage
 
 from burrito.types.adapter.adapter_chat_completion import AdapterChatCompletion
 from burrito.types.adapter.adapter_chat_completion_chunk import (
@@ -32,13 +33,21 @@ from burrito.plugins.chat import (
     ReasoningTextPluginChat,
     OutputTextPluginChat,
     ToolInputPluginChat,
+    NativeToolsPluginChat,
 )
 from burrito.plugins.responses import (
     ContextManagerPluginResponses,
     ReasoningTextPluginResponses,
     OutputTextPluginResponses,
     ToolInputPluginResponses,
-    NativeToolCallPluginResponses,
+    NativeToolsPluginResponses,
+)
+from burrito.plugins.anthropic import (
+    ContextManagerPluginAnthropic,
+    ReasoningTextPluginAnthropic,
+    OutputTextPluginAnthropic,
+    ToolInputPluginAnthropic,
+    NativeToolsPluginAnthropic,
 )
 
 from burrito.services.harmony import (
@@ -46,8 +55,6 @@ from burrito.services.harmony import (
     build_conversation_from_params,
     build_user_message,
     render_conversation_for_completion,
-    build_conversation_from_messages,
-    get_prompt_cache_messages,
 )
 from burrito.common.config import settings
 from burrito.common.utils import unix_timestamp_in_ms, random_uuid
@@ -57,6 +64,7 @@ from burrito.types.adapter import (
     AdapterConversationState,
     AdapterCreateParamsChat,
     AdapterCreateParamsResponses,
+    AdapterCreateParamsAnthropic,
     AdapterErrorEvent,
 )
 
@@ -106,6 +114,7 @@ class AdapterStateHandler:
             AdapterErrorEvent,
             Response,
             List[Union[AdapterChatCompletionChunk, AdapterChatCompletion]],
+            AnthropicMessage,
         ]
 
         self.plugins: List[BasePlugin]
@@ -138,6 +147,7 @@ class AdapterStateHandler:
                     ReasoningTextPluginChat(self),
                     OutputTextPluginChat(self),
                     ToolInputPluginChat(self),
+                    NativeToolsPluginChat(self),
                 ]
             case AdapterCreateParamsResponses():
                 self.plugins = [
@@ -145,7 +155,15 @@ class AdapterStateHandler:
                     ReasoningTextPluginResponses(self),
                     OutputTextPluginResponses(self),
                     ToolInputPluginResponses(self),
-                    NativeToolCallPluginResponses(self),
+                    NativeToolsPluginResponses(self),
+                ]
+            case AdapterCreateParamsAnthropic():
+                self.plugins = [
+                    ContextManagerPluginAnthropic(self),
+                    ReasoningTextPluginAnthropic(self),
+                    OutputTextPluginAnthropic(self),
+                    ToolInputPluginAnthropic(self),
+                    NativeToolsPluginAnthropic(self),
                 ]
             case _:
                 return

@@ -32,7 +32,7 @@ from burrito.common.utils import random_uuid
 from burrito.types.adapter import AdapterCompletionToken
 
 
-class NativeToolCallPluginResponses(BasePluginResponses):
+class NativeToolsPluginResponses(BasePluginResponses):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
         self.manager = manager
@@ -40,6 +40,7 @@ class NativeToolCallPluginResponses(BasePluginResponses):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
+            AdapterConversationState.NATIVE_TOOL_INPUT,
             AdapterConversationState.NATIVE_TOOL_CALL,
             AdapterConversationState.NATIVE_TOOL_DONE,
         }
@@ -57,11 +58,7 @@ class NativeToolCallPluginResponses(BasePluginResponses):
         if not tool_handler._is_browser(recipient):
             return
 
-        if state == AdapterConversationState.NATIVE_TOOL_CALL:
-            entry = self.manager.tool_handler.register_tool_call()
-        else:
-            entry = self.manager.tool_handler.tool_calls[-1]
-
+        entry = self.manager.tool_handler.tool_calls[-1]
         tool = entry["tool"]
         try:
             args = tool.process_arguments(last_message)
@@ -158,6 +155,9 @@ class NativeToolCallPluginResponses(BasePluginResponses):
         await self.put_event(event)
 
     async def handle_on_enter_state(self, state: AdapterConversationState):
+        if state == AdapterConversationState.NATIVE_TOOL_INPUT:
+            self.manager.tool_handler.register_tool_call()
+            return
         await self.send_python_event(state)
         await self.send_browser_event(state)
 

@@ -29,7 +29,10 @@ async def v1_responses(
     try:
         params = AdapterCreateParamsResponses(**raw_params)
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=422)
+        return JSONResponse(
+            content={"error": {"type": "invalid_request_error", "message": str(e)}},
+            status_code=422,
+        )
     return await run_inference(
         request=request,
         params=params,

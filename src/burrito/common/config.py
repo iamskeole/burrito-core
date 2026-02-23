@@ -11,14 +11,15 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    DEBUG: bool = True
+    DEBUG: bool = False
     LOG_LEVEL: str = "debug"
 
-    DEBUG_TOOL_IO: bool = False
+    DEBUG_TOOL_INPUTS: bool = True
+    DEBUG_TOOL_OUTPUTS: bool = False
     DEBUG_COMPLETIONS: bool = False
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
-    DEBUG_RESPONSE_BUFFER: bool = True
+    DEBUG_RESPONSE_BUFFER: bool = False
 
     CORS_ALLOWED_ORIGINS: list[str] = ["*"]
     CORS_ALLOWED_METHODS: list[str] = ["*"]
@@ -45,12 +46,11 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
-    MODEL_IDENTITY: Literal["default", "experimental"] = "default"
+    MODEL_IDENTITY: Literal["default", "experimental"] = "experimental"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
-    MAX_REASONING_LOOPS: int = (
-        50  # NOTE: set temperature to 0.001 and this likely happens more often?
-    )
+    # NOTE: set temperature to 0.001 and this likely happens more often?
+    MAX_REASONING_LOOPS: int = 50
 
     IS_PYTHON_TOOL_ENABLED: bool = True
     IS_BROWSER_TOOL_ENABLED: bool = True

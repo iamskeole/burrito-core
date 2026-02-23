@@ -231,3 +231,6 @@ async def generate_hosted(
                         message_buffer += raw_data  #
     except asyncio.CancelledError:
         pass
+    except Exception as e:
+        yield {"error": repr(e)}
+        pass

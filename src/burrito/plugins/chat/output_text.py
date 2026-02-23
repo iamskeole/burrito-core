@@ -29,7 +29,6 @@ class OutputTextPluginChat(BasePluginChat):
         self.current_output_text_content = ""
         self.output_delta_buffer = ""
         self.debug_full_buffer = ""
-        self.current_citation_index = 0
         self.current_citations = []
 
     @property
@@ -59,15 +58,12 @@ class OutputTextPluginChat(BasePluginChat):
             updated_output_text,
             annotations,
             has_partial_citations,
-            current_citation_index,
         ) = browser_tool.normalize_citations(
             old_content=self.current_output_text_content + self.output_delta_buffer,
             current_citations=self.annotations,
-            current_citation_index=self.current_citation_index,
         )
 
         self.has_partial_citations = has_partial_citations
-        self.current_citation_index = current_citation_index
 
         # remove the current text to get back the delta but now normalized
         self.output_delta_buffer = updated_output_text[

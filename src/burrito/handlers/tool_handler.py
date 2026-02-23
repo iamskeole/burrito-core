@@ -40,6 +40,7 @@ class ToolHandler:
         self.msg_tools: str = ""
 
         self.tool_calls: list[Dict[str, Any]] = []
+        self.tool_results: Dict[str, Any] = {}
 
         self.python_tool = python_tool
         self.browser_tool = browser_tool
@@ -231,7 +232,7 @@ class ToolHandler:
     ):
         t_name, t_params = message.recipient, message.content[0].text  # type: ignore
         try:
-            if settings.DEBUG_TOOL_IO:
+            if settings.DEBUG_TOOL_INPUTS:
                 self.logger.debug(
                     f"Calling `{t_name}` tool params `{t_params}.", extra=self.log_extra
                 )
@@ -239,7 +240,10 @@ class ToolHandler:
                 self.logger.debug(f"calling tool `{t_name}`.", extra=self.log_extra)
 
             tool_result = await self.run_tool(tool, message)
-            if settings.DEBUG_TOOL_IO:
+            tool_call = self.tool_calls[-1]
+            call_id = tool_call["call_id"]
+            self.tool_results[call_id] = tool_result
+            if settings.DEBUG_TOOL_OUTPUTS:
                 self.logger.debug(
                     (
                         f"Tool result for `{t_name}` tool with params `{t_params}:"
@@ -252,8 +256,6 @@ class ToolHandler:
             self.logger.error(msg, extra=self.log_extra)
             self.manager._add_recovery_message(msg)
             return self.manager._recover_state()
-        self.manager.response_buffer
-        # trigger plugin to send success event
 
         await self.manager.transition_handler.transition(
             token=None, state=AdapterConversationState.NATIVE_TOOL_DONE

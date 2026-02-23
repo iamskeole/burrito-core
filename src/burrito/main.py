@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 
 from burrito import __version__
-from burrito.routes import chat, models, responses
+from burrito.routes import chat, models, responses, messages
 from burrito.common.config import settings
 
 from burrito.tools.browser.engine import BurritoBrowserEngine
@@ -30,9 +31,8 @@ app = FastAPI(lifespan=lifespan, title="burrito:harness", version=__version__)
 async def limit_body_size(request: Request, call_next):
     if request.method == "POST":
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > settings.MAX_REQUEST_BODY_SIZE:
-            from fastapi.responses import JSONResponse
-
+        max_length = settings.MAX_REQUEST_BODY_SIZE
+        if content_length and int(content_length) > max_length:
             return JSONResponse(
                 status_code=413,
                 content={"error": "Request body too large"},
@@ -47,6 +47,7 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOWED_HEADERS,
     allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
 )
+app.include_router(models.router)
 app.include_router(chat.router)
 app.include_router(responses.router)
-app.include_router(models.router)
+app.include_router(messages.router)

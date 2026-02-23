@@ -53,7 +53,6 @@ class OutputTextPluginResponses(BasePluginResponses):
         self.current_output_text_content = ""
         self.output_delta_buffer = ""
         self.debug_full_buffer = ""
-        self.current_citation_index = 0
         self.current_citations = []
 
     @property
@@ -113,19 +112,14 @@ class OutputTextPluginResponses(BasePluginResponses):
             return
 
         # we normalize on the full current text to get the right indices in citations
-        (
-            updated_output_text,
-            annotations,
-            has_partial_citations,
-            current_citation_index,
-        ) = browser_tool.normalize_citations(
-            old_content=self.current_output_text_content + self.output_delta_buffer,
-            current_citations=self.annotations,
-            current_citation_index=self.current_citation_index,
+        (updated_output_text, annotations, has_partial_citations) = (
+            browser_tool.normalize_citations(
+                old_content=self.current_output_text_content + self.output_delta_buffer,
+                current_citations=self.annotations,
+            )
         )
 
         self.has_partial_citations = has_partial_citations
-        self.current_citation_index = current_citation_index
 
         # remove the current text to get back the delta but now normalized
         self.output_delta_buffer = updated_output_text[
@@ -245,7 +239,6 @@ class OutputTextPluginResponses(BasePluginResponses):
         self.current_output_text_content = ""
         self.output_delta_buffer = ""
         self.debug_full_buffer = ""
-        self.current_citation_index = 0
         self.current_citations = []
 
     async def on_enter_state(self, state: str):

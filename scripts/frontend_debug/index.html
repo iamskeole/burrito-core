@@ -950,9 +950,8 @@
                     const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
                     return { role: item.role, content: text };
                 } else if (item.type === 'reasoning') {
-                    // Chat API doesn't have a reasoning role, but we can send it as assistant for history preservation
                     const text = Array.isArray(item.content) ? item.content.map(c => c.text || '').join('\n') : (typeof item.content === 'string' ? item.content : '');
-                    return { role: 'assistant', content: text };
+                    return { role: 'assistant', reasoning_content: text };
                 } else if (item.type === 'function_call' || item.type === 'custom_tool_call') {
                     return {
                         role: 'assistant',

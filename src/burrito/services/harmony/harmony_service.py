@@ -31,6 +31,7 @@ from burrito.types.adapter import (
     AdapterCreateParams,
     AdapterCreateParamsChat,
     AdapterCreateParamsResponses,
+    AdapterCreateParamsAnthropic,
 )
 
 from burrito.types.adapter.adapter_browser_tool_param import (
@@ -41,9 +42,14 @@ from burrito.types.adapter.adapter_python_tool_param import (
     AdapterPythonToolParamChat,
     AdapterPythonToolParamResponses,
 )
+from burrito.types.adapter.adapter_create_params_anthropic import (
+    AdapterToolParamInputAnthropic,
+    WebSearchToolParamAnthropic,
+)
 
 from .harmony_service_chat import build_message_list_chat
 from .harmony_service_responses import build_message_list_responses
+from .harmony_service_anthropic import build_message_list_anthropic
 
 REASONING = {
     "high": ReasoningEffort.HIGH,
@@ -87,7 +93,9 @@ def build_system_message(
 
     sys_message = (
         SystemContent.new()
-        .with_model_identity(MODEL_IDENTITY.get(settings.MODEL_IDENTITY, "default").strip())
+        .with_model_identity(
+            MODEL_IDENTITY.get(settings.MODEL_IDENTITY, "default").strip()
+        )
         .with_conversation_start_date(yyyymmdd())
         .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)
@@ -269,6 +277,20 @@ def resolve_browser_tool(params: AdapterCreateParams) -> Optional[BurritoBrowser
             case AdapterBrowserToolParamChat() | AdapterBrowserToolParamResponses():
                 should_enable = tool.web_search_enabled
                 break
+
+            # we use tool names to enable native browser
+            # but in harmony_service_anthropic we disable claude code tools
+            # since they are allover the place
+            case AdapterToolParamInputAnthropic():
+                if tool.name in ["WebFetch", "WebSearch"]:
+                    should_enable = True
+
+            # special case as the only tool, claude code harness
+            # starts a new conversation with just web_search as tool,
+            # then asks the model to search for `topic`
+            # so we use this as a signal to toggle native browser on
+            case WebSearchToolParamAnthropic():
+                should_enable = True
             case _:
                 continue
 
@@ -301,6 +323,7 @@ def build_conversation_from_params(
         (
             AdapterCreateParamsChat,
             AdapterCreateParamsResponses,
+            AdapterCreateParamsAnthropic,
         ),
     ), f"Unsupported params type: {type(params)}."
     match params:
@@ -308,6 +331,8 @@ def build_conversation_from_params(
             inputs = build_message_list_responses(params)
         case AdapterCreateParamsChat():
             inputs = build_message_list_chat(params)
+        case AdapterCreateParamsAnthropic():
+            inputs = build_message_list_anthropic(params)
 
     tools: List[AdapterConversationInputTool] = []
 
