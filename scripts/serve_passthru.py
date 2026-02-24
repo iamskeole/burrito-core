@@ -1,28 +1,27 @@
 import json
 
 import httpx
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
+from burrito import __version__
 from burrito.common.config import settings
+from burrito.common.utils import get_headers_to_forward
 
-app = FastAPI(
-    title="OpenAI Compatible Proxy",
-    description="A FastAPI proxy for OpenAI compatible backends. It handles /v1/models, /v1/chat/completions, /v1/completions, and /v1/responses endpoints.",
-    version="4.0.0",
-)
+app = FastAPI(title="burrito:passthru", version=__version__)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.CORS_ALLOWED_ORIGINS.split(","),
+    allow_methods=settings.CORS_ALLOWED_METHODS.split(","),
+    allow_headers=settings.CORS_ALLOWED_HEADERS.split(","),
+    allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
 )
 
 client = httpx.AsyncClient(
-    base_url=settings.INFERENCE_BACKEND_BASE_URL, timeout=300.0
+    base_url=settings.BACKEND_BASE_URL, timeout=settings.BACKEND_INTER_TOKEN_TIMEOUT
 )
 
 
@@ -36,13 +35,7 @@ async def proxy_post_request(request: Request, path: str):
 
     is_streaming_request = payload.get("stream", False)
     url = httpx.URL(path=path, query=request.url.query.encode("utf-8"))
-
-    headers = {
-        key: value
-        for key, value in request.headers.items()
-        if key.lower()
-        not in ["host", "connection", "accept-encoding", "content-length"]
-    }
+    headers = get_headers_to_forward(request)
 
     if is_streaming_request:
         backend_request = client.build_request(
@@ -86,7 +79,6 @@ async def proxy_post_request(request: Request, path: str):
         backend_response = await client.request(
             request.method, url, headers=headers, json=payload
         )
-        # jsn = backend_response.json()
         return Response(
             content=backend_response.content,
             status_code=backend_response.status_code,
@@ -96,16 +88,7 @@ async def proxy_post_request(request: Request, path: str):
 
 @app.get("/v1/models")
 async def proxy_models(request: Request):
-    """
-    Proxies requests to the /v1/models endpoint to fetch the list of available models.
-    This is a non-streaming GET request.
-    """
-    headers = {
-        key: value
-        for key, value in request.headers.items()
-        if key.lower() not in ["host", "connection", "accept-encoding"]
-    }
-
+    headers = get_headers_to_forward(request)
     backend_response = await client.get("/v1/models", headers=headers)
 
     return Response(
@@ -136,6 +119,4 @@ async def proxy_responses(request: Request):
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=settings.HOST, port=settings.PORT)

@@ -15,28 +15,23 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "debug"
 
     DEBUG_TOOL_INPUTS: bool = True
-    DEBUG_TOOL_OUTPUTS: bool = False
+    DEBUG_TOOL_OUTPUTS: bool = True
     DEBUG_COMPLETIONS: bool = False
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
 
-    CORS_ALLOWED_ORIGINS: list[str] = ["*"]
-    CORS_ALLOWED_METHODS: list[str] = ["*"]
-    CORS_ALLOWED_HEADERS: list[str] = ["*"]
+    CORS_ALLOWED_ORIGINS: str = "*"
+    CORS_ALLOWED_METHODS: str = "*"
+    CORS_ALLOWED_HEADERS: str = "*"
     CORS_ALLOWED_CREDENTIALS: bool = True
 
     MAX_REQUEST_BODY_SIZE: int = 1048576  # 1MB in bytes
-    # TODO: check python on concurrent requests, running aime broke it?
     MAX_CONCURRENT_INFERENCE_REQUESTS: int = 16  # > this  wait in fifo queue
-    FORWARD_HEADERS: list[str] = ["Authorization", "X-Api-Key"]
 
-    INFERENCE_BACKEND_IS_NATIVE: bool = False
-    INFERENCE_BACKEND_BASE_URL: str = "changeme"
-
-    BACKEND_INTER_TOKEN_TIMEOUT: int = (
-        120  # allow for large prompt preprocessing
-    )
+    BACKEND_BASE_URL: str = "changeme"
+    BACKEND_INTER_TOKEN_TIMEOUT: int = 120  # allow for large prompt preprocessing
+    BACKEND_FORWARD_HEADERS: str = "Authentication,X-Api-Key"
 
     DEFAULT_MODEL_NAME: Literal[
         "openai/gpt-oss-20b",
@@ -48,7 +43,7 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
-    MODEL_IDENTITY: Literal["default", "experimental"] = "experimental"
+    MODEL_IDENTITY: Literal["default", "experimental"] = "default"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
     # NOTE: set temperature to 0.001 and this likely happens more often?
@@ -63,16 +58,15 @@ class Settings(BaseSettings):
     BROWSER_TIMEOUT_FETCH: int = 3
     BROWSER_TIMEOUT_SEARCH: int = 10
 
-    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = (
-        "docker"
-    )
+    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
 
-    USER_AGENT_SEARCH: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"
+    BROWSER_LOCALE: str = "en-US"
+    BROWSER_TIMEZONE: str = "America/New_York"
 
     BRAVE_API_KEY: str = ""
     BRAVE_API_URL: str = "https://api.search.brave.com/res/v1/web/search"
 
-    SEARXNG_API_URL: str = "changeme"
+    SEARXNG_API_URL: str = ""
 
     model_config = SettingsConfigDict(
         env_file=".env",

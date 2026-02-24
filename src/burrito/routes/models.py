@@ -11,7 +11,7 @@ router = APIRouter()
 async def v1_responses() -> JSONResponse:
     try:
         async with httpx.AsyncClient(timeout=None) as client:
-            base_url = settings.INFERENCE_BACKEND_BASE_URL
+            base_url = settings.BACKEND_BASE_URL
             url = f"{base_url}/v1/models"
             response = await client.get(url)
             response.raise_for_status()

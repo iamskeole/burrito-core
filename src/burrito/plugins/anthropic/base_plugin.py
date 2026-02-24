@@ -35,5 +35,5 @@ class BasePluginAnthropic(BasePlugin):
         self.manager.output_object = message
         return message
 
-    def build_output_object(self) -> Message:
+    def build_output_object(self) -> Message: # type: ignore
         pass

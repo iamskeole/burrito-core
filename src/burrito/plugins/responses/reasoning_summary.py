@@ -11,7 +11,7 @@ from burrito.types.adapter import AdapterConversationState
 
 
 # TODO: decide, figure out how to implement
-class ReasoningTextPluginResponses(BasePluginResponses):
+class ReasoningSummaryPluginResponses(BasePluginResponses):
     def __init__(self, manager: "AdapterStateHandler"):
         super().__init__(manager)
 

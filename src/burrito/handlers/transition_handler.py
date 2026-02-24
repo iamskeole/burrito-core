@@ -27,9 +27,7 @@ def is_in_progress(parser: StreamableParser) -> bool:
 
 def is_reasoning(parser: StreamableParser) -> bool:
     # producing reasoning tokens
-    match_channel = (
-        parser.current_channel == AdapterAssistantChannel.ANALYSIS.value
-    )
+    match_channel = parser.current_channel == AdapterAssistantChannel.ANALYSIS.value
     match_recipient = parser.current_recipient is None
     return match_channel and match_recipient
 
@@ -51,9 +49,7 @@ def is_reasoning_end(
 # that should technically put it on the output channel i think
 def is_preamble(parser: StreamableParser) -> bool:
     match_recipient = parser.current_recipient is None
-    match_channel = (
-        parser.current_channel == AdapterAssistantChannel.COMMENTARY.value
-    )
+    match_channel = parser.current_channel == AdapterAssistantChannel.COMMENTARY.value
     return match_channel and match_recipient
 
 
@@ -198,6 +194,7 @@ class TransitionHandler:
     # TODO: maybe allow functions without the functions. namespace? map it back in tool handler if it's a valid tool?
     def _is_valid_transition(self, new_state: AdapterConversationState) -> bool:
         manager = self.manager
+        tool_handler = manager.tool_handler
         parser = manager.parser
         messages = parser.messages
         last_message = messages[-1] if messages else None
@@ -209,7 +206,6 @@ class TransitionHandler:
         if new_state == AdapterConversationState.REASONING:
             self.reasoning_loops += 1
 
-        # TODO: if this helps break the loop, make it a config var
         if self.reasoning_loops >= settings.MAX_REASONING_LOOPS:
             self.reasoning_loops = 0
             self.logger.warning(
@@ -255,41 +251,36 @@ class TransitionHandler:
                 "Valid channels: analysis, commentary, final. "
                 "Channel must be included for every message. "
                 "Calls to these tools must go to the commentary channel: 'functions'. "
-                f"You are trying to output on '{channel}'."
+                f"You are trying to output on: '{channel}'."
             )
             return False
 
         if new_state == state_tool_call:
             self.logger.debug(
-                (
-                    f"calling tool `{last_recipient or parser.current_recipient}`."
-                ),
+                (f"calling tool `{last_recipient or parser.current_recipient}`."),
                 extra=self.log_extra,
             )
         # TODO: check whether this is redundant with tool_handler._is_valid_tool?
-        if (
-            new_state == state_tool_input_start
-            and not manager.tool_handler.is_valid(current_recipient)
+        if new_state == state_tool_input_start and not tool_handler.is_valid(
+            current_recipient
         ):
             return False
 
-        if new_state == state_tool_call and not manager.tool_handler.is_valid(
-            last_recipient
-        ):
+        if new_state == state_tool_call and not tool_handler.is_valid(last_recipient):
             return False  # reduntant with above, <|call|> is at end of input
 
         # 1. regression into reasoning state;
         # ok, model recovers by itself.. most of the time;
         # we keep validation for future reference
         if new_state == state_reasoning and channel == channel_analysis:
-            if manager.tool_handler.is_valid(last_recipient, new_state):
+            if tool_handler.is_valid(last_recipient, new_state):
                 return True
             return True
 
         # 2. tool call without prior input
         # NOTE: monitor, does it still happen or fixed with tool recovery msg?
         if new_state == state_tool_call and channel != channel_commentary:
-            if manager.tool_handler.is_valid(last_recipient, new_state):
+            if tool_handler.is_valid(last_recipient, new_state):
                 return True
             self.logger.warning(
                 "invalid state: assistant calling a tool without prior input",
@@ -302,7 +293,7 @@ class TransitionHandler:
         # a summary of what it will do next inside the analysis channel, which,
         # according to docs, SHOULD be shown to users
         if new_state == state_preamble:
-            if manager.tool_handler.is_valid(last_recipient, new_state):
+            if tool_handler.is_valid(last_recipient, new_state):
                 return True
             self.logger.warning(
                 "invalid state: assistant entered preamble state",
@@ -347,9 +338,7 @@ class TransitionHandler:
     async def transition(
         self,
         token: Optional[AdapterCompletionToken],
-        state: Optional[
-            AdapterConversationState
-        ] = None,  # handle native tool done
+        state: Optional[AdapterConversationState] = None,  # handle native tool done
     ):
         old_state = self.manager.parser_state
         new_state = state or self._update_state()
@@ -363,13 +352,9 @@ class TransitionHandler:
                 extra=self.log_extra,
             )
 
-            for plugin in self.manager._active_plugins_by_state.get(
-                old_state, []
-            ):
+            for plugin in self.manager._active_plugins_by_state.get(old_state, []):
                 await plugin.on_exit_state(old_state)
-            for plugin in self.manager._active_plugins_by_state.get(
-                new_state, []
-            ):
+            for plugin in self.manager._active_plugins_by_state.get(new_state, []):
                 await plugin.on_enter_state(new_state)
 
         if not token:

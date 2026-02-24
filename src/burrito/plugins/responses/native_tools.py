@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 from openai.types.responses.response import Response
 from openai.types.responses.response_code_interpreter_tool_call import (
-    ResponseCodeInterpreterToolCall,
+    ResponseCodeInterpreterToolCall, OutputLogs
 )
 from openai.types.responses.response_function_web_search import (
     ActionFind,
@@ -140,7 +140,16 @@ class NativeToolsPluginResponses(BasePluginResponses):
             assert isinstance(output_item, ResponseCodeInterpreterToolCall), (
                 f"Expected ResponseCodeInterpreterToolCall, got '{type(output_item)}'."
             )
+            entry = tool_handler.tool_calls[-1]
+            call_id = entry["call_id"]
+            call_result = tool_handler.tool_results[call_id]
             output_item.status = "completed"
+            output_item.outputs = [
+                OutputLogs(
+                    logs=call_result,
+                    type="logs"
+                )
+            ]
             event = ResponseOutputItemDoneEvent(
                 item=output_item,
                 output_index=self.manager.output_index,

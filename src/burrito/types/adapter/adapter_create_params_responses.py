@@ -22,6 +22,7 @@ from burrito.types.adapter.adapter_reasoning import AdapterReasoningParam
 # for custom tools, so even if we implemented schemas and code, model
 # may not be trained to use them?
 # so we disable that option as an input to force schema validation failure
+# valid for all wire apis (chat, anthropic too)
 # from .adapter_custom_tool_param import AdapterCustomToolParamResponses
 
 
@@ -152,7 +153,7 @@ InputItemParamResponses = Union[
     ToolCallInputParamResponses,
     ToolCallOutputParamResponses,
     CustomToolCallOutputParamResponses,
-    WebSearchCallOutputParamResponses,  # TODO: finish plugin implementation + code interpreter
+    WebSearchCallOutputParamResponses,
 ]
 
 

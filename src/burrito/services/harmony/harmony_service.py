@@ -74,7 +74,6 @@ class SPECIAL_TOKENS(Enum):
         self.text = ENCODING.decode_utf8([self.id])
 
 
-# TODO: decide whether to allow caller to change vs. increment dev msg
 def build_system_message(
     inputs: AdapterConversationInputs,
     python_tool: Optional[BurritoPython],
@@ -361,8 +360,6 @@ def build_conversation_from_params(
     return (conversation, inputs, python_tool, browser_tool)
 
 
-# TODO: if no developer message BUT! tools, create developer message with just tool definitions
-# (see api_server.py in gpt-oss reference implementation)
 def render_conversation_for_completion(
     conversation: Conversation, is_on_init: bool = False
 ) -> list[int]:

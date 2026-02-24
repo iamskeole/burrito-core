@@ -1,7 +1,5 @@
-from .inference_service_hosted import generate_hosted
-from .inference_service_native import generate_native
+from .inference_service import infer_next_token
 
 __all__ = [
-    "generate_hosted",
-    "generate_native",
+    "infer_next_token",
 ]

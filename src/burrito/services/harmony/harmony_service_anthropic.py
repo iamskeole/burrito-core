@@ -55,7 +55,7 @@ def user_message(
                 author = Author(
                     role=Role.TOOL, name=f"functions.{tool_call_result.name}"
                 )
-                message = Message(author=author, content=[TextContent(text=i.content)])
+                message = Message(author=author, content=[TextContent(text=i.content)])  # type: ignore
                 message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
                 message.with_recipient(Role.ASSISTANT.value)
                 messages.append(message)
@@ -79,8 +79,8 @@ def assistant_message(
         )
     else:
         for i in input.content:
-            channel: AdapterAssistantChannel = None
-            recipient: str = None
+            channel = None
+            recipient = None
             if i.type == "text":
                 text = i.text
                 channel = AdapterAssistantChannel.FINAL
@@ -96,7 +96,7 @@ def assistant_message(
             if i.type == "tool_result":
                 pass
 
-            message = Message(author=author, content=[TextContent(text=text)])
+            message = Message(author=author, content=[TextContent(text=text)])  # type: ignore
             if channel:
                 message.with_channel(channel=channel.value)
             if recipient:

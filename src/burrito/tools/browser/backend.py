@@ -4,7 +4,7 @@ from typing import List
 import aiohttp
 import chz
 from aiohttp import ClientSession
-from gpt_oss.tools.simple_browser.backend import Backend
+from gpt_oss.tools.simple_browser.backend import Backend, BackendError
 from gpt_oss.tools.simple_browser.page_contents import (
     PageContents,
     get_domain,
@@ -12,8 +12,7 @@ from gpt_oss.tools.simple_browser.page_contents import (
 )
 
 from burrito.common.config import settings
-
-from .engine import BurritoBrowserEngine
+from burrito.tools.browser.engine import BurritoBrowserEngine
 
 logger = logging.getLogger("browser_backend")
 
@@ -23,7 +22,7 @@ class BurritoBrowserBackend(Backend):
     source: str = chz.field(default="general,news,it,science,files,social media")
     engine = BurritoBrowserEngine()
 
-    async def fetch(
+    async def fetch(  # pyright: ignore[reportIncompatibleMethodOverride]
         self, url: str, is_docs_website: bool, session: aiohttp.ClientSession
     ) -> PageContents:
         async with session:
@@ -63,7 +62,7 @@ class BurritoBrowserBackend(Backend):
             payload.pop("time_range", None)
         headers = {
             "x-api-key": self._get_api_key(),
-            "user-agent": self.engine._user_agent or settings.USER_AGENT_SEARCH,
+            "user-agent": self.engine._user_agent_search,
         }
 
         async with session.post(
@@ -100,7 +99,7 @@ class BurritoBrowserBackend(Backend):
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
             "X-Subscription-Token": settings.BRAVE_API_KEY,
-            "User-Agent": self.engine._user_agent or settings.USER_AGENT_SEARCH,
+            "User-Agent": self.engine._user_agent_search,
         }
         params = {
             "q": query,
@@ -147,6 +146,19 @@ class BurritoBrowserBackend(Backend):
         time_range: str = "alltime",
         source: str = "general",
     ) -> PageContents:
+        if not settings.BRAVE_API_KEY and not settings.SEARXNG_API_URL:
+            logger.warning(
+                (
+                    "Missing both `BRAVE_API_KEI` and `SEARXNG_API_URL`, "
+                    "Disabling `browser.search` and instructing agent to "
+                    "fall back on `browser.open` only."
+                )
+            )
+            raise BackendError(
+                "Tool error: `browser.search` not configured in this harness. "
+                "Use `browser.open` instead."
+            )
+
         titles_and_urls = []
 
         # try brave if an api key is set

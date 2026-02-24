@@ -63,7 +63,7 @@ class ContextManagerPluginResponses(BasePluginResponses):
 
         self.manager.output_object.usage = ResponseUsage(
             input_tokens=counts.n_input,
-            # TODO figure out if possible to get from backend(s)?
+            # TODO figure out if possible to get cached counts from backend(s)?
             input_tokens_details=InputTokensDetails(cached_tokens=0),
             output_tokens=counts.n_completion,
             output_tokens_details=OutputTokensDetails(

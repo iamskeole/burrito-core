@@ -41,9 +41,9 @@ async def limit_body_size(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ALLOWED_ORIGINS,
-    allow_methods=settings.CORS_ALLOWED_METHODS,
-    allow_headers=settings.CORS_ALLOWED_HEADERS,
+    allow_origins=settings.CORS_ALLOWED_ORIGINS.split(","),
+    allow_methods=settings.CORS_ALLOWED_METHODS.split(","),
+    allow_headers=settings.CORS_ALLOWED_HEADERS.split(","),
     allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
 )
 app.include_router(models.router)

@@ -68,10 +68,10 @@ class AdapterConversationHandler:
         self._is_stopped = False
         self.generator.can_stream = True
         self.generator.log_id = self.log_id
-        prompt_token_ids = self.state_handler.prompt_tokens
-        params = self.params
         self.stream = self.generator.generate(
-            prompt_token_ids, params, self.forwarded_headers
+            prompt_token_ids=self.state_handler.prompt_tokens,
+            params=self.params,
+            headers=self.forwarded_headers,
         )
 
     def _stop_stream(self, msg: Optional[str] = None):
@@ -88,9 +88,7 @@ class AdapterConversationHandler:
             while True:
                 message = await self.request.receive()
                 if message.get("type") == "http.disconnect":
-                    self._stop_stream(
-                        "Client disconnected inside _watch_disconnect."
-                    )
+                    self._stop_stream("Client disconnected inside _watch_disconnect.")
                     break
         except asyncio.CancelledError:
             pass
@@ -178,9 +176,7 @@ class AdapterConversationHandler:
         async for _ in self.return_stream():
             pass
 
-        assert self.state_handler.is_done, (
-            "Generation did not complete successfully."
-        )
+        assert self.state_handler.is_done, "Generation did not complete successfully."
 
         output_object = self.state_handler.output_object
 
@@ -199,6 +195,4 @@ class AdapterConversationHandler:
         if isinstance(output_object, AdapterErrorEvent):
             return output_object.model_dump()
 
-        raise NotImplementedError(
-            f"Unsupported output object: {type(output_object)}"
-        )
+        raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

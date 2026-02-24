@@ -46,7 +46,6 @@ def user_message_from_text_input(user_input: str) -> Message:
     )
 
 
-# TODO: check oss implementation, individual messages PER content item? all other roles too
 def user_message_from_list_input(
     message_data: UserInputMessageParamResponses,
 ) -> Message:

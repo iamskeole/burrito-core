@@ -106,7 +106,7 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
                 )
                 delta = InputJSONDelta(
                     type="input_json_delta",
-                    partial_json=last_message.content[0].text,
+                    partial_json=last_message.content[0].text, # type: ignore
                 )
                 event_delta = ContentBlockDeltaEvent(
                     type="content_block_delta",

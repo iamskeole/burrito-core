@@ -131,12 +131,12 @@ def build_payload(
     return payload
 
 
-async def generate_hosted(
+async def infer_next_token(
     prompt_token_ids: list[int],
     params: AdapterCreateParams,
     headers: Dict[str, str] = {},
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
-    url = settings.INFERENCE_BACKEND_BASE_URL.rstrip("/") + "/v1/completions"
+    url = settings.BACKEND_BASE_URL.rstrip("/") + "/v1/completions"
     payload = build_payload(prompt_token_ids, params)
 
     try:

@@ -55,9 +55,7 @@ class ToolHandler:
         if self.manager.manager.params.tools:
             self.namespaces.append(AdapterToolNamespace.CUSTOM_DEVELOPER.value)
 
-        self.msg_namespaces = "\n".join(
-            [i.replace(".", "") for i in self.namespaces]
-        )
+        self.msg_namespaces = "\n".join([i.replace(".", "") for i in self.namespaces])
 
     def _init_tools(self):
         tools = self.manager.conversation_inputs.tools or []
@@ -71,15 +69,11 @@ class ToolHandler:
                 AdapterToolNamespace.NATIVE_BROWSER.value,
             ]
         ]
-        self.msg_tools = "\n".join(
-            [i.replace(".", "") for i in self.tool_names]
-        )
+        self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
 
     def get_tool_model_is_trying_to_call(
         self,
-    ) -> Optional[
-        Union[AdapterConversationInputTool, BurritoBrowser, BurritoPython]
-    ]:
+    ) -> Optional[Union[AdapterConversationInputTool, BurritoBrowser, BurritoPython]]:
         current_recipient = self.manager.parser.current_recipient
         prev_recipient = None
         parser_messages = self.manager.parser.messages
@@ -93,9 +87,7 @@ class ToolHandler:
 
         if tool_name == AdapterToolNamespace.NATIVE_PYTHON.value:
             return self.python_tool
-        elif recipient.startswith(
-            AdapterToolNamespace.NATIVE_BROWSER.value + "."
-        ):
+        elif recipient.startswith(AdapterToolNamespace.NATIVE_BROWSER.value + "."):
             return self.browser_tool
         else:
             # see if we have a tool with a namespace prefix
@@ -121,9 +113,7 @@ class ToolHandler:
         )
         return self.tool_calls[-1]
 
-    def _is_valid_namespace(
-        self, recipient: str, state: Optional[str] = None
-    ) -> bool:
+    def _is_valid_namespace(self, recipient: str, state: Optional[str] = None) -> bool:
         namespace = [i for i in self.namespaces if recipient.startswith(i)]
         if not namespace:
             if state is not None:
@@ -169,9 +159,7 @@ class ToolHandler:
     def _is_native_tool(self, recipient: str) -> bool:
         return self._is_python(recipient) or self._is_browser(recipient)
 
-    def _is_valid_tool(
-        self, recipient: str, state: Optional[str] = None
-    ) -> bool:
+    def _is_valid_tool(self, recipient: str, state: Optional[str] = None) -> bool:
         if self._is_native_tool(recipient):
             return True
 
@@ -196,9 +184,7 @@ class ToolHandler:
             return False
         return True
 
-    def is_valid(
-        self, recipient: Optional[str], state: Optional[str] = None
-    ) -> bool:
+    def is_valid(self, recipient: Optional[str], state: Optional[str] = None) -> bool:
         if recipient is None:
             # skip logs and messages, it's a defensive check from other state
             if state is not None:
@@ -249,14 +235,12 @@ class ToolHandler:
                     extra=self.log_extra,
                 )
             else:
-                self.logger.debug(
-                    f"calling tool `{t_name}`.", extra=self.log_extra
-                )
+                self.logger.debug(f"calling tool `{t_name}`.", extra=self.log_extra)
 
             tool_result = await self.run_tool(tool, message)
             tool_call = self.tool_calls[-1]
             call_id = tool_call["call_id"]
-            self.tool_results[call_id] = tool_result
+            self.tool_results[call_id] = tool_result[0].content[0].text  # type: ignore
             if settings.DEBUG_TOOL_OUTPUTS:
                 self.logger.debug(
                     (
@@ -277,10 +261,7 @@ class ToolHandler:
         self.manager._update_state_with_tool_result(tool_result)
 
     async def maybe_call_native_tool(self):
-        if (
-            self.manager.parser_state
-            != AdapterConversationState.NATIVE_TOOL_CALL
-        ):
+        if self.manager.parser_state != AdapterConversationState.NATIVE_TOOL_CALL:
             return
 
         messages = self.manager.parser.messages

@@ -9,9 +9,25 @@ import uuid
 from datetime import datetime, timezone
 from typing import get_type_hints
 
+from fastapi import Request
+
 from burrito import __version__
+from burrito.common.config import settings
 
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+
+
+def get_headers_to_forward(request: Request):
+    split_comma = settings.BACKEND_FORWARD_HEADERS.split(",")
+    split_colon = settings.BACKEND_FORWARD_HEADERS.split(";")
+    headers_to_forward = [i.strip() for i in split_comma] + [
+        i.strip() for i in split_colon
+    ]
+    return {
+        k: v
+        for k, v in request.headers.items()
+        if k.title() in [h.title() for h in headers_to_forward]
+    }
 
 
 def random_uuid() -> str:
@@ -33,9 +49,7 @@ def unix_timestamp_in_ms():
     return int(time.time() * 1000)
 
 
-def populate_openai_typed_dict(
-    typed_dict_class: type, partial_data: dict
-) -> dict:
+def populate_openai_typed_dict(typed_dict_class: type, partial_data: dict) -> dict:
     all_field_names = get_type_hints(typed_dict_class).keys()
     complete_dict = {key: None for key in all_field_names}
     complete_dict.update(partial_data)
@@ -122,9 +136,7 @@ def simple_markdown_renderer(markdown_text):
             continue
 
         if in_code_block:
-            rendered_lines.append(
-                styles["green"] + "    " + line + styles["end"]
-            )
+            rendered_lines.append(styles["green"] + "    " + line + styles["end"])
             continue
 
         # Headers (e.g., #, ##, ###)

@@ -156,7 +156,7 @@ class BurritoBrowser(SimpleBrowserTool):
         time_range: Literal["day", "week", "month", "year", "alltime"] = "alltime",
         topn: int = 10,
         top_n: int = 10,
-        source: str | None = None,
+        source: str = "general",
     ) -> AsyncIterator[Message]:
         limit = topn if topn != 10 else top_n
 
@@ -267,10 +267,15 @@ class BurritoBrowser(SimpleBrowserTool):
         url = annotation["url"]
         page = self.tool_state.get_page_by_url(url)
 
+        annotation["title"] = page.title if page else ""
+        annotation["highlight_url"] = ""
+        annotation["cited_text"] = ""
+
         try:
             l_split = annotation["citation_marker"].split("-")
         except Exception as e:
             return annotation
+
         l_start = int(l_split[0][1:])
         l_end = int(l_split[1][1:]) + 1
         lines_page = wrap_lines(text=page.text if page else "")
@@ -279,7 +284,6 @@ class BurritoBrowser(SimpleBrowserTool):
         highlight_url = generate_highlight_url(url, cited_text)
 
         annotation["title"] = page.title if page else ""
-        annotation["url"] = url
         annotation["highlight_url"] = highlight_url
         annotation["cited_text"] = cited_text
         return annotation

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import random
 import textwrap
 from datetime import date
 from typing import Optional
@@ -14,46 +15,60 @@ from playwright.async_api import (
     async_playwright,
 )
 
+from burrito import __repo__, __version__
+from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 
 
-# TODO: maybe? async ping to check internet connectivity
 class BurritoBrowserEngine:
     _playwright: Optional[Playwright] = None
     _browser: Optional[Browser] = None
-    _user_agent: Optional[str] = None
     _logger = FastAPILogger.get_logger(__name__)
     _fetch_lock = asyncio.Lock()
+
+    _user_agent_search: Optional[str] = ""
+    _user_agent_browse: Optional[str] = ""
+
+    _width: int = random.randint(1600, 2000)
+    _height: int = random.randint(600, 1200)
 
     _started = False
 
     @classmethod
     async def start(cls):
-        if cls._playwright is None:
-            cls._logger.info("Starting Playwright...")
-            cls._playwright = await async_playwright().start()
-            cls._browser = await cls._playwright.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-infobars",
-                    "--window-position=0,0",
-                    "--ignore-certificate-errors",
-                    "--window-size=1920,1080",
-                    "--disable-http2",
-                    # "--disable-extensions",
-                    # "--mute-audio",
-                    # "--disable-images",
-                ],
-            )
+        if cls._playwright is not None:
+            return
 
-            temp_page = await cls._browser.new_page()
-            ua = await temp_page.evaluate("navigator.userAgent")
-            cls._user_agent = ua.replace("HeadlessChrome", "Chrome")
+        cls._logger.info("Starting Playwright...")
+        cls._playwright = await async_playwright().start()
+        cls._browser = await cls._playwright.chromium.launch(
+            headless=True,
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+                "--window-position=0,0",
+                "--ignore-certificate-errors",
+                "--window-size=1920,1080",
+                "--disable-http2",
+                # "--disable-extensions",
+                # "--mute-audio",
+                # "--disable-images",
+            ],
+        )
+
+        temp_page = await cls._browser.new_page()
+        ua = await temp_page.evaluate("navigator.userAgent")
+        ua = ua.replace("HeadlessChrome", "Chrome")
+
+        ua_extra_browse = f"; compatible; burrito-browse/{__version__}; +{__repo__}"
+        ua_extra_search = f"; compatible; burrito-search/{__version__}; +{__repo__}"
+
+        cls._user_agent_browse = ua + ua_extra_browse
+        cls._user_agent_search = ua + ua_extra_search
 
     @classmethod
     async def stop(cls):
@@ -75,10 +90,10 @@ class BurritoBrowserEngine:
                 raise RuntimeError("Failed to start browser")
 
             context = await cls._browser.new_context(
-                user_agent=cls._user_agent,
-                viewport={"width": 1920, "height": 1080},
-                locale="en-US",
-                timezone_id="America/New_York",
+                user_agent=cls._user_agent_browse,
+                viewport={"width": cls._width, "height": cls._height},
+                locale=settings.BROWSER_LOCALE,
+                timezone_id=settings.BROWSER_TIMEZONE,
                 has_touch=False,
                 is_mobile=False,
                 device_scale_factor=1,
@@ -226,7 +241,7 @@ class BurritoBrowserEngine:
         except Exception as e:
             return f"<html>{repr(e)}</html>"
 
-    # TODO: cache, ie anthropic kills me on first processing
+    # TODO: cache, ie anthropic docs site kills me on first processing
     @classmethod
     def preprocess_html(
         cls, html_content: Optional[str], is_docs_website: bool, base_url: str
