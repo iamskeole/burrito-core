@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-
 from contextlib import asynccontextmanager
 
-from burrito import __version__
-from burrito.routes import chat, models, responses, messages
-from burrito.common.config import settings
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from burrito import __version__
+from burrito.common.config import settings
+from burrito.routes import chat, messages, models, responses
 from burrito.tools.browser.engine import BurritoBrowserEngine
 
 

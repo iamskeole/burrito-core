@@ -10,33 +10,31 @@ from burrito.types.adapter import (
     AdapterConversationInputTool,
     AdapterReasoningParam,
 )
+from burrito.types.adapter.adapter_browser_tool_param import (
+    AdapterBrowserToolParamResponses,
+)
 from burrito.types.adapter.adapter_create_params_responses import (
     AdapterCreateParamsResponses,
     AssistantMessageParamResponses,
     AssistantReasoningParamResponses,
-    CustomToolInputParamResponses,
     CustomToolCallOutputParamResponses,
-    FunctionToolInputParamResponses,
-    ToolCallOutputParamResponses,
-    InputItemParamResponses,
-    UserInputMessageParamResponses,
+    CustomToolInputParamResponses,
     DeveloperInputMessageParamResponses,
-    SystemInputMessageParamResponses,
+    FunctionToolInputParamResponses,
     InputImageParamResponses,
+    InputItemParamResponses,
     InputTextParamResponses,
-)
-
-from burrito.types.adapter.adapter_function_tool_param import (
-    AdapterFunctionToolParamResponses,
+    SystemInputMessageParamResponses,
+    ToolCallOutputParamResponses,
+    UserInputMessageParamResponses,
 )
 from burrito.types.adapter.adapter_custom_tool_param import (
     AdapterCustomToolParamResponses,
-    CustomToolInputFormatText,
     CustomToolInputFormatGrammar,
+    CustomToolInputFormatText,
 )
-
-from burrito.types.adapter.adapter_browser_tool_param import (
-    AdapterBrowserToolParamResponses,
+from burrito.types.adapter.adapter_function_tool_param import (
+    AdapterFunctionToolParamResponses,
 )
 
 

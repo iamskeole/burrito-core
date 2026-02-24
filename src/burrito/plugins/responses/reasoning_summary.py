@@ -6,9 +6,8 @@ if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
     from burrito.types.adapter import AdapterCompletionToken
 
-from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.common.utils import random_uuid
+from burrito.types.adapter import AdapterConversationState
 
 
 # TODO: decide, figure out how to implement

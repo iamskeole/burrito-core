@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional, TypeAlias
+from typing import Dict, List, Literal, Optional
 
 from openai_harmony import Message
 from pydantic import BaseModel

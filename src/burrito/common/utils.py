@@ -1,11 +1,11 @@
+import hashlib
+import os
+import platform
 import re
+import subprocess
 import sys
 import time
 import uuid
-import hashlib
-import platform
-import subprocess
-import os
 from datetime import datetime, timezone
 from typing import get_type_hints
 
@@ -33,7 +33,9 @@ def unix_timestamp_in_ms():
     return int(time.time() * 1000)
 
 
-def populate_openai_typed_dict(typed_dict_class: type, partial_data: dict) -> dict:
+def populate_openai_typed_dict(
+    typed_dict_class: type, partial_data: dict
+) -> dict:
     all_field_names = get_type_hints(typed_dict_class).keys()
     complete_dict = {key: None for key in all_field_names}
     complete_dict.update(partial_data)
@@ -120,7 +122,9 @@ def simple_markdown_renderer(markdown_text):
             continue
 
         if in_code_block:
-            rendered_lines.append(styles["green"] + "    " + line + styles["end"])
+            rendered_lines.append(
+                styles["green"] + "    " + line + styles["end"]
+            )
             continue
 
         # Headers (e.g., #, ##, ###)

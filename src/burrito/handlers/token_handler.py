@@ -4,16 +4,20 @@ from typing import List, Optional
 
 from openai.types.completion import Completion
 
-from burrito.types.adapter import AdapterAssistantChannel, AdapterCompletionToken
-
 from burrito.common.utils import unix_timestamp_in_ms
 from burrito.services.harmony import ENCODING, SPECIAL_TOKENS
+from burrito.types.adapter import (
+    AdapterAssistantChannel,
+    AdapterCompletionToken,
+)
 
 
 def create_return_token(
     index: int, finish_reason: str, is_tool_call: bool
 ) -> AdapterCompletionToken:
-    return_token = SPECIAL_TOKENS.RETURN if not is_tool_call else SPECIAL_TOKENS.CALL
+    return_token = (
+        SPECIAL_TOKENS.RETURN if not is_tool_call else SPECIAL_TOKENS.CALL
+    )
     token = AdapterCompletionToken(
         created_at=unix_timestamp_in_ms(),
         id=return_token.id,
@@ -54,7 +58,9 @@ def patch_token_finish_reason(
             ]
             and parser_recipient is not None
         )
-        token = create_return_token(token.index, token.finish_reason, is_tool_call)
+        token = create_return_token(
+            token.index, token.finish_reason, is_tool_call
+        )
     return token
 
 
@@ -86,7 +92,9 @@ def normalize_completion_token(
     if token_id != -1 and not text:
         text = ENCODING.decode([token_id])
 
-    is_special_token = ENCODING.is_special_token(token_id) if token_id != -1 else True
+    is_special_token = (
+        ENCODING.is_special_token(token_id) if token_id != -1 else True
+    )
     token = AdapterCompletionToken(
         created_at=unix_timestamp_in_ms(),
         id=token_id,

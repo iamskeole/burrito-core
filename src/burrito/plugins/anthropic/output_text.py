@@ -1,19 +1,19 @@
-from typing import Set, Any, Dict
+from typing import Any, Dict, Set
 
-from anthropic.types.message import Message
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
-from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
-from anthropic.types.content_block_stop_event import ContentBlockStopEvent
-from anthropic.types.text_block import TextBlock
-from anthropic.types.text_delta import TextDelta
+from anthropic.types.citations_delta import CitationsDelta
 from anthropic.types.citations_web_search_result_location import (
     CitationsWebSearchResultLocation,
 )
-from anthropic.types.citations_delta import CitationsDelta
+from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
+from anthropic.types.content_block_start_event import ContentBlockStartEvent
+from anthropic.types.content_block_stop_event import ContentBlockStopEvent
+from anthropic.types.message import Message
+from anthropic.types.text_block import TextBlock
+from anthropic.types.text_delta import TextDelta
 
+from burrito.handlers.token_handler import AdapterCompletionToken
 from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
 from burrito.types.adapter import AdapterConversationState
-from burrito.handlers.token_handler import AdapterCompletionToken
 
 
 class OutputTextPluginAnthropic(BasePluginAnthropic):
@@ -132,7 +132,9 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
 
         delta = TextDelta(type="text_delta", text=self.output_delta_buffer)
         event = ContentBlockDeltaEvent(
-            type="content_block_delta", delta=delta, index=self.manager.output_index
+            type="content_block_delta",
+            delta=delta,
+            index=self.manager.output_index,
         )
         output_index = self.manager.output_index
         content_item = self.manager.output_object.content[output_index]

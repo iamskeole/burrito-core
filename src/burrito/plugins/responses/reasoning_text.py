@@ -7,21 +7,23 @@ if TYPE_CHECKING:
     from burrito.types.adapter import AdapterCompletionToken
 
 from openai.types.responses.response import Response
+from openai.types.responses.response_content_part_added_event import (
+    PartReasoningText as PartReasoningTextAdded,
+)
+from openai.types.responses.response_content_part_added_event import (
+    ResponseContentPartAddedEvent,
+)
+from openai.types.responses.response_content_part_done_event import (
+    PartReasoningText as PartReasoningTextDone,
+)
+from openai.types.responses.response_content_part_done_event import (
+    ResponseContentPartDoneEvent,
+)
 from openai.types.responses.response_output_item_added_event import (
     ResponseOutputItemAddedEvent,
 )
 from openai.types.responses.response_output_item_done_event import (
     ResponseOutputItemDoneEvent,
-)
-from openai.types.responses.response_content_part_added_event import (
-    PartReasoningText as PartReasoningTextAdded,
-)
-from openai.types.responses.response_content_part_done_event import (
-    PartReasoningText as PartReasoningTextDone,
-    ResponseContentPartDoneEvent,
-)
-from openai.types.responses.response_content_part_added_event import (
-    ResponseContentPartAddedEvent,
 )
 from openai.types.responses.response_reasoning_item import (
     Content,
@@ -33,9 +35,10 @@ from openai.types.responses.response_reasoning_text_delta_event import (
 from openai.types.responses.response_reasoning_text_done_event import (
     ResponseReasoningTextDoneEvent,
 )
-from burrito.types.adapter import AdapterConversationState
-from burrito.plugins.responses.base_plugin import BasePluginResponses
+
 from burrito.common.utils import random_uuid
+from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.adapter import AdapterConversationState
 
 
 class ReasoningTextPluginResponses(BasePluginResponses):

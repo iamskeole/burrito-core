@@ -1,28 +1,27 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Set, Optional
+from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
 
-from anthropic.types.message import Message
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
 from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
+from anthropic.types.content_block_start_event import ContentBlockStartEvent
 from anthropic.types.content_block_stop_event import ContentBlockStopEvent
-
-
+from anthropic.types.input_json_delta import InputJSONDelta
+from anthropic.types.message import Message
 from anthropic.types.server_tool_use_block import ServerToolUseBlock
 from anthropic.types.web_search_result_block import WebSearchResultBlock
-from anthropic.types.web_search_tool_result_block import WebSearchToolResultBlock
-from anthropic.types.web_search_tool_result_error import WebSearchToolResultError
-from anthropic.types.input_json_delta import InputJSONDelta
-
-from burrito.types.adapter import AdapterConversationState
+from anthropic.types.web_search_tool_result_block import (
+    WebSearchToolResultBlock,
+)
 
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.common.utils import random_uuid
-from burrito.types.adapter import AdapterCompletionToken
+from burrito.types.adapter import (
+    AdapterCompletionToken,
+    AdapterConversationState,
+)
 
 
 class NativeToolsPluginAnthropic(BasePluginResponses):
@@ -106,7 +105,8 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
                     content_block=block,
                 )
                 delta = InputJSONDelta(
-                    type="input_json_delta", partial_json=last_message.content[0].text
+                    type="input_json_delta",
+                    partial_json=last_message.content[0].text,
                 )
                 event_delta = ContentBlockDeltaEvent(
                     type="content_block_delta",
@@ -148,7 +148,8 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
                     content_block=block,
                 )
                 delta = InputJSONDelta(
-                    type="input_json_delta", partial_json=last_message.content[0].text
+                    type="input_json_delta",
+                    partial_json=last_message.content[0].text,
                 )
                 event_delta = ContentBlockDeltaEvent(
                     type="content_block_delta",

@@ -1,31 +1,26 @@
-from typing import List, Dict, Optional
 import json
+from typing import Dict, List, Optional
 
 from openai_harmony import (
     Author,
     Message,
     Role,
-    Content,
     TextContent,
 )
 
-from burrito.types.adapter.adapter_create_params_anthropic import (
-    AdapterCreateParamsAnthropic,
-    AdapterInputParamMessageAnthropic,
-    ContentBlockText,
-    ContentBlockAssistantReasoning,
-    ContentBlockImage,
-    ContentBlockToolUse,
-    ContentBlockToolResult,
-    AdapterToolParamInputAnthropic,
-    WebSearchToolParamAnthropic,
-)
 from burrito.types.adapter import (
     AdapterAssistantChannel,
     AdapterConversationInputs,
     AdapterConversationInputTool,
-    AdapterReasoningParam,
     AdapterReasoningEffort,
+    AdapterReasoningParam,
+)
+from burrito.types.adapter.adapter_create_params_anthropic import (
+    AdapterCreateParamsAnthropic,
+    AdapterInputParamMessageAnthropic,
+    AdapterToolParamInputAnthropic,
+    ContentBlockToolUse,
+    WebSearchToolParamAnthropic,
 )
 
 

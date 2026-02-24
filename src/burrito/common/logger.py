@@ -1,8 +1,10 @@
 import logging
-from uvicorn.logging import DefaultFormatter
 import sys
 
+from uvicorn.logging import DefaultFormatter
+
 from burrito.common.config import settings
+
 
 class FastAPILogger:
     _initialized = {}

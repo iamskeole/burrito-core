@@ -1,16 +1,19 @@
 from typing import Set
 
-from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
-from burrito.types.adapter import AdapterConversationState, AdapterConversationInputTool
-from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
-from burrito.handlers.token_handler import AdapterCompletionToken
-
-from anthropic.types.message import Message
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
 from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
+from anthropic.types.content_block_start_event import ContentBlockStartEvent
 from anthropic.types.content_block_stop_event import ContentBlockStopEvent
 from anthropic.types.input_json_delta import InputJSONDelta
+from anthropic.types.message import Message
 from anthropic.types.tool_use_block import ToolUseBlock
+
+from burrito.handlers.token_handler import AdapterCompletionToken
+from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
+from burrito.types.adapter import (
+    AdapterConversationInputTool,
+    AdapterConversationState,
+)
+from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
 
 
 class ToolInputPluginAnthropic(BasePluginAnthropic):
@@ -24,7 +27,10 @@ class ToolInputPluginAnthropic(BasePluginAnthropic):
         match tool.type:
             case AdapterToolType.FUNCTION.value:
                 return ToolUseBlock(
-                    type="tool_use", id=entry["call_id"], input={}, name=tool.name
+                    type="tool_use",
+                    id=entry["call_id"],
+                    input={},
+                    name=tool.name,
                 )
             case _:
                 raise ValueError(

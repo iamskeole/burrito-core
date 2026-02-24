@@ -1,19 +1,19 @@
 import asyncio
 from typing import Union
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from openai.types.chat.chat_completion import ChatCompletion
 
-from burrito.types.adapter import AdapterCreateParamsChat
-from burrito.handlers.inference_handler import run_inference
-from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.common.dependencies import (
-    get_inference_semaphore,
     get_generation_handler,
+    get_inference_semaphore,
     get_session_handler,
 )
+from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.inference_handler import run_inference
+from burrito.handlers.session_handler import AdapterSessionHandler
+from burrito.types.adapter import AdapterCreateParamsChat
 
 router = APIRouter()
 

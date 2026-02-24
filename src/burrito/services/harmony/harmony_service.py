@@ -18,38 +18,36 @@ from openai_harmony import (
     load_harmony_encoding,
 )
 
+from burrito.common.config import settings
+from burrito.common.utils import simple_markdown_renderer, yyyymmdd
+from burrito.prompts.model_identity import MODEL_IDENTITY
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
-
-from burrito.common.config import settings
-from burrito.common.utils import yyyymmdd, simple_markdown_renderer
-from burrito.prompts.model_identity import MODEL_IDENTITY
 from burrito.types.adapter import (
     AdapterConversationChannel,
     AdapterConversationInputs,
     AdapterConversationInputTool,
     AdapterCreateParams,
+    AdapterCreateParamsAnthropic,
     AdapterCreateParamsChat,
     AdapterCreateParamsResponses,
-    AdapterCreateParamsAnthropic,
 )
-
 from burrito.types.adapter.adapter_browser_tool_param import (
     AdapterBrowserToolParamChat,
     AdapterBrowserToolParamResponses,
-)
-from burrito.types.adapter.adapter_python_tool_param import (
-    AdapterPythonToolParamChat,
-    AdapterPythonToolParamResponses,
 )
 from burrito.types.adapter.adapter_create_params_anthropic import (
     AdapterToolParamInputAnthropic,
     WebSearchToolParamAnthropic,
 )
+from burrito.types.adapter.adapter_python_tool_param import (
+    AdapterPythonToolParamChat,
+    AdapterPythonToolParamResponses,
+)
 
+from .harmony_service_anthropic import build_message_list_anthropic
 from .harmony_service_chat import build_message_list_chat
 from .harmony_service_responses import build_message_list_responses
-from .harmony_service_anthropic import build_message_list_anthropic
 
 REASONING = {
     "high": ReasoningEffort.HIGH,

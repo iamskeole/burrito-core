@@ -1,34 +1,14 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING
 
-from openai.types.completion_usage import CompletionUsage
-from anthropic.types.text_block import TextBlock
-from anthropic.types.thinking_block import ThinkingBlock
-from anthropic.types.tool_use_block import ToolUseBlock
 from anthropic.types import (
-    RawMessageStartEvent,
-    RawMessageStopEvent,
-    RawContentBlockStartEvent,
-    RawContentBlockStopEvent,
     Message,
+)
+from anthropic.types import (
     Usage as AnthropicUsage,
-    TextDelta,
-    ThinkingDelta,
-    InputJSONDelta,
-)
-from anthropic.types.raw_content_block_delta_event import (
-    RawContentBlockDeltaEvent,
-)
-from anthropic.types.raw_message_delta_event import (
-    Delta as MessageDelta,
-    RawMessageDeltaEvent,
 )
 
-from anthropic.types.message_delta_usage import MessageDeltaUsage
-
+from burrito.common.utils import random_uuid
 from burrito.plugins import BasePlugin
-from burrito.types.adapter import AdapterConversationState
-
-from burrito.common.utils import random_uuid, unix_timestamp
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler

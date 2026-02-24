@@ -2,13 +2,11 @@ from typing import AsyncGenerator, Dict, List, Union
 
 from openai.types.completion import Completion
 
-from burrito.types.adapter import AdapterCreateParams
-
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid
-
 from burrito.services.inference import generate_hosted
+from burrito.types.adapter import AdapterCreateParams
 
 
 class AdapterGenerationHandler:
@@ -30,9 +28,13 @@ class AdapterGenerationHandler:
         headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         try:
-            async for completion in generate_hosted(prompt_token_ids, params, headers):
+            async for completion in generate_hosted(
+                prompt_token_ids, params, headers
+            ):
                 if not self.can_stream:
-                    self.logger.debug("generator: breaking loop", extra=self.log_extra)
+                    self.logger.debug(
+                        "generator: breaking loop", extra=self.log_extra
+                    )
                     break
                 yield completion
         finally:

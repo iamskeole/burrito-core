@@ -5,12 +5,11 @@ import httpx
 from fastapi import Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from burrito.types.adapter import AdapterCreateParams
 from burrito.common.config import settings
-
 from burrito.handlers.conversation_handler import AdapterConversationHandler
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
+from burrito.types.adapter import AdapterCreateParams
 
 
 # TODO: non-stream should also disconnect when client disconnects

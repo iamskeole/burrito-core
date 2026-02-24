@@ -1,40 +1,30 @@
 import logging
 import re
-
 from typing import Any, AsyncIterator, Literal
-
 from urllib.parse import quote, unquote
 
 from aiohttp import ClientSession, ClientTimeout
-
-from burrito.tools.browser.backend import BurritoBrowserBackend
-
+from gpt_oss.tools.simple_browser import SimpleBrowserTool
+from gpt_oss.tools.simple_browser.backend import VIEW_SOURCE_PREFIX, maybe_truncate
+from gpt_oss.tools.simple_browser.page_contents import Extract, PageContents
 from gpt_oss.tools.simple_browser.simple_browser_tool import (
-    wrap_lines,
+    CITATION_OUTPUT_PATTERN,
+    PARTIAL_FINAL_LINK_PATTERN,
+    BackendError,
+    ToolUsageError,
     function_the_model_can_call,
     handle_errors,
-    BackendError,
+    wrap_lines,
 )
-
-from gpt_oss.tools.simple_browser.backend import VIEW_SOURCE_PREFIX
-from gpt_oss.tools.simple_browser import SimpleBrowserTool
-from gpt_oss.tools.simple_browser.simple_browser_tool import ToolUsageError
-from gpt_oss.tools.simple_browser.page_contents import Extract, PageContents
-from gpt_oss.tools.simple_browser.backend import maybe_truncate
-from openai_harmony import ToolNamespaceConfig, Message
-
-from gpt_oss.tools.simple_browser.simple_browser_tool import (
-    PARTIAL_FINAL_LINK_PATTERN,
-    CITATION_OUTPUT_PATTERN,
-)
-
-from burrito.prompts import (
-    browser_tool_description,
-    browser_search_prompt,
-    browser_open_prompt,
-)
+from openai_harmony import Message, ToolNamespaceConfig
 
 from burrito.common.config import settings
+from burrito.prompts import (
+    browser_open_prompt,
+    browser_search_prompt,
+    browser_tool_description,
+)
+from burrito.tools.browser.backend import BurritoBrowserBackend
 
 CLEANUP_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
 

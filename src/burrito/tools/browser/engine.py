@@ -1,17 +1,18 @@
-import textwrap
 import asyncio
-from typing import Optional
-from datetime import date
 import json
-from playwright.async_api import (
-    async_playwright,
-    Browser,
-    Route,
-    Playwright,
-    TimeoutError,
-)
-from lxml import html
+import textwrap
+from datetime import date
+from typing import Optional
+
 import trafilatura
+from lxml import html
+from playwright.async_api import (
+    Browser,
+    Playwright,
+    Route,
+    TimeoutError,
+    async_playwright,
+)
 
 from burrito.common.logger import FastAPILogger
 

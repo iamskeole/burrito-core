@@ -1,18 +1,19 @@
 import logging
 from typing import List
+
 import aiohttp
-from aiohttp import ClientSession
 import chz
+from aiohttp import ClientSession
 from gpt_oss.tools.simple_browser.backend import Backend
 from gpt_oss.tools.simple_browser.page_contents import (
     PageContents,
-    process_html,
     get_domain,
+    process_html,
 )
 
-from .engine import BurritoBrowserEngine
-
 from burrito.common.config import settings
+
+from .engine import BurritoBrowserEngine
 
 logger = logging.getLogger("browser_backend")
 
@@ -26,7 +27,9 @@ class BurritoBrowserBackend(Backend):
         self, url: str, is_docs_website: bool, session: aiohttp.ClientSession
     ) -> PageContents:
         async with session:
-            timeout_ms = (session.timeout.total or 1) * 1000 # playwright expects ms, aiohttp in s
+            timeout_ms = (
+                session.timeout.total or 1
+            ) * 1000  # playwright expects ms, aiohttp in s
             text = await self.engine.fetch(url, is_docs_website, timeout_ms)  # type: ignore
             processed = process_html(html=text, url=url, title=None)
 

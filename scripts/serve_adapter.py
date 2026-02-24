@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uvicorn
-from burrito.main import app
+
 from burrito.common.config import settings
+from burrito.main import app
 
 
 def serve():

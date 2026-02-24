@@ -1,35 +1,40 @@
-from typing import TYPE_CHECKING, Optional, List
+from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
-from openai.types.completion_usage import CompletionUsage, CompletionTokensDetails
-from openai.types.chat.chat_completion_message_function_tool_call import (
-    ChatCompletionMessageFunctionToolCall,
-    Function,
-)
 from openai.types.chat.chat_completion_message_custom_tool_call import (
     ChatCompletionMessageCustomToolCall,
     Custom,
 )
-
-from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunk,
-    AdapterChatCompletionChunkChoice,
-    AdapterChatCompletionChunkChoiceDelta,
-    AdapterChoiceDeltaToolCall,
-    AdapterChoiceDeltaToolCallFunction,
-    AdapterChoiceDeltaCustomCallFunction,
+from openai.types.chat.chat_completion_message_function_tool_call import (
+    ChatCompletionMessageFunctionToolCall,
+    Function,
+)
+from openai.types.completion_usage import (
+    CompletionTokensDetails,
+    CompletionUsage,
 )
 
+from burrito.common.utils import (
+    get_system_fingerprint,
+    random_uuid,
+    unix_timestamp,
+)
+from burrito.plugins.base_plugin import BasePlugin
 from burrito.types.adapter.adapter_chat_completion import (
     AdapterChatCompletion,
     AdapterChatCompletionChoice,
     AdapterChatCompletionChoiceMessage,
 )
-
-from burrito.common.utils import random_uuid, unix_timestamp, get_system_fingerprint
-from burrito.plugins.base_plugin import BasePlugin
+from burrito.types.adapter.adapter_chat_completion_chunk import (
+    AdapterChatCompletionChunk,
+    AdapterChatCompletionChunkChoice,
+    AdapterChatCompletionChunkChoiceDelta,
+    AdapterChoiceDeltaCustomCallFunction,
+    AdapterChoiceDeltaToolCall,
+    AdapterChoiceDeltaToolCallFunction,
+)
 
 
 class BasePluginChat(BasePlugin):
@@ -49,8 +54,12 @@ class BasePluginChat(BasePlugin):
                 accepted_prediction_tokens=counts.n_completion,
                 rejected_prediction_tokens=0,
                 reasoning_tokens=sum(
-                    [counts.n_reasoning, counts.n_preamble, counts.n_native_tool_input]
-                )
+                    [
+                        counts.n_reasoning,
+                        counts.n_preamble,
+                        counts.n_native_tool_input,
+                    ]
+                ),
             ),
         )
         return usage
@@ -157,7 +166,12 @@ class BasePluginChat(BasePlugin):
 
         for i in tools_called.values():
             tc = None
-            _id, _name, _type, _content = i["id"], i["name"], i["type"], i["content"]
+            _id, _name, _type, _content = (
+                i["id"],
+                i["name"],
+                i["type"],
+                i["content"],
+            )
 
             match _type:
                 case "function":

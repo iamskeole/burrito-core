@@ -2,15 +2,14 @@ from typing import TYPE_CHECKING, List, Optional
 
 from openai_harmony import StreamableParser, StreamState
 
+from burrito.common.logger import FastAPILogger
+from burrito.services.harmony import SPECIAL_TOKENS
 from burrito.types.adapter import (
     AdapterAssistantChannel,
     AdapterCompletionToken,
     AdapterConversationState,
     AdapterToolType,
 )
-
-from burrito.common.logger import FastAPILogger
-from burrito.services.harmony import SPECIAL_TOKENS
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
@@ -28,7 +27,9 @@ def is_in_progress(parser: StreamableParser) -> bool:
 
 def is_reasoning(parser: StreamableParser) -> bool:
     # producing reasoning tokens
-    match_channel = parser.current_channel == AdapterAssistantChannel.ANALYSIS.value
+    match_channel = (
+        parser.current_channel == AdapterAssistantChannel.ANALYSIS.value
+    )
     match_recipient = parser.current_recipient is None
     return match_channel and match_recipient
 
@@ -50,7 +51,9 @@ def is_reasoning_end(
 # that should technically put it on the output channel i think
 def is_preamble(parser: StreamableParser) -> bool:
     match_recipient = parser.current_recipient is None
-    match_channel = parser.current_channel == AdapterAssistantChannel.COMMENTARY.value
+    match_channel = (
+        parser.current_channel == AdapterAssistantChannel.COMMENTARY.value
+    )
     return match_channel and match_recipient
 
 
@@ -191,6 +194,7 @@ class TransitionHandler:
             return AdapterConversationState.COMPLETED
         else:
             return AdapterConversationState.TRANSITION
+
     # TODO: maybe allow functions without the functions. namespace? map it back in tool handler if it's a valid tool?
     def _is_valid_transition(self, new_state: AdapterConversationState) -> bool:
         manager = self.manager
@@ -257,12 +261,15 @@ class TransitionHandler:
 
         if new_state == state_tool_call:
             self.logger.debug(
-                (f"calling tool `{last_recipient or parser.current_recipient}`."),
+                (
+                    f"calling tool `{last_recipient or parser.current_recipient}`."
+                ),
                 extra=self.log_extra,
             )
         # TODO: check whether this is redundant with tool_handler._is_valid_tool?
-        if new_state == state_tool_input_start and not manager.tool_handler.is_valid(
-            current_recipient
+        if (
+            new_state == state_tool_input_start
+            and not manager.tool_handler.is_valid(current_recipient)
         ):
             return False
 
@@ -340,7 +347,9 @@ class TransitionHandler:
     async def transition(
         self,
         token: Optional[AdapterCompletionToken],
-        state: Optional[AdapterConversationState] = None,  # handle native tool done
+        state: Optional[
+            AdapterConversationState
+        ] = None,  # handle native tool done
     ):
         old_state = self.manager.parser_state
         new_state = state or self._update_state()
@@ -354,9 +363,13 @@ class TransitionHandler:
                 extra=self.log_extra,
             )
 
-            for plugin in self.manager._active_plugins_by_state.get(old_state, []):
+            for plugin in self.manager._active_plugins_by_state.get(
+                old_state, []
+            ):
                 await plugin.on_exit_state(old_state)
-            for plugin in self.manager._active_plugins_by_state.get(new_state, []):
+            for plugin in self.manager._active_plugins_by_state.get(
+                new_state, []
+            ):
                 await plugin.on_enter_state(new_state)
 
         if not token:

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Set
+
 from pydantic import BaseModel
 
 if TYPE_CHECKING:

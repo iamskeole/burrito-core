@@ -1,14 +1,13 @@
-from typing import Set, List
+from typing import List, Set
 
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
+from burrito.plugins.chat.base_plugin import BasePluginChat
 from burrito.types.adapter import AdapterConversationState
 from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunkChoice,
     AdapterChatCompletionChunk,
+    AdapterChatCompletionChunkChoice,
 )
-
-from burrito.plugins.chat.base_plugin import BasePluginChat
 
 
 class ContextManagerPluginChat(BasePluginChat):

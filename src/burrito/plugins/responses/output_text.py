@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Set, Any
+from typing import TYPE_CHECKING, Any, Set
 
 from openai.types.responses.response import Response
 
@@ -26,17 +26,18 @@ from openai.types.responses.response_output_item_done_event import (
 )
 from openai.types.responses.response_output_message import ResponseOutputMessage
 from openai.types.responses.response_output_text import (
-    ResponseOutputText,
     AnnotationURLCitation,
+    ResponseOutputText,
 )
-from openai.types.responses.response_text_delta_event import ResponseTextDeltaEvent
-from openai.types.responses.response_text_done_event import ResponseTextDoneEvent
 from openai.types.responses.response_output_text_annotation_added_event import (
     ResponseOutputTextAnnotationAddedEvent,
 )
-from burrito.types.adapter import AdapterConversationState
-from burrito.plugins.responses.base_plugin import BasePluginResponses
+from openai.types.responses.response_text_delta_event import ResponseTextDeltaEvent
+from openai.types.responses.response_text_done_event import ResponseTextDoneEvent
+
 from burrito.common.utils import random_uuid
+from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.adapter import AdapterConversationState
 
 
 class OutputTextPluginResponses(BasePluginResponses):

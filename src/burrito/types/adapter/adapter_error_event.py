@@ -2,6 +2,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
+
 class AdapterErrorEvent(BaseModel):
     type: Literal["error"]
     code: str

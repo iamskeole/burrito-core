@@ -1,39 +1,36 @@
 from __future__ import annotations
 
-from typing import List, Dict
+from typing import Dict, List
 
-from openai_harmony import Message, Author, Role, Content, TextContent
+from openai_harmony import Author, Content, Message, Role, TextContent
 
 from burrito.types.adapter import (
     AdapterAssistantChannel,
     AdapterConversationInputs,
-    AdapterCreateParamsChat,
     AdapterConversationInputTool,
+    AdapterCreateParamsChat,
     AdapterReasoningParam,
 )
-
+from burrito.types.adapter.adapter_browser_tool_param import (
+    AdapterBrowserToolParamChat,
+)
 from burrito.types.adapter.adapter_create_params_chat import (
-    UserMessageParamChat,
-    ContentPartText,
-    ContentPartImageUrl,
     AssistantMessageParamChat,
-    ToolCallOutputParamChat,
+    AssistantToolCallParamChat,
+    ContentPartImageUrl,
+    ContentPartText,
     DeveloperMessageParamChat,
     SystemMessageParamChat,
-    AssistantToolCallParamChat,
-)
-
-from burrito.types.adapter.adapter_function_tool_param import (
-    AdapterFunctionToolParamChat,
+    ToolCallOutputParamChat,
+    UserMessageParamChat,
 )
 from burrito.types.adapter.adapter_custom_tool_param import (
     AdapterCustomToolParamChat,
-    CustomToolInputFormatText,
     CustomToolInputFormatGrammar,
+    CustomToolInputFormatText,
 )
-
-from burrito.types.adapter.adapter_browser_tool_param import (
-    AdapterBrowserToolParamChat,
+from burrito.types.adapter.adapter_function_tool_param import (
+    AdapterFunctionToolParamChat,
 )
 
 

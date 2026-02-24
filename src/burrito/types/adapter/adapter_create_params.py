@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from burrito.types.adapter import (
+        AdapterCreateParamsAnthropic,
         AdapterCreateParamsChat,
         AdapterCreateParamsResponses,
-        AdapterCreateParamsAnthropic,
     )
 
 AdapterCreateParams = Union[

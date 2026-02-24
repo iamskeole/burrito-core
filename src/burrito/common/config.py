@@ -1,7 +1,7 @@
-from typing import Literal
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
 from pathlib import Path
+from typing import Literal
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     INFERENCE_BACKEND_IS_NATIVE: bool = False
     INFERENCE_BACKEND_BASE_URL: str = "changeme"
 
-    BACKEND_INTER_TOKEN_TIMEOUT: int = 120  # allow for large prompt preprocessing
+    BACKEND_INTER_TOKEN_TIMEOUT: int = (
+        120  # allow for large prompt preprocessing
+    )
 
     DEFAULT_MODEL_NAME: Literal[
         "openai/gpt-oss-20b",
@@ -61,7 +63,9 @@ class Settings(BaseSettings):
     BROWSER_TIMEOUT_FETCH: int = 3
     BROWSER_TIMEOUT_SEARCH: int = 10
 
-    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
+    PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = (
+        "docker"
+    )
 
     USER_AGENT_SEARCH: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.1 Safari/605.1.15"
 

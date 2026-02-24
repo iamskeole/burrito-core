@@ -1,10 +1,9 @@
 import asyncio
 from typing import Optional
 
-from burrito.handlers.session_handler import AdapterSessionHandler
-from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.common.config import settings
-
+from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.session_handler import AdapterSessionHandler
 
 _session_handler_singleton: Optional[AdapterSessionHandler] = None
 _generation_handler_singleton: Optional[AdapterGenerationHandler] = None

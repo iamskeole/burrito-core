@@ -8,15 +8,6 @@ if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
 from openai.types.responses.response import Response
-
-from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
-from openai.types.responses.response_function_call_arguments_delta_event import (
-    ResponseFunctionCallArgumentsDeltaEvent,
-)
-from openai.types.responses.response_function_call_arguments_done_event import (
-    ResponseFunctionCallArgumentsDoneEvent,
-)
-
 from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
 from openai.types.responses.response_custom_tool_call_input_delta_event import (
     ResponseCustomToolCallInputDeltaEvent,
@@ -24,7 +15,13 @@ from openai.types.responses.response_custom_tool_call_input_delta_event import (
 from openai.types.responses.response_custom_tool_call_input_done_event import (
     ResponseCustomToolCallInputDoneEvent,
 )
-
+from openai.types.responses.response_function_call_arguments_delta_event import (
+    ResponseFunctionCallArgumentsDeltaEvent,
+)
+from openai.types.responses.response_function_call_arguments_done_event import (
+    ResponseFunctionCallArgumentsDoneEvent,
+)
+from openai.types.responses.response_function_tool_call import ResponseFunctionToolCall
 from openai.types.responses.response_output_item_added_event import (
     ResponseOutputItemAddedEvent,
 )
@@ -32,8 +29,8 @@ from openai.types.responses.response_output_item_done_event import (
     ResponseOutputItemDoneEvent,
 )
 
-from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
+from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.types.adapter import AdapterCompletionToken
 from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
 
@@ -76,7 +73,7 @@ class ToolInputPluginResponses(BasePluginResponses):
                     id=f"ctc_{random_uuid()}",
                 )
             case _:
-                return # python and browser handled natively inside model CoT
+                return  # python and browser handled natively inside model CoT
 
     def build_output_item_delta_event(
         self,

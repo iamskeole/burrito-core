@@ -5,15 +5,14 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
-
-from burrito.types.adapter.adapter_reasoning import AdapterReasoningEffort
-from burrito.types.adapter.adapter_function_tool_param import (
-    AdapterFunctionToolParamChat,
-)
 from burrito.types.adapter.adapter_browser_tool_param import (
     AdapterBrowserToolParamChat,
 )
+from burrito.types.adapter.adapter_function_tool_param import (
+    AdapterFunctionToolParamChat,
+)
 from burrito.types.adapter.adapter_python_tool_param import AdapterPythonToolParamChat
+from burrito.types.adapter.adapter_reasoning import AdapterReasoningEffort
 
 # TODO: investiagate whether we can support custom tools
 # harmony only seems to support defining regular function tools

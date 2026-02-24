@@ -1,8 +1,9 @@
 import json
+
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
 
 from burrito.common.config import settings
 
@@ -20,7 +21,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = httpx.AsyncClient(base_url=settings.INFERENCE_BACKEND_BASE_URL, timeout=300.0)
+client = httpx.AsyncClient(
+    base_url=settings.INFERENCE_BACKEND_BASE_URL, timeout=300.0
+)
 
 
 async def proxy_post_request(request: Request, path: str):

@@ -1,9 +1,8 @@
 import hashlib
+from typing import Dict, List, Optional
 
-from typing import Dict, Optional, List
-
-from burrito.tools.python.tool import BurritoPython
 from burrito.tools.browser.tool import BurritoBrowser
+from burrito.tools.python.tool import BurritoPython
 
 
 class AdapterSessionHandler:
@@ -22,11 +21,15 @@ class AdapterSessionHandler:
         n = sum(prompt_tokens)
         return hashlib.sha256(self.int_to_bytes(n)).digest().hex()
 
-    def set_python_tool(self, session_id: str, tool: Optional[BurritoPython]) -> None:
+    def set_python_tool(
+        self, session_id: str, tool: Optional[BurritoPython]
+    ) -> None:
         if session_id not in self.python_tools:
             self.python_tools[session_id] = tool
 
-    def set_browser_tool(self, session_id: str, tool: Optional[BurritoBrowser]) -> None:
+    def set_browser_tool(
+        self, session_id: str, tool: Optional[BurritoBrowser]
+    ) -> None:
         if session_id not in self.browser_tools:
             self.browser_tools[session_id] = tool
 

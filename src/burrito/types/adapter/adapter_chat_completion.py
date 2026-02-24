@@ -1,6 +1,5 @@
 from typing import List, Optional
 
-
 from openai.types.chat.chat_completion import ChatCompletion, Choice
 from openai.types.chat.chat_completion_message import ChatCompletionMessage
 

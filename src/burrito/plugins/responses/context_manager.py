@@ -10,8 +10,8 @@ from openai.types.responses.response_usage import (
     ResponseUsage,
 )
 
-from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.adapter import AdapterConversationState
 
 
 class ContextManagerPluginResponses(BasePluginResponses):

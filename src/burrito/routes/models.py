@@ -1,7 +1,6 @@
+import httpx
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-
-import httpx
 
 from burrito.common.config import settings
 

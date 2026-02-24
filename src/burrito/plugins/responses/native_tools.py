@@ -6,7 +6,15 @@ if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
 from openai.types.responses.response import Response
-
+from openai.types.responses.response_code_interpreter_tool_call import (
+    ResponseCodeInterpreterToolCall,
+)
+from openai.types.responses.response_function_web_search import (
+    ActionFind,
+    ActionOpenPage,
+    ActionSearch,
+    ResponseFunctionWebSearch,
+)
 from openai.types.responses.response_output_item_added_event import (
     ResponseOutputItemAddedEvent,
 )
@@ -14,22 +22,9 @@ from openai.types.responses.response_output_item_done_event import (
     ResponseOutputItemDoneEvent,
 )
 
-from openai.types.responses.response_code_interpreter_tool_call import (
-    ResponseCodeInterpreterToolCall,
-)
-
-from openai.types.responses.response_function_web_search import (
-    ResponseFunctionWebSearch,
-    ActionFind,
-    ActionOpenPage,
-    ActionSearch,
-)
-
-from burrito.types.adapter import AdapterConversationState
-
-from burrito.plugins.responses.base_plugin import BasePluginResponses
 from burrito.common.utils import random_uuid
-from burrito.types.adapter import AdapterCompletionToken
+from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.adapter import AdapterCompletionToken, AdapterConversationState
 
 
 class NativeToolsPluginResponses(BasePluginResponses):

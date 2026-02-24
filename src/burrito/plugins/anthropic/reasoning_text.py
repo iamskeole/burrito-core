@@ -1,16 +1,15 @@
 from typing import Set
 
-from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
-from burrito.types.adapter import AdapterConversationState
-from burrito.handlers.token_handler import AdapterCompletionToken
-from burrito.common.utils import random_uuid
-
-from anthropic.types.message import Message
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
 from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
+from anthropic.types.content_block_start_event import ContentBlockStartEvent
 from anthropic.types.content_block_stop_event import ContentBlockStopEvent
+from anthropic.types.message import Message
 from anthropic.types.thinking_block import ThinkingBlock
 from anthropic.types.thinking_delta import ThinkingDelta
+
+from burrito.handlers.token_handler import AdapterCompletionToken
+from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
+from burrito.types.adapter import AdapterConversationState
 
 
 class ReasoningTextPluginAnthropic(BasePluginAnthropic):
@@ -56,7 +55,9 @@ class ReasoningTextPluginAnthropic(BasePluginAnthropic):
         )
         delta = ThinkingDelta(type="thinking_delta", thinking=token.text)
         event = ContentBlockDeltaEvent(
-            type="content_block_delta", delta=delta, index=self.manager.output_index
+            type="content_block_delta",
+            delta=delta,
+            index=self.manager.output_index,
         )
         output_index = self.manager.output_index
         content_item = self.manager.output_object.content[output_index]

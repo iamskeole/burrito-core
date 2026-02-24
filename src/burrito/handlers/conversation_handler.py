@@ -1,24 +1,22 @@
 import asyncio
-from typing import AsyncGenerator, Dict, List, Union, Optional
 import logging
+from typing import AsyncGenerator, Dict, List, Optional, Union
+
 import async_timeout
-from fastapi import Request
-from openai.types.completion import Completion
-from openai.types.chat.chat_completion import ChatCompletion
-from openai.types.responses import Response
-
 from anthropic.types.message import Message as AnthropicMessage
-
-from burrito.types.adapter import AdapterCreateParams
-from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
+from fastapi import Request
+from openai.types.chat.chat_completion import ChatCompletion
+from openai.types.completion import Completion
+from openai.types.responses import Response
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import unix_timestamp_in_ms
-
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.handlers.state_handler import AdapterStateHandler
+from burrito.types.adapter import AdapterCreateParams
+from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
 
 
 class AdapterConversationHandler:
@@ -90,7 +88,9 @@ class AdapterConversationHandler:
             while True:
                 message = await self.request.receive()
                 if message.get("type") == "http.disconnect":
-                    self._stop_stream("Client disconnected inside _watch_disconnect.")
+                    self._stop_stream(
+                        "Client disconnected inside _watch_disconnect."
+                    )
                     break
         except asyncio.CancelledError:
             pass
@@ -178,7 +178,9 @@ class AdapterConversationHandler:
         async for _ in self.return_stream():
             pass
 
-        assert self.state_handler.is_done, "Generation did not complete successfully."
+        assert self.state_handler.is_done, (
+            "Generation did not complete successfully."
+        )
 
         output_object = self.state_handler.output_object
 
@@ -197,4 +199,6 @@ class AdapterConversationHandler:
         if isinstance(output_object, AdapterErrorEvent):
             return output_object.model_dump()
 
-        raise NotImplementedError(f"Unsupported output object: {type(output_object)}")
+        raise NotImplementedError(
+            f"Unsupported output object: {type(output_object)}"
+        )

@@ -1,5 +1,5 @@
-import json
 import asyncio
+import json
 from typing import AsyncGenerator, Dict, Union
 
 import httpx
@@ -136,10 +136,7 @@ async def generate_hosted(
     params: AdapterCreateParams,
     headers: Dict[str, str] = {},
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
-    url = (
-        settings.INFERENCE_BACKEND_BASE_URL.rstrip("/")
-        + "/v1/completions"
-    )
+    url = settings.INFERENCE_BACKEND_BASE_URL.rstrip("/") + "/v1/completions"
     payload = build_payload(prompt_token_ids, params)
 
     try:

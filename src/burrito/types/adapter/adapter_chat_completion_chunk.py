@@ -1,5 +1,4 @@
-from typing import List, Optional, Dict, Any, Union, Literal
-from pydantic import BaseModel
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from openai.types.chat.chat_completion_chunk import (
     ChatCompletionChunk,
@@ -7,6 +6,7 @@ from openai.types.chat.chat_completion_chunk import (
     ChoiceDelta,
 )
 from openai.types.chat.chat_completion_message import Annotation
+from pydantic import BaseModel
 
 
 class AdapterChoiceDeltaCustomCallFunction(BaseModel):

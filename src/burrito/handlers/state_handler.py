@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import logging
-
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
-from pydantic import BaseModel
 
+from anthropic.types.message import Message as AnthropicMessage
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
-from anthropic.types.message import Message as AnthropicMessage
+from pydantic import BaseModel
 
 from burrito.types.adapter.adapter_chat_completion import AdapterChatCompletion
 from burrito.types.adapter.adapter_chat_completion_chunk import (
@@ -17,8 +16,6 @@ from burrito.types.adapter.adapter_chat_completion_chunk import (
 if TYPE_CHECKING:
     from .conversation_handler import AdapterConversationHandler
 
-from burrito.common.logger import FastAPILogger
-
 from openai_harmony import (
     Conversation,
     HarmonyError,
@@ -27,59 +24,59 @@ from openai_harmony import (
     StreamableParser,
 )
 
+from burrito.common.config import settings
+from burrito.common.logger import FastAPILogger
+from burrito.common.utils import random_uuid, unix_timestamp_in_ms
+from burrito.handlers.token_handler import (
+    normalize_completion_token,
+)
+from burrito.handlers.tool_handler import ToolHandler
+from burrito.handlers.transition_handler import TransitionHandler
 from burrito.plugins import BasePlugin
+from burrito.plugins.anthropic import (
+    ContextManagerPluginAnthropic,
+    NativeToolsPluginAnthropic,
+    OutputTextPluginAnthropic,
+    ReasoningTextPluginAnthropic,
+    ToolInputPluginAnthropic,
+)
 from burrito.plugins.chat import (
     ContextManagerPluginChat,
-    ReasoningTextPluginChat,
-    OutputTextPluginChat,
-    ToolInputPluginChat,
     NativeToolsPluginChat,
+    OutputTextPluginChat,
+    ReasoningTextPluginChat,
+    ToolInputPluginChat,
 )
 from burrito.plugins.responses import (
     ContextManagerPluginResponses,
-    ReasoningTextPluginResponses,
-    OutputTextPluginResponses,
-    ToolInputPluginResponses,
     NativeToolsPluginResponses,
+    OutputTextPluginResponses,
+    ReasoningTextPluginResponses,
+    ToolInputPluginResponses,
 )
-from burrito.plugins.anthropic import (
-    ContextManagerPluginAnthropic,
-    ReasoningTextPluginAnthropic,
-    OutputTextPluginAnthropic,
-    ToolInputPluginAnthropic,
-    NativeToolsPluginAnthropic,
-)
-
 from burrito.services.harmony import (
     ENCODING,
     build_conversation_from_params,
     build_user_message,
     render_conversation_for_completion,
 )
-from burrito.common.config import settings
-from burrito.common.utils import unix_timestamp_in_ms, random_uuid
+from burrito.tools.browser.tool import BurritoBrowser
+from burrito.tools.python.tool import BurritoPython
 from burrito.types.adapter import (
     AdapterCompletionToken,
     AdapterConversationInputs,
     AdapterConversationState,
+    AdapterCreateParamsAnthropic,
     AdapterCreateParamsChat,
     AdapterCreateParamsResponses,
-    AdapterCreateParamsAnthropic,
     AdapterErrorEvent,
 )
 
-from burrito.handlers.token_handler import (
-    normalize_completion_token,
-)
-from burrito.handlers.tool_handler import ToolHandler
-from burrito.handlers.transition_handler import TransitionHandler
-
-from burrito.tools.python.tool import BurritoPython
-from burrito.tools.browser.tool import BurritoBrowser
-
 
 class AdapterStateHandler:
-    def __init__(self, manager: AdapterConversationHandler, stream_to_caller: bool):
+    def __init__(
+        self, manager: AdapterConversationHandler, stream_to_caller: bool
+    ):
         self.manager = manager
         self.stream_to_caller = stream_to_caller
 
@@ -169,7 +166,9 @@ class AdapterStateHandler:
                 return
         for plugin in self.plugins:
             for state in plugin.subscribed_states:
-                self._active_plugins_by_state.setdefault(state, []).append(plugin)
+                self._active_plugins_by_state.setdefault(state, []).append(
+                    plugin
+                )
 
     # NOTE: this enables session-ish storage of python and browser tools
     # should help assistant if these tools are not stateless
@@ -367,7 +366,10 @@ class AdapterStateHandler:
         # maybe good idea to transition state before parsing? but that depends
         # on parser state so kind of circular? but we catch it here AND in
         # state validation, so we should be good?
-        if ENCODING.is_special_token(token.id) and token.id == last_parser_token:
+        if (
+            ENCODING.is_special_token(token.id)
+            and token.id == last_parser_token
+        ):
             self.logger.error(
                 "Bad token: back to back special token", extra=self.log_extra
             )
@@ -376,7 +378,9 @@ class AdapterStateHandler:
         try:
             self.parser.process(token.id)
         except HarmonyError as e:
-            self.logger.error(f"_process_completion: {repr(e)}", extra=self.log_extra)
+            self.logger.error(
+                f"_process_completion: {repr(e)}", extra=self.log_extra
+            )
             # generic recovery message since it can be a variety of reasons,
             # - HarmonyError('unexpected tokens remaining in message header: List[str]')
             #   (rare, mostly cahght by validations)
@@ -433,7 +437,9 @@ class AdapterStateHandler:
         )
 
         self.logger.debug(
-            (f"{'total:':<12}{delta_total:>10,.2f}s{n_tokens_total:>10,} tokens"),
+            (
+                f"{'total:':<12}{delta_total:>10,.2f}s{n_tokens_total:>10,} tokens"
+            ),
             extra=self.log_extra,
         )
 
@@ -452,7 +458,9 @@ class AdapterStateHandler:
         else:
             self.logger.debug(completion.choices[0])
 
-    async def process_completion(self, completion: Union[Completion, Dict, str]):
+    async def process_completion(
+        self, completion: Union[Completion, Dict, str]
+    ):
         if isinstance(completion, dict):
             msg = f"Backend error: {completion.get('error')}"
             self.logger.error(msg, extra=self.log_extra)

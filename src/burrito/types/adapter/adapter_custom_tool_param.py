@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Annotated, TypeAlias, Union
+from typing import Annotated, Literal, Optional, TypeAlias, Union
 
 from pydantic import BaseModel, Field
 

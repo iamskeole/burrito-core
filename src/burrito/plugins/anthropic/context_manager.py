@@ -1,16 +1,13 @@
 from typing import Set
 
+from anthropic.types.message_delta_event import MessageDeltaEvent
+from anthropic.types.message_delta_usage import MessageDeltaUsage
+from anthropic.types.message_start_event import MessageStartEvent
+from anthropic.types.message_stop_event import MessageStopEvent
+from anthropic.types.raw_message_delta_event import Delta
+
 from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
 from burrito.types.adapter import AdapterConversationState
-from pydantic import BaseModel
-
-from anthropic.types.message import Message
-from anthropic.types.message_start_event import MessageStartEvent
-from anthropic.types.message_delta_event import MessageDeltaEvent
-from anthropic.types.message_stop_event import MessageStopEvent
-from anthropic.types.message_delta_usage import MessageDeltaUsage
-from anthropic.types.raw_message_delta_event import Delta
-from anthropic.types.stop_reason import StopReason
 
 
 class ContextManagerPluginAnthropic(BasePluginAnthropic):

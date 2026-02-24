@@ -1,8 +1,17 @@
 import asyncio
 from typing import Union
 
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+
+from burrito.common.dependencies import (
+    get_generation_handler,
+    get_inference_semaphore,
+    get_session_handler,
+)
+from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.inference_handler import run_inference
+from burrito.handlers.session_handler import AdapterSessionHandler
 
 # We might need a generic response model or a specific one for Anthropic
 # But since we stream or return a dict constructed by plugins/state_handler,
@@ -11,16 +20,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 # But for now, let's skip response model validation in decorator to avoid
 # defining the full response schema if we don't have it handy.
 # Or use dictionary.
-
 from burrito.types.adapter import AdapterCreateParamsAnthropic
-from burrito.handlers.inference_handler import run_inference
-from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.session_handler import AdapterSessionHandler
-from burrito.common.dependencies import (
-    get_inference_semaphore,
-    get_generation_handler,
-    get_session_handler,
-)
 
 router = APIRouter()
 

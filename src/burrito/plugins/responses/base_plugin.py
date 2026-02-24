@@ -2,9 +2,9 @@ from typing import TYPE_CHECKING
 
 from openai.types.responses.response import Response
 
-from burrito.types.adapter import AdapterConversationState
 from burrito.common.utils import random_uuid, unix_timestamp
 from burrito.plugins.base_plugin import BasePlugin
+from burrito.types.adapter import AdapterConversationState
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
