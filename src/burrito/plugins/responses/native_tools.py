@@ -66,17 +66,32 @@ class NativeToolsPluginResponses(BasePluginResponses):
             return
 
         if function_name == "search":
-            action = ActionSearch(query=args["query"], type="search")
+            # TODO: figure out what's happening here, why a valid tool call but no query
+            # for now, we defend since this is internal only
+            query = args.get("query")
+            if not query:
+                return
+            action = ActionSearch(query=query, type="search")
         elif function_name == "open":
-            action = ActionOpenPage(type="open_page", url=args["url"])
+            # TODO: same as for query
+            url = args.get("url")
+            if not url:
+                return
+            action = ActionOpenPage(type="open_page", url=url)
         elif function_name == "find":
+            # TODO: same as for query
+            pattern = args.get("pattern")
+            if not pattern:
+                return
+            # TODO: should we return if no url too? maybe cursor is valid?
+            url = args.get("url", "unknown")
             action = ActionFind(
                 type="find",
-                pattern=f"**{args['pattern']}**",
-                url=args.get("url", "Unknown"),
+                pattern=pattern,
+                url=url,
             )
         else:
-            return
+            return  # should not happen, but with hallucinations you never know..
 
         if state == AdapterConversationState.NATIVE_TOOL_CALL:
             self.manager.output_index += 1

@@ -50,7 +50,7 @@ async def proxy_post_request(request: Request, path: str):
             acc_loadedstrings = []
             acc_err_strings = []
             async for chunk in backend_response.aiter_raw():
-                if settings.DEBUG:
+                if settings.DEBUG_COMPLETIONS:
                     print(chunk)
                 all_chunks.append(chunk.decode("utf-8"))
 

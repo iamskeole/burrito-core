@@ -10,9 +10,8 @@ ENV_FILE_PATH = PROJECT_ROOT / ".env"
 class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-
-    DEBUG: bool = False
     LOG_LEVEL: str = "debug"
+    ACCESS_LOG: bool = False
 
     DEBUG_TOOL_CALLS: bool = False
     DEBUG_TOOL_INPUTS: bool = False
@@ -21,7 +20,11 @@ class Settings(BaseSettings):
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
-    DEBUG_STATE_CHANGE: bool = True
+    DEBUG_STATE_CHANGE: bool = False
+    DEBUG_HARMONY_ERRORS: bool = False
+    DEBUG_BROWSER_ERRORS: bool = False
+    DEBUG_STATE_ERRORS: bool = False
+    DEBUG_CLIENT_DISCONNECTS: bool = False
     DEBUG_GENERATOR_CLEANUP: bool = False
 
     CORS_ALLOWED_ORIGINS: str = "*"

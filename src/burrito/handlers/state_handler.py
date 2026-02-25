@@ -27,7 +27,7 @@ from openai_harmony import (
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import get_prompt, random_uuid, unix_timestamp_in_ms
+from burrito.common.utils import get_prompt, unix_timestamp_in_ms
 from burrito.handlers.token_handler import (
     normalize_completion_token,
 )
@@ -57,8 +57,10 @@ from burrito.plugins.responses import (
 )
 from burrito.services.harmony import (
     ENCODING,
+    build_conversation_from_messages,
     build_conversation_from_params,
     build_user_message,
+    get_prompt_cache_messages,
     render_conversation_for_completion,
 )
 from burrito.tools.browser.tool import BurritoBrowser
@@ -186,12 +188,11 @@ class AdapterStateHandler:
         elif params.prompt_cache_key:
             session_id = params.prompt_cache_key
         else:
-            session_id = random_uuid()
-            # messages = get_prompt_cache_messages(self.conversation.messages)
-            # conversation = build_conversation_from_messages(messages)
-            # prompt_tokens = render_conversation_for_completion(conversation)
-            # prompt_text = ENCODING.decode(prompt_tokens)
-            # session_id = session_handler.hash_text(prompt_text)
+            messages = get_prompt_cache_messages(self.conversation.messages)
+            conversation = build_conversation_from_messages(messages)
+            prompt_tokens = render_conversation_for_completion(conversation)
+            prompt_text = ENCODING.decode(prompt_tokens)
+            session_id = session_handler.hash_text(prompt_text)
 
         self.log_id = session_id
         session_handler.set_python_tool(self.log_id, python_tool)
@@ -373,7 +374,8 @@ class AdapterStateHandler:
         try:
             self.parser.process(token.id)
         except HarmonyError as e:
-            self.logger.error(f"_process_completion: {repr(e)}", extra=self.log_extra)
+            if settings.DEBUG_HARMONY_ERRORS:
+                self.logger.debug(f"{repr(e)}", extra=self.log_extra)
             # generic recovery message since it can be a variety of reasons,
             # - HarmonyError('unexpected tokens remaining in message header: List[str]')
             #   (rare, mostly cahght by validations)
@@ -400,36 +402,68 @@ class AdapterStateHandler:
         await self.tool_handler.maybe_call_native_tool()
 
     def _log_stats(self):
-        r_t = self.response_tokens
+        p_t, r_t = self.prompt_tokens, self.response_tokens
         if not r_t:
             return
 
         t_p = (r_t[0].created_at - self.created_at) / 1000
         t_e = (r_t[-1].created_at - r_t[0].created_at) / 1000
-        t_tot = t_p + t_e
+        t_t = t_p + t_e
 
-        n_p, n_e = len(self.prompt_tokens), len(r_t)
+        n_p, n_e = len(p_t), len(r_t)
+        n_t = n_p + n_e
+        t_c = len(self.tool_handler.tool_calls)
         tps_p = n_p / t_p if t_p > 0 else 0
         tps_e = n_e / t_e if t_e > 0 else 0
-        t_c = len(self.tool_handler.tool_calls)
 
-        def fmt(val):
-            return f"{val / 1000:.1f}k" if val >= 1000 else f"{int(val)}"
+        match self.manager.params:
+            case AdapterCreateParamsChat():
+                m = "oai:chat"
+            case AdapterCreateParamsResponses():
+                m = "oai:responses"
+            case AdapterCreateParamsAnthropic():
+                m = "ant:messages"
+            case _:
+                m = "unknown"
 
-        t_seg = f"{t_tot:.2f}s ({t_p:.2f}p + {t_e:.2f}e)"
-        p_seg = f"p: {fmt(n_p)} ({fmt(tps_p)}/s)"
-        e_seg = f"e: {fmt(n_e)} ({fmt(tps_e)}/s)"
-        c_seg = f"⚒ {t_c}"
-        msg = f"DONE {t_seg} • {p_seg} ‣ {e_seg} • {c_seg}"
+        # formatters
+        def fn(n):  # Tokens: "105.0k" or "  215 "
+            if n >= 1000:
+                return f"{n / 1000:>5.1f}k"
+            return f"{int(n):>5} "
 
-        self.logger.info(msg, extra=self.log_extra)
+        def ft(t):  # Time: " 51.97s" or "  0.31s"
+            return f"{t:>6.2f}s"
+
+        def fs(s):  # Speed: " 22.7k" or "   45 "
+            if s >= 1000:
+                return f"{s / 1000:>5.1f}k"
+            return f"{int(s):>5} "
+
+        m_blk = f"🌯 {m:<16}"
+
+        # total block: "  35.9k ‣  51.97s (i:  1.48s ‣ o: 50.49s)"
+        t_blk = f"{fn(n_t)} ‣ {ft(t_t)} (i:{ft(t_p)} ‣ o:{ft(t_e)})"
+
+        # input block: "i:  33.6k ( 22.7k/s)"
+        i_blk = f"i:{fn(n_p)} ({fs(tps_p)}/s)"
+
+        # output block: "o:   2.3k (   45 /s)"
+        o_blk = f"o:{fn(n_e)} ({fs(tps_e)}/s)"
+
+        # tool call block
+        c_blk = f"⚒ {t_c:<2}"
+
+        l_msg = f"{m_blk} • {t_blk} • {i_blk} ‣ {o_blk} • {c_blk}"
+
+        self.logger.info(l_msg, extra=self.log_extra)
 
     def _cleanup_on_done(self, completion: Union[Completion, str]):
         self.is_done = isinstance(completion, str) and completion == "[DONE]"
         if not self.is_done:
             return
         self._log_stats()
-        return self.response_buffer
+        return # self.response_buffer
 
     def _debug_completion(self, completion: Union[Completion, str]):
         if not settings.DEBUG_COMPLETIONS:

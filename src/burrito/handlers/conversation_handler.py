@@ -81,6 +81,8 @@ class AdapterConversationHandler:
         self.generator.can_stream = False
         if msg is None:
             return
+        if not settings.DEBUG_CLIENT_DISCONNECTS:
+            return
         self.logger.debug(msg, extra=self.log_extra)
 
     async def _watch_disconnect(self):

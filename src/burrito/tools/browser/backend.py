@@ -168,7 +168,7 @@ class BurritoBrowserBackend(Backend):
                     query, topn, session, locale, language, time_range, source
                 )
             except Exception as e:
-                logger.error(f"Brave search failed, falling back: {e}")
+                logger.error(f"Brave search failed, falling back to SearXNG: {e}")
 
         # fallback on searxng
         if not titles_and_urls:

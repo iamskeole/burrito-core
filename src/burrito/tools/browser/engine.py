@@ -142,7 +142,8 @@ class BurritoBrowserEngine:
 
                 title = await page.title()
                 if "Just a moment" in title or "Cloudflare" in title:
-                    cls._logger.warning(f"Hit Cloudflare wall for {url}")
+                    if settings.DEBUG_BROWSER_ERRORS:
+                        cls._logger.warning(f"Hit Cloudflare wall for {url}")
                     await asyncio.sleep(3)
 
                 raw_html = await page.content()
@@ -270,7 +271,8 @@ class BurritoBrowserEngine:
             if isinstance(html_updated, str):
                 html_content = html_updated
         except Exception as e:
-            cls._logger.warning(f"Error in preprocess_html: {str(e)}")
+            if settings.DEBUG_BROWSER_ERRORS:
+                cls._logger.warning(f"Error in preprocess_html: {str(e)}")
             pass
 
         if tree is not None and is_docs_website:

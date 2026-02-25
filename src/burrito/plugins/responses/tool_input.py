@@ -82,7 +82,6 @@ class ToolInputPluginResponses(BasePluginResponses):
     ) -> Union[
         ResponseFunctionCallArgumentsDeltaEvent, ResponseCustomToolCallInputDeltaEvent
     ]:
-        self.manager.response_buffer
         assert output_item.id is not None, "output_item.id is None"
         if isinstance(output_item, ResponseFunctionToolCall):
             output_item.arguments += token.text

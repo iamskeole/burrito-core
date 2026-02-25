@@ -236,9 +236,8 @@ class ToolHandler:
             )
             self.manager._add_recovery_message(msg)
             return False
-        self.manager.response_buffer
-        tool = self.get_tool_model_is_trying_to_call()
 
+        tool = self.get_tool_model_is_trying_to_call()
         if tool is not None and not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return True
 
@@ -307,7 +306,7 @@ class ToolHandler:
     async def maybe_call_native_tool(self):
         if self.manager.parser_state != AdapterConversationState.NATIVE_TOOL_CALL:
             return
-        parser = self.manager.parser
+
         messages = self.manager.conversation.messages  # rust view
         if not messages:
             return

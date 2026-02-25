@@ -50,6 +50,10 @@ def random_uuid() -> str:
     return str(uuid.uuid4().hex)
 
 
+def random_guid() -> str:
+    return str(uuid.uuid4())
+
+
 def yyyymmdd():
     now = datetime.now(tz=timezone.utc)
     yy, mm, dd = now.year, str(now.month).zfill(2), str(now.day).zfill(2)

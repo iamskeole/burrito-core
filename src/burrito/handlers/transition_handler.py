@@ -161,12 +161,13 @@ class TransitionHandler:
 
         if self.reasoning_loops >= settings.MAX_REASONING_LOOPS:
             self.reasoning_loops = 0
-            self.logger.warning(
-                "Invalid output: max reasoning loops.",
-                extra=self.log_extra,
-            )
             msg = get_prompt("sentinel_reasoning_loop")
             self.manager._add_recovery_message(msg)
+            if settings.DEBUG_STATE_ERRORS:
+                self.logger.warning(
+                    "Invalid output: max reasoning loops.",
+                    extra=self.log_extra,
+                )
             return False
 
         if new_state == AdapterConversationState.NATIVE_TOOL_DONE:
@@ -191,12 +192,13 @@ class TransitionHandler:
             channel_commentary,
             channel_final,
         ]:
-            self.logger.warning(
-                f"Invalid output: bad channel `{channel}`.",
-                extra=self.log_extra,
-            )
             msg = get_prompt("sentinel_bad_channel").format(channel=channel)
             self.manager._add_recovery_message(msg)
+            if settings.DEBUG_STATE_ERRORS:
+                self.logger.warning(
+                    f"Invalid output: bad channel `{channel}`.",
+                    extra=self.log_extra,
+                )
             return False
 
         if new_state == state_tool_call and settings.DEBUG_TOOL_CALLS:
@@ -226,10 +228,11 @@ class TransitionHandler:
         if new_state == state_tool_call and channel != channel_commentary:
             if tool_handler.is_valid(last_recipient, new_state):
                 return True
-            self.logger.warning(
-                "invalid state: assistant calling a tool without prior input",
-                extra=self.log_extra,
-            )
+            if settings.DEBUG_STATE_ERRORS:
+                self.logger.warning(
+                    "invalid state: assistant calling a tool without prior input",
+                    extra=self.log_extra,
+                )
             return True  # it's ok to send on any channel since we flag it?
 
         # 3. preamble, unclear what to do with it so we just log for now
@@ -239,27 +242,29 @@ class TransitionHandler:
         if new_state == state_preamble:
             if tool_handler.is_valid(last_recipient, new_state):
                 return True
-            self.logger.warning(
-                "assistant entered preamble state",
-                extra=self.log_extra,
-            )
+            if settings.DEBUG_STATE_ERRORS:
+                self.logger.warning(
+                    "assistant entered preamble state",
+                    extra=self.log_extra,
+                )
             return True
         # 4. bad channel or return token
         # llama.cpp issue mostly; tool calls on return channel or transition
         # without end token eg: analysis -> <|end|> -> commentary (missing end)
         if new_state == state_completed and channel != channel_final:
-            self.logger.warning(
-                (
-                    "invalid state: assistant trying to return outside the `final` "
-                    f"channel, on `{channel}`."
-                ),
-                extra=self.log_extra,
-            )
             last_token = self.manager.response_tokens[-1].text
             msg = get_prompt("sentinel_bad_return_token").format(
                 token=last_token, channel=channel
             )
             self.manager._add_recovery_message(msg)
+            if settings.DEBUG_STATE_ERRORS:
+                self.logger.warning(
+                    (
+                        "invalid state: assistant trying to return outside the `final` "
+                        f"channel, on `{channel}`."
+                    ),
+                    extra=self.log_extra,
+                )
             return False
         return True
 
