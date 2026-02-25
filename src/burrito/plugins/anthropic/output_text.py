@@ -4,10 +4,10 @@ from anthropic.types.citations_delta import CitationsDelta
 from anthropic.types.citations_web_search_result_location import (
     CitationsWebSearchResultLocation,
 )
-from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
-from anthropic.types.content_block_stop_event import ContentBlockStopEvent
 from anthropic.types.message import Message
+from anthropic.types.raw_content_block_delta_event import RawContentBlockDeltaEvent
+from anthropic.types.raw_content_block_start_event import RawContentBlockStartEvent
+from anthropic.types.raw_content_block_stop_event import RawContentBlockStopEvent
 from anthropic.types.text_block import TextBlock
 from anthropic.types.text_delta import TextDelta
 
@@ -39,7 +39,7 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
         )
         self.manager.output_index += 1
         content_block = TextBlock(type="text", citations=[], text="")
-        event = ContentBlockStartEvent(
+        event = RawContentBlockStartEvent(
             type="content_block_start",
             content_block=content_block,
             index=self.manager.output_index,
@@ -52,7 +52,7 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
         assert isinstance(self.manager.output_object, Message), (
             f"Expected a Message, but got {type(output_object)}"
         )
-        event = ContentBlockStopEvent(
+        event = RawContentBlockStopEvent(
             type="content_block_stop", index=self.manager.output_index
         )
         await self.put_event(event)
@@ -107,7 +107,7 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
             )
             delta = CitationsDelta(citation=citation, type="citations_delta")
             await self.put_event(
-                ContentBlockDeltaEvent(
+                RawContentBlockDeltaEvent(
                     type="content_block_delta",
                     delta=delta,
                     index=self.manager.output_index,
@@ -131,7 +131,7 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
             return
 
         delta = TextDelta(type="text_delta", text=self.output_delta_buffer)
-        event = ContentBlockDeltaEvent(
+        event = RawContentBlockDeltaEvent(
             type="content_block_delta",
             delta=delta,
             index=self.manager.output_index,

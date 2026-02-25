@@ -14,40 +14,41 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "debug"
 
-    DEBUG_TOOL_INPUTS: bool = True
-    DEBUG_TOOL_OUTPUTS: bool = True
+    DEBUG_TOOL_CALLS: bool = False
+    DEBUG_TOOL_INPUTS: bool = False
+    DEBUG_TOOL_OUTPUTS: bool = False
     DEBUG_COMPLETIONS: bool = False
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
+    DEBUG_STATE_CHANGE: bool = False
+    DEBUG_GENERATOR_CLEANUP: bool = False
 
     CORS_ALLOWED_ORIGINS: str = "*"
     CORS_ALLOWED_METHODS: str = "*"
     CORS_ALLOWED_HEADERS: str = "*"
     CORS_ALLOWED_CREDENTIALS: bool = True
 
-    MAX_REQUEST_BODY_SIZE: int = 1048576  # 1MB in bytes
+    MAX_REQUEST_BODY_SIZE: int = 1048576 * 1  # MB in bytes
     MAX_CONCURRENT_INFERENCE_REQUESTS: int = 16  # > this  wait in fifo queue
 
     BACKEND_BASE_URL: str = "changeme"
     BACKEND_INTER_TOKEN_TIMEOUT: int = 120  # allow for large prompt preprocessing
     BACKEND_FORWARD_HEADERS: str = "Authentication,X-Api-Key"
 
-    DEFAULT_MODEL_NAME: Literal[
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-20b-chat",
-        "openai/gpt-oss-20b-responses",
-    ] = "openai/gpt-oss-20b"
+    DEFAULT_MODEL_NAME: str = "openai/gpt-oss-20b"
     DEFAULT_MODEL_CTX_LEN: int = 131072
 
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
-    MODEL_IDENTITY: Literal["default", "experimental"] = "default"
+    MODEL_IDENTITY: str = "v1"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
     # NOTE: set temperature to 0.001 and this likely happens more often?
-    MAX_REASONING_LOOPS: int = 50
+    MAX_REASONING_LOOPS: int = 1000
+
+    ENFORCE_STRICT_TOOL_NAMESPACES: bool = False
 
     IS_PYTHON_TOOL_ENABLED: bool = True
     IS_BROWSER_TOOL_ENABLED: bool = True

@@ -1,9 +1,9 @@
 from typing import Set
 
-from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
-from anthropic.types.content_block_stop_event import ContentBlockStopEvent
 from anthropic.types.message import Message
+from anthropic.types.raw_content_block_delta_event import RawContentBlockDeltaEvent
+from anthropic.types.raw_content_block_start_event import RawContentBlockStartEvent
+from anthropic.types.raw_content_block_stop_event import RawContentBlockStopEvent
 from anthropic.types.thinking_block import ThinkingBlock
 from anthropic.types.thinking_delta import ThinkingDelta
 
@@ -30,7 +30,7 @@ class ReasoningTextPluginAnthropic(BasePluginAnthropic):
         )
         self.manager.output_index += 1
         content_item = ThinkingBlock(type="thinking", signature="", thinking="")
-        event_item = ContentBlockStartEvent(
+        event_item = RawContentBlockStartEvent(
             type="content_block_start",
             content_block=content_item,
             index=self.manager.output_index,
@@ -43,7 +43,7 @@ class ReasoningTextPluginAnthropic(BasePluginAnthropic):
         assert isinstance(self.manager.output_object, Message), (
             f"Expected a Message, but got {type(output_object)}"
         )
-        event = ContentBlockStopEvent(
+        event = RawContentBlockStopEvent(
             type="content_block_stop", index=self.manager.output_index
         )
         await self.put_event(event)
@@ -54,7 +54,7 @@ class ReasoningTextPluginAnthropic(BasePluginAnthropic):
             f"Expected a Message, but got {type(output_object)}"
         )
         delta = ThinkingDelta(type="thinking_delta", thinking=token.text)
-        event = ContentBlockDeltaEvent(
+        event = RawContentBlockDeltaEvent(
             type="content_block_delta",
             delta=delta,
             index=self.manager.output_index,

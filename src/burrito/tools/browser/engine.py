@@ -6,6 +6,7 @@ from datetime import date
 from typing import Optional
 
 import trafilatura
+from gpt_oss.tools.simple_browser.backend import VIEW_SOURCE_PREFIX
 from lxml import html
 from playwright.async_api import (
     Browser,
@@ -82,6 +83,16 @@ class BurritoBrowserEngine:
     @classmethod
     async def fetch(cls, url: str, is_docs_website: bool, timeout: float) -> str:
         raw_html = None
+        is_url = (
+            url.startswith("http://")
+            or url.startswith("https://")
+            or url.startswith(VIEW_SOURCE_PREFIX)
+        )
+        # we don't recover state as it's technically a valid tool call
+        if not is_url:
+            raise ConnectionRefusedError(
+                "The `browser.open` tool can only be used for opening **WEB** urls."
+            )
         async with cls._fetch_lock:
             if not cls._browser:
                 # should not happen, we boot it together with app, but defend here

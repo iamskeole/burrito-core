@@ -22,11 +22,12 @@ from openai_harmony import (
     Message,
     Role,
     StreamableParser,
+    StreamState,
 )
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import random_uuid, unix_timestamp_in_ms
+from burrito.common.utils import get_prompt, random_uuid, unix_timestamp_in_ms
 from burrito.handlers.token_handler import (
     normalize_completion_token,
 )
@@ -74,9 +75,7 @@ from burrito.types.adapter import (
 
 
 class AdapterStateHandler:
-    def __init__(
-        self, manager: AdapterConversationHandler, stream_to_caller: bool
-    ):
+    def __init__(self, manager: AdapterConversationHandler, stream_to_caller: bool):
         self.manager = manager
         self.stream_to_caller = stream_to_caller
 
@@ -103,6 +102,7 @@ class AdapterStateHandler:
 
         self.parser_channel: Optional[str] = None
         self.parser_state = AdapterConversationState.INITIAL
+        self.parser_message_count = 0
         self.sequence_number = 0
         self.output_index = -1
         self.is_done: bool = False
@@ -166,9 +166,7 @@ class AdapterStateHandler:
                 return
         for plugin in self.plugins:
             for state in plugin.subscribed_states:
-                self._active_plugins_by_state.setdefault(state, []).append(
-                    plugin
-                )
+                self._active_plugins_by_state.setdefault(state, []).append(plugin)
 
     # NOTE: this enables session-ish storage of python and browser tools
     # should help assistant if these tools are not stateless
@@ -260,7 +258,7 @@ class AdapterStateHandler:
         await self.put_event(event)
 
     def _add_recovery_message(self, text: str):
-        message = build_user_message(text, "HARNESS-SENTINEL-v1")
+        message = build_user_message(text, "BURRITO-HARNESS-SENTINEL")
         self.recovery_message = message
 
         if not settings.DEBUG_RESPONSE_BUFFER:
@@ -286,7 +284,7 @@ class AdapterStateHandler:
 
         self.manager._stop_stream()
         self.parser_state = AdapterConversationState.ERROR
-        prev_messages = self.parser.messages
+        prev_messages = self.parser.messages  # we operate on rust view
         if self.recovery_message:
             prev_messages.append(self.recovery_message)
             self.recovery_message = None
@@ -366,10 +364,7 @@ class AdapterStateHandler:
         # maybe good idea to transition state before parsing? but that depends
         # on parser state so kind of circular? but we catch it here AND in
         # state validation, so we should be good?
-        if (
-            ENCODING.is_special_token(token.id)
-            and token.id == last_parser_token
-        ):
+        if ENCODING.is_special_token(token.id) and token.id == last_parser_token:
             self.logger.error(
                 "Bad token: back to back special token", extra=self.log_extra
             )
@@ -378,17 +373,16 @@ class AdapterStateHandler:
         try:
             self.parser.process(token.id)
         except HarmonyError as e:
-            self.logger.error(
-                f"_process_completion: {repr(e)}", extra=self.log_extra
-            )
+            self.logger.error(f"_process_completion: {repr(e)}", extra=self.log_extra)
             # generic recovery message since it can be a variety of reasons,
             # - HarmonyError('unexpected tokens remaining in message header: List[str]')
             #   (rare, mostly cahght by validations)
             # - HarmonyError('Unknown role: assistant<|channel|>commentary')
             # - anything else?
-            self._add_recovery_message(
-                f"**Invalid output**: bad token sequence:\n{repr(e.args[0])}"
+            msg = get_prompt("sentinel_bad_token_sequence").format(
+                model_output=f"{repr(e.args[0])}"
             )
+            self._add_recovery_message(msg)
             return self._recover_state()
 
         # NOTE: moved AFTER parser.process so we only store valid tokens
@@ -397,49 +391,36 @@ class AdapterStateHandler:
         self.completions.append(completion)
         self._store_token(token)
 
+        if self.parser.messages and self.parser.state == StreamState.EXPECT_START:
+            self.conversation.messages.append(self.parser.messages[-1])
+            self.tool_handler.patch_native_tool_recipient()
+            self.parser_message_count += 1
+
         await self.transition_handler.transition(token)
         await self.tool_handler.maybe_call_native_tool()
 
     def _log_stats(self):
-        n_tokens_prompt = len(self.prompt_tokens)
-        n_tokens_response = len(self.response_tokens)
-        n_tokens_total = n_tokens_prompt + n_tokens_response
+        r_t = self.response_tokens
+        n_p, n_e = len(self.prompt_tokens), len(r_t)
+        t_p = (r_t[0].created_at - self.created_at) / 1000
+        t_e = (r_t[-1].created_at - r_t[0].created_at) / 1000
+        t_c = len(self.tool_handler.tool_calls)
+        t_l = "calls" if t_c != 1 else "call"
 
-        first_token = self.response_tokens[0]
-        last_token = self.response_tokens[-1]
+        tps_p = n_p / t_p if t_p > 0 else 0
+        tps_e = n_e / t_e if t_e > 0 else 0
 
-        delta_pp = first_token.created_at - self.created_at
-        delta_tg = last_token.created_at - first_token.created_at
-        delta_total = (delta_pp + delta_tg) / 1000
+        def fmt_tokens(n):
+            if n < 1000:
+                return f"{n:>4d}  "
+            return f"{n / 1000:>4.1f}k "
 
-        tps_pp = n_tokens_prompt / (delta_pp / 1000) if delta_pp else 0
-        tps_tg = n_tokens_response / (delta_tg / 1000) if delta_tg else 0
-
-        self.logger.debug(
-            (
-                f"{'prompt:':<12}"
-                f"{delta_pp / 1000:>10,.2f}s"
-                f"{n_tokens_prompt:>10,} tokens"
-                f"{delta_pp / n_tokens_prompt:>10,.2f} ms/tok"
-                f"{tps_pp:>10,.0f} tok/s"
-            ),
-            extra=self.log_extra,
-        )
-        self.logger.debug(
-            (
-                f"{'eval: ':<12}"
-                f"{delta_tg / 1000:>10,.2f}s"
-                f"{n_tokens_response:>10,} tokens"
-                f"{delta_tg / n_tokens_response:>10,.2f} ms/tok"
-                f"{tps_tg:>10,.0f} tok/s"
-            ),
-            extra=self.log_extra,
-        )
-
-        self.logger.debug(
-            (
-                f"{'total:':<12}{delta_total:>10,.2f}s{n_tokens_total:>10,} tokens"
-            ),
+        self.logger.info(
+            f"DONE: {t_p + t_e:>6.2f}s | "
+            f"{fmt_tokens(n_p)}→{fmt_tokens(n_e)}| "
+            f"{tps_p:>5,.0f} p/s | "
+            f"{tps_e:>5.1f} e/s | "
+            f"{t_c:>2} {t_l}",
             extra=self.log_extra,
         )
 
@@ -458,9 +439,7 @@ class AdapterStateHandler:
         else:
             self.logger.debug(completion.choices[0])
 
-    async def process_completion(
-        self, completion: Union[Completion, Dict, str]
-    ):
+    async def process_completion(self, completion: Union[Completion, Dict, str]):
         if isinstance(completion, dict):
             msg = f"Backend error: {completion.get('error')}"
             self.logger.error(msg, extra=self.log_extra)

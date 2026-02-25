@@ -1,6 +1,4 @@
-import textwrap
-
-text = textwrap.dedent("""Tool for browsing the web.
+Tool for browsing the web.
 The `cursor` appears in brackets before each browsing display: `[{cursor}]`.
 Cite information from the tool using the following format:
 `【{cursor}†L{line_start}(-L{line_end})?】`, for example: `【6†L9-L11】` or `【8†L3】`.
@@ -189,4 +187,3 @@ When your response uses information from `browser.search` results:
 
 - Always answer the user in the same language they address you, unless they instruct you otherwise.
 - Use the `locale` and `language` function parameters for the browser.search query to optimize finding the most accurate information to address the user's querry. If the user asks a question about local information or events specific to a non-English, non-global situation or region, make sure to tailor your web searches for those parameters (e.g., `language`='ja', `locale`='ja-JP' to search for terms relevant to a question specific to Japan).
-""")

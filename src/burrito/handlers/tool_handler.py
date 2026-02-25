@@ -4,7 +4,7 @@ from openai_harmony import Message
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import random_uuid
+from burrito.common.utils import get_prompt, random_uuid
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
 from burrito.types.adapter import AdapterConversationState
@@ -71,23 +71,48 @@ class ToolHandler:
         ]
         self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
 
+    def patch_native_tool_recipient(self):
+        if settings.ENFORCE_STRICT_TOOL_NAMESPACES:
+            return
+
+        messages = self.manager.conversation.messages
+        if not messages:
+            return
+
+        tool_name = messages[-1].recipient
+        if not tool_name:
+            return
+
+        is_python = self._is_python(tool_name)
+        is_browser = self._is_browser(tool_name)
+        if not is_python and not is_browser:
+            return
+
+        if "functions." not in tool_name:
+            return
+
+        # dirty hack for downstream events that look for strict tool name
+        # in tool.process_arguments(last_message)
+        messages[-1].recipient = tool_name.replace("functions.", "")
+        return
+
     def get_tool_model_is_trying_to_call(
         self,
     ) -> Optional[Union[AdapterConversationInputTool, BurritoBrowser, BurritoPython]]:
         current_recipient = self.manager.parser.current_recipient
         prev_recipient = None
-        parser_messages = self.manager.parser.messages
-        if parser_messages:
-            prev_recipient = parser_messages[-1].recipient
+        messages = self.manager.parser.messages  # rust view, maybe still in progress
+        if messages:
+            prev_recipient = messages[-1].recipient
         recipient = current_recipient or prev_recipient
         if not recipient:
             return
 
         tool_name = recipient
 
-        if tool_name == AdapterToolNamespace.NATIVE_PYTHON.value:
+        if self._is_python(tool_name):
             return self.python_tool
-        elif recipient.startswith(AdapterToolNamespace.NATIVE_BROWSER.value + "."):
+        elif self._is_browser(tool_name):
             return self.browser_tool
         else:
             # see if we have a tool with a namespace prefix
@@ -113,34 +138,17 @@ class ToolHandler:
         )
         return self.tool_calls[-1]
 
-    def _is_valid_namespace(self, recipient: str, state: Optional[str] = None) -> bool:
-        namespace = [i for i in self.namespaces if recipient.startswith(i)]
-        if not namespace:
-            if state is not None:
-                return False
-            self.logger.warning(
-                f"invalid tool call: invalid or malformed namespace: `{recipient}`.",
-                extra=self.log_extra,
-            )
-            self.manager._add_recovery_message(
-                "**Invalid output**: invalid or malformed namespace.\n\n"
-                "(eg: functions.shell).\n"
-                f"- valid namespaces:\n{self.msg_namespaces}\n\n"
-                f"- valid tools:\n{self.msg_tools}\n\n"
-                f"You are trying to call: `{recipient}`."
-            )
-            return False
-        return True
-
     def _is_python(
         self, recipient: str, treat_functions_python_as_builtin: bool = True
     ) -> bool:
         _name = AdapterToolNamespace.NATIVE_PYTHON.value
+        if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
+            return _name in recipient
         return (
             len(recipient) > 0
             and _name in self.tools
             and (
-                recipient.startswith(_name)
+                recipient == _name
                 or (
                     treat_functions_python_as_builtin
                     and recipient == f"functions.{_name}"
@@ -148,16 +156,46 @@ class ToolHandler:
             )
         )
 
-    def _is_browser(self, recipient: str) -> bool:
+    def _is_browser(
+        self, recipient: str, treat_functions_browser_as_builtin: bool = True
+    ) -> bool:
         _name = AdapterToolNamespace.NATIVE_BROWSER.value
+        if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
+            return _name in recipient
         return (
             len(recipient) > 0
             and _name in self.tools
-            and recipient.startswith(f"{_name}")
+            and (
+                recipient.startswith(f"{_name}")
+                or (
+                    treat_functions_browser_as_builtin
+                    and recipient.startswith(f"functions.{_name}")
+                )
+            )
         )
 
     def _is_native_tool(self, recipient: str) -> bool:
         return self._is_python(recipient) or self._is_browser(recipient)
+
+    def _is_valid_namespace(self, recipient: str, state: Optional[str] = None) -> bool:
+        namespace = [i for i in self.namespaces if recipient.startswith(i)]
+        if not namespace:
+            if state is not None:
+                return False
+
+            if settings.DEBUG_TOOL_CALLS:
+                self.logger.warning(
+                    f"invalid tool call: bad namespace: `{recipient}`.",
+                    extra=self.log_extra,
+                )
+            msg = get_prompt("sentinel_bad_namespace").format(
+                recipient=recipient,
+                valid_namespaces=self.msg_namespaces,
+                valid_tools=self.msg_tools,
+            )
+            self.manager._add_recovery_message(msg)
+            return False
+        return True
 
     def _is_valid_tool(self, recipient: str, state: Optional[str] = None) -> bool:
         if self._is_native_tool(recipient):
@@ -168,19 +206,17 @@ class ToolHandler:
         if not tool:
             if state is not None:
                 return False
-            self.logger.warning(
-                f"invalid tool call: invalid or malformed tool name `{recipient}`",
-                extra=self.log_extra,
+            if settings.DEBUG_TOOL_CALLS:
+                self.logger.warning(
+                    f"invalid tool call: bad tool `{recipient}`",
+                    extra=self.log_extra,
+                )
+            msg = get_prompt("sentinel_bad_tool_name").format(
+                recipient=recipient,
+                valid_namespaces=self.msg_namespaces,
+                valid_tools=self.msg_tools,
             )
-            self.manager._add_recovery_message(
-                f"**Invalid output**: invalid or malformed tool name.\n\n"
-                f"- valid namespaces:\n{self.msg_namespaces}\n\n"
-                f"- valid tools:\n{self.msg_tools}\n\n"
-                f"You are trying to call: `{recipient}`."
-                f"**IMPORTANT**: python and browser tools also act as their own namespaces, when available. "
-                f"This means you must NOT include the `functions` namespace when calling python or browser, "
-                "eg only `python` to execute python code or `browser.open` to visit a web page."
-            )
+            self.manager._add_recovery_message(msg)
             return False
         return True
 
@@ -189,28 +225,29 @@ class ToolHandler:
             # skip logs and messages, it's a defensive check from other state
             if state is not None:
                 return False
-            self.logger.warning(
-                "invalid tool call: missing recipient", extra=self.log_extra
+            if settings.DEBUG_TOOL_CALLS:
+                self.logger.warning(
+                    "invalid tool call: missing recipient", extra=self.log_extra
+                )
+            msg = get_prompt("sentinel_tool_missing_recipient").format(
+                recipient=recipient,
+                valid_namespaces=self.msg_namespaces,
+                valid_tools=self.msg_tools,
             )
-            self.manager._add_recovery_message(
-                "**Invalid output**: missing recipient in tool call.\n\n"
-                "Calls to these tools must go to the analysis channel: 'python', 'browser'.\n"
-                "Calls to these tools must go to the commentary channel: 'functions'.\n"
-                "Example: <channel>analysis to=python <constrain> code<message>code_input).\n"
-                "Example: <channel>commentary to=functions.shell <constrain> json<message>tool_inputs).\n"
-                "**Important**: <channel>, <constrain> and <message> are "
-                "special tokens; do not use verbaim as in the example, "
-                "instead use the correct tokens you have been trained with.\n\n"
-                f"- valid namespaces:\n{self.msg_namespaces}\n\n"
-                f"- valid tools:\n{self.msg_tools}\n\n"
-                f"You tried calling: `{recipient}`."
-            )
+            self.manager._add_recovery_message(msg)
             return False
+        self.manager.response_buffer
+        tool = self.get_tool_model_is_trying_to_call()
 
-        if not self._is_valid_namespace(recipient, state):
-            return False
+        if tool is not None and not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
+            return True
 
         if not self._is_valid_tool(recipient, state):
+            return False
+
+        if settings.ENFORCE_STRICT_TOOL_NAMESPACES and not self._is_valid_namespace(
+            recipient, state
+        ):
             return False
 
         return True
@@ -235,7 +272,8 @@ class ToolHandler:
                     extra=self.log_extra,
                 )
             else:
-                self.logger.debug(f"calling tool `{t_name}`.", extra=self.log_extra)
+                if settings.DEBUG_TOOL_CALLS:
+                    self.logger.debug(f"calling tool `{t_name}`.", extra=self.log_extra)
 
             tool_result = await self.run_tool(tool, message)
             tool_call = self.tool_calls[-1]
@@ -250,8 +288,14 @@ class ToolHandler:
                     extra=self.log_extra,
                 )
         except Exception as e:
-            msg = f"**Error calling tool `{t_name}`**:{repr(e)}"
-            self.logger.error(msg, extra=self.log_extra)
+            if settings.DEBUG_TOOL_CALLS:
+                log = f"**Error calling tool `{t_name}`**:{repr(e)}"
+                self.logger.error(log, extra=self.log_extra)
+
+            err = f"{repr(e)}"
+            msg = get_prompt("sentinel_tool_call_error").format(
+                tool_name=t_name, error_response=err
+            )
             self.manager._add_recovery_message(msg)
             return self.manager._recover_state()
 
@@ -263,8 +307,8 @@ class ToolHandler:
     async def maybe_call_native_tool(self):
         if self.manager.parser_state != AdapterConversationState.NATIVE_TOOL_CALL:
             return
-
-        messages = self.manager.parser.messages
+        parser = self.manager.parser
+        messages = self.manager.conversation.messages  # rust view
         if not messages:
             return
 

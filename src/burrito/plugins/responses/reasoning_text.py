@@ -134,7 +134,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
         )
 
         try:
-            text = self.manager.parser.messages[-1].content[0].text  # type: ignore
+            text = self.manager.conversation.messages[-1].content[0].text  # type: ignore
         except IndexError:
             # should not happen?
             # fixed by setting manager parser state to error on _recover_state()

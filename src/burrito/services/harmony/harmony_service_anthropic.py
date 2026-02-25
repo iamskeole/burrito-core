@@ -19,6 +19,7 @@ from burrito.types.adapter.adapter_create_params_anthropic import (
     AdapterCreateParamsAnthropic,
     AdapterInputParamMessageAnthropic,
     AdapterToolParamInputAnthropic,
+    ContentBlockText,
     ContentBlockToolUse,
     WebSearchToolParamAnthropic,
 )
@@ -55,10 +56,20 @@ def user_message(
                 author = Author(
                     role=Role.TOOL, name=f"functions.{tool_call_result.name}"
                 )
-                message = Message(author=author, content=[TextContent(text=i.content)])  # type: ignore
-                message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
-                message.with_recipient(Role.ASSISTANT.value)
-                messages.append(message)
+                maybe_loop = []
+                if isinstance(i.content, str):
+                    maybe_loop.append(i.content)
+                if isinstance(i.content, list):
+                    for msg in i.content:
+                        if not isinstance(msg, ContentBlockText):
+                            continue
+                        maybe_loop.append(msg.text)
+
+                for txt in maybe_loop:
+                    message = Message(author=author, content=[TextContent(text=txt)])  # type: ignore
+                    message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
+                    message.with_recipient(Role.ASSISTANT.value)
+                    messages.append(message)
     return messages
 
 
@@ -182,7 +193,13 @@ def parse_instructions(params: AdapterCreateParamsAnthropic) -> str:
     if isinstance(params.system, str):
         return params.system
 
-    instructions = "\n".join([i.text for i in params.system])
+    # x-anthropic-billing-header: cc_version=2.1.37.0d9; cc_entrypoint=cli; cch=d0108;
+    # header that changes the VERY first message in any conversation, eg
+    # cch=d018 changes with every subsequent message, which means that
+    # caching goes bye bye.. fuckme anthropic wtf!!
+    instructions = "\n".join(
+        [i.text for i in params.system if "x-anthropic-billing-header" not in i.text]
+    )
     return instructions
 
 
@@ -210,7 +227,6 @@ def build_message_list_anthropic(
     messages = parse_messages(params.messages)
     tools = parse_tools(params)
     reasoning = parse_reasoning(params)
-
     conversation_inputs = AdapterConversationInputs(
         instructions=instructions, messages=messages, tools=tools, reasoning=reasoning
     )

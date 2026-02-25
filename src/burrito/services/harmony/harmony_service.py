@@ -19,8 +19,14 @@ from openai_harmony import (
 )
 
 from burrito.common.config import settings
-from burrito.common.utils import simple_markdown_renderer, yyyymmdd
-from burrito.prompts.model_identity import MODEL_IDENTITY
+from burrito.common.utils import get_prompt, simple_markdown_renderer, yyyymmdd
+from burrito.services.harmony.harmony_service_anthropic import (
+    build_message_list_anthropic,
+)
+from burrito.services.harmony.harmony_service_chat import build_message_list_chat
+from burrito.services.harmony.harmony_service_responses import (
+    build_message_list_responses,
+)
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
 from burrito.types.adapter import (
@@ -44,10 +50,6 @@ from burrito.types.adapter.adapter_python_tool_param import (
     AdapterPythonToolParamChat,
     AdapterPythonToolParamResponses,
 )
-
-from .harmony_service_anthropic import build_message_list_anthropic
-from .harmony_service_chat import build_message_list_chat
-from .harmony_service_responses import build_message_list_responses
 
 REASONING = {
     "high": ReasoningEffort.HIGH,
@@ -88,11 +90,14 @@ def build_system_message(
         channel_required=True,
     )
 
+    try:
+        identity = get_prompt(f"model_identity_{settings.MODEL_IDENTITY}")
+    except FileNotFoundError:
+        identity = get_prompt("model_identity_default")
+
     sys_message = (
         SystemContent.new()
-        .with_model_identity(
-            MODEL_IDENTITY.get(settings.MODEL_IDENTITY, "default").strip()
-        )
+        .with_model_identity(identity)
         .with_conversation_start_date(yyyymmdd())
         .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)

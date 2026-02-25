@@ -6,11 +6,11 @@ if TYPE_CHECKING:
     from burrito.handlers.state_handler import AdapterStateHandler
 
 
-from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
-from anthropic.types.content_block_stop_event import ContentBlockStopEvent
 from anthropic.types.input_json_delta import InputJSONDelta
 from anthropic.types.message import Message
+from anthropic.types.raw_content_block_delta_event import RawContentBlockDeltaEvent
+from anthropic.types.raw_content_block_start_event import RawContentBlockStartEvent
+from anthropic.types.raw_content_block_stop_event import RawContentBlockStopEvent
 from anthropic.types.server_tool_use_block import ServerToolUseBlock
 from anthropic.types.web_search_result_block import WebSearchResultBlock
 from anthropic.types.web_search_tool_result_block import (
@@ -43,7 +43,7 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
             f"Message a Response, but got {type(output_object)}"
         )
         tool_handler = self.manager.tool_handler
-        last_message = self.manager.parser.messages[-1]
+        last_message = self.manager.conversation.messages[-1]
         if not last_message:
             return
         recipient = last_message.recipient or ""
@@ -99,21 +99,21 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
                 self.manager.output_index += 1
                 self.manager.output_object.content.append(block)
 
-                event_start = ContentBlockStartEvent(
+                event_start = RawContentBlockStartEvent(
                     type="content_block_start",
                     index=self.manager.output_index,
                     content_block=block,
                 )
                 delta = InputJSONDelta(
                     type="input_json_delta",
-                    partial_json=last_message.content[0].text, # type: ignore
+                    partial_json=last_message.content[0].text,  # type: ignore
                 )
-                event_delta = ContentBlockDeltaEvent(
+                event_delta = RawContentBlockDeltaEvent(
                     type="content_block_delta",
                     index=self.manager.output_index,
                     delta=delta,
                 )
-                event_stop = ContentBlockStopEvent(
+                event_stop = RawContentBlockStopEvent(
                     type="content_block_stop", index=self.manager.output_index
                 )
                 await self.put_event(event_start)
@@ -123,11 +123,10 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
             # returning results seems to break claude code (2.1.37)
             # client seems to disconnect prematurely, and then inference loop ends
             # so probably the tool expects something we can't really figure out..
-            # so we exit here
+            # so we exit here; keep code that looks correct until a later cc version
             return
             if function_name == "search":
-                tool_result = tool_handler.tool_results[entry["call_id"]][0]
-                content = tool_result.content[0].text
+                call_result = tool_handler.tool_results[entry["call_id"]]
 
                 self.manager.output_index += 1
                 block = WebSearchToolResultBlock(
@@ -136,13 +135,13 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
                     content=[
                         WebSearchResultBlock(
                             type="web_search_result",
-                            title=content,
-                            encrypted_content=content,
+                            title=call_result,
+                            encrypted_content=call_result,
                             url=url or "",
                         )
                     ],
                 )
-                event_start = ContentBlockStartEvent(
+                event_start = RawContentBlockStartEvent(
                     type="content_block_start",
                     index=self.manager.output_index,
                     content_block=block,
@@ -151,12 +150,12 @@ class NativeToolsPluginAnthropic(BasePluginResponses):
                     type="input_json_delta",
                     partial_json=last_message.content[0].text,
                 )
-                event_delta = ContentBlockDeltaEvent(
+                event_delta = RawContentBlockDeltaEvent(
                     type="content_block_delta",
                     index=self.manager.output_index,
                     delta=delta,
                 )
-                event_done = ContentBlockStopEvent(
+                event_done = RawContentBlockStopEvent(
                     type="content_block_stop", index=self.manager.output_index
                 )
 

@@ -1,5 +1,6 @@
 import hashlib
 import os
+import pathlib
 import platform
 import re
 import subprocess
@@ -7,6 +8,8 @@ import sys
 import time
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
+from textwrap import dedent
 from typing import get_type_hints
 
 from fastapi import Request
@@ -15,6 +18,19 @@ from burrito import __version__
 from burrito.common.config import settings
 
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+PROMPT_DIR = pathlib.Path(__file__).parent.parent / "prompts"
+
+
+@lru_cache(maxsize=None)
+def _read_file(path: pathlib.Path) -> str:
+    return dedent(path.read_text(encoding="utf-8"))
+
+
+def get_prompt(filename: str, extension: str = "md") -> str:
+    file_path = PROMPT_DIR / f"{filename}.{extension.replace('.', '')}"
+    if not file_path.is_file():
+        raise FileNotFoundError(f"Prompt file {filename!r} not found in {PROMPT_DIR}")
+    return _read_file(file_path)
 
 
 def get_headers_to_forward(request: Request):

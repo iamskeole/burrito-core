@@ -2,6 +2,7 @@ from typing import AsyncGenerator, Dict, List, Union
 
 from openai.types.completion import Completion
 
+from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid
 from burrito.services.inference import infer_next_token
@@ -24,11 +25,15 @@ class AdapterGenerationHandler:
         try:
             async for completion in infer_next_token(prompt_token_ids, params, headers):
                 if not self.can_stream:
-                    self.logger.debug("generator: breaking loop", extra=self.log_extra)
+                    if settings.DEBUG_GENERATOR_CLEANUP:
+                        self.logger.debug(
+                            "generator: breaking loop", extra=self.log_extra
+                        )
                     break
                 yield completion
         finally:
-            self.logger.debug("generator: cleaning up", extra=self.log_extra)
+            if settings.DEBUG_GENERATOR_CLEANUP:
+                self.logger.debug("generator: cleaning up", extra=self.log_extra)
 
     async def generate(
         self,

@@ -7,7 +7,8 @@ if TYPE_CHECKING:
 
 from openai.types.responses.response import Response
 from openai.types.responses.response_code_interpreter_tool_call import (
-    ResponseCodeInterpreterToolCall, OutputLogs
+    OutputLogs,
+    ResponseCodeInterpreterToolCall,
 )
 from openai.types.responses.response_function_web_search import (
     ActionFind,
@@ -46,7 +47,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
             f"Expected a Response, but got {type(output_object)}"
         )
         tool_handler = self.manager.tool_handler
-        last_message = self.manager.parser.messages[-1]
+        last_message = self.manager.conversation.messages[-1]
         if not last_message:
             return
         recipient = last_message.recipient or ""
@@ -112,7 +113,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
             f"Expected a Response, but got {type(output_object)}"
         )
         tool_handler = self.manager.tool_handler
-        last_message = self.manager.parser.messages[-1]
+        last_message = self.manager.conversation.messages[-1]
         if not last_message:
             return
         recipient = last_message.recipient or ""
@@ -144,12 +145,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
             call_id = entry["call_id"]
             call_result = tool_handler.tool_results[call_id]
             output_item.status = "completed"
-            output_item.outputs = [
-                OutputLogs(
-                    logs=call_result,
-                    type="logs"
-                )
-            ]
+            output_item.outputs = [OutputLogs(logs=call_result, type="logs")]
             event = ResponseOutputItemDoneEvent(
                 item=output_item,
                 output_index=self.manager.output_index,

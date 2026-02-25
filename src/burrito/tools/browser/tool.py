@@ -19,11 +19,7 @@ from gpt_oss.tools.simple_browser.simple_browser_tool import (
 from openai_harmony import Message, ToolNamespaceConfig
 
 from burrito.common.config import settings
-from burrito.prompts import (
-    browser_open_prompt,
-    browser_search_prompt,
-    browser_tool_description,
-)
+from burrito.common.utils import get_prompt
 from burrito.tools.browser.backend import BurritoBrowserBackend
 
 CLEANUP_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
@@ -87,26 +83,26 @@ class BurritoBrowser(SimpleBrowserTool):
 
         _tool.parameters["properties"]["query"] = {
             "type": "string",
-            "description": browser_search_prompt.query_description,
+            "description": get_prompt("browser_search_param_query"),
         }
 
         _tool.parameters["properties"]["source"] = {
             "type": "string",
-            "description": browser_search_prompt.source_description,
+            "description": get_prompt("browser_search_param_source"),
             "enum": ["general", "news", "it", "science", "files", "social media"],
         }
         _tool.parameters["properties"]["locale"] = {
             "type": "string",
-            "description": browser_search_prompt.locale_description,
+            "description": get_prompt("browser_search_param_locale"),
         }
         _tool.parameters["properties"]["language"] = {
             "type": "string",
-            "description": browser_search_prompt.language_description,
+            "description": get_prompt("browser_search_param_language"),
         }
         _tool.parameters["properties"]["time_range"] = {
             "type": "string",
             "enum": ["day", "week", "month", "year", "alltime"],
-            "description": "Restricts search results where relevant.",
+            "description": get_prompt("browser_search_param_time_range"),
         }
         _tool.parameters["required"] = [
             "query",
@@ -129,13 +125,13 @@ class BurritoBrowser(SimpleBrowserTool):
 
         _tool.parameters["properties"]["is_docs_website"] = {
             "type": "boolean",
-            "description": browser_open_prompt.is_docs_site_description,
+            "description": get_prompt("browser_open_param_is_docs_website"),
         }
         _tool.parameters["required"] = ["is_docs_website"]
         return config
 
     def patch_tool_description(self, config: ToolNamespaceConfig):
-        config.description = browser_tool_description.text
+        config.description = get_prompt("browser_tool_description")
         return config
 
     @property

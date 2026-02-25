@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING, List, Optional
 from openai_harmony import StreamableParser, StreamState
 
 from burrito.common.logger import FastAPILogger
+from burrito.common.utils import get_prompt
 from burrito.services.harmony import SPECIAL_TOKENS
 from burrito.types.adapter import (
     AdapterAssistantChannel,
     AdapterCompletionToken,
     AdapterConversationState,
-    AdapterToolType,
 )
 
 if TYPE_CHECKING:
@@ -98,51 +98,6 @@ def is_return(tokens: List[AdapterCompletionToken]) -> bool:
     return False
 
 
-def is_native_tool(parser: StreamableParser) -> bool:
-    messages = parser.messages
-    last_message = messages[-1] if messages else None
-    last_recipient = last_message.recipient if last_message else None
-    last_channel = last_message.channel if last_message else None
-
-    this_recipient = parser.current_recipient
-    this_channel = parser.current_channel
-
-    match_this_recipient = this_recipient in [
-        AdapterToolType.BROWSER.value,
-        AdapterToolType.PYTHON.value,
-    ] or (this_recipient and this_recipient.startswith("browser."))
-    match_last_recipient = last_recipient in [
-        AdapterToolType.BROWSER.value,
-        AdapterToolType.PYTHON.value,
-    ] or (last_recipient and last_recipient.startswith("browser."))
-
-    match_this_channel = this_channel in [
-        AdapterAssistantChannel.ANALYSIS.value,
-        AdapterAssistantChannel.COMMENTARY.value,
-    ]
-    match_last_channel = last_channel in [
-        AdapterAssistantChannel.ANALYSIS.value,
-        AdapterAssistantChannel.COMMENTARY.value,
-    ]
-    match_recipient = bool(match_this_recipient or match_last_recipient)
-    match_channel = bool(match_this_channel or match_last_channel)
-    return match_recipient and match_channel
-
-
-def is_native_tool_input_start(parser: StreamableParser) -> bool:
-    return is_tool_input_start(parser) and is_native_tool(parser)
-
-
-def is_native_tool_input(parser: StreamableParser) -> bool:
-    return is_tool_input(parser) and is_native_tool(parser)
-
-
-def is_native_tool_call(
-    parser: StreamableParser, tokens: List[AdapterCompletionToken]
-) -> bool:
-    return is_tool_call(tokens) and is_native_tool(parser)
-
-
 class TransitionHandler:
     def __init__(self, manager: "AdapterStateHandler"):
         self.manager = manager
@@ -155,7 +110,7 @@ class TransitionHandler:
 
     def map_state(self) -> AdapterConversationState:
         parser = self.manager.parser
-        messages = parser.messages
+        messages = self.manager.parser.messages
         tokens = self.manager.response_tokens
         prev_recipient = messages[-1].recipient if messages else None
         this_recipient = parser.current_recipient
@@ -191,17 +146,15 @@ class TransitionHandler:
         else:
             return AdapterConversationState.TRANSITION
 
-    # TODO: maybe allow functions without the functions. namespace? map it back in tool handler if it's a valid tool?
     def _is_valid_transition(self, new_state: AdapterConversationState) -> bool:
-        manager = self.manager
-        tool_handler = manager.tool_handler
-        parser = manager.parser
-        messages = parser.messages
+        tool_handler = self.manager.tool_handler
+        parser = self.manager.parser
+        # we operate on the rust view since new messages may be building
+        messages = self.manager.parser.messages
         last_message = messages[-1] if messages else None
         last_recipient = last_message.recipient if last_message else None
         current_recipient = parser.current_recipient
         channel = last_message.channel if last_message else None
-        self.manager.response_buffer
 
         if new_state == AdapterConversationState.REASONING:
             self.reasoning_loops += 1
@@ -212,12 +165,8 @@ class TransitionHandler:
                 "Invalid output: max reasoning loops.",
                 extra=self.log_extra,
             )
-            manager._add_recovery_message(
-                "**Invalid output**: you seem to be stuck inside the analysis channel.\n"
-                "Valid channels: analysis, commentary, final. "
-                "Channel must be included for every message. "
-                "Calls to these tools must go to the commentary channel: 'functions'. "
-            )
+            msg = get_prompt("sentinel_reasoning_loop")
+            self.manager._add_recovery_message(msg)
             return False
 
         if new_state == AdapterConversationState.NATIVE_TOOL_DONE:
@@ -246,21 +195,16 @@ class TransitionHandler:
                 f"Invalid output: bad channel `{channel}`.",
                 extra=self.log_extra,
             )
-            manager._add_recovery_message(
-                "**Invalid output**: bad channel\n"
-                "Valid channels: analysis, commentary, final. "
-                "Channel must be included for every message. "
-                "Calls to these tools must go to the commentary channel: 'functions'. "
-                f"You are trying to output on: '{channel}'."
-            )
+            msg = get_prompt("sentinel_bad_channel").format(channel=channel)
+            self.manager._add_recovery_message(msg)
             return False
 
-        if new_state == state_tool_call:
+        if new_state == state_tool_call and settings.DEBUG_TOOL_CALLS:
             self.logger.debug(
                 (f"calling tool `{last_recipient or parser.current_recipient}`."),
                 extra=self.log_extra,
             )
-        # TODO: check whether this is redundant with tool_handler._is_valid_tool?
+
         if new_state == state_tool_input_start and not tool_handler.is_valid(
             current_recipient
         ):
@@ -296,7 +240,7 @@ class TransitionHandler:
             if tool_handler.is_valid(last_recipient, new_state):
                 return True
             self.logger.warning(
-                "invalid state: assistant entered preamble state",
+                "assistant entered preamble state",
                 extra=self.log_extra,
             )
             return True
@@ -305,22 +249,17 @@ class TransitionHandler:
         # without end token eg: analysis -> <|end|> -> commentary (missing end)
         if new_state == state_completed and channel != channel_final:
             self.logger.warning(
-                f"invalid state: assistant trying to return outside final channel, on {channel}.\n{self.manager.response_buffer}",
+                (
+                    "invalid state: assistant trying to return outside the `final` "
+                    f"channel, on `{channel}`."
+                ),
                 extra=self.log_extra,
             )
-            last_token = manager.response_tokens[-1].text
-            manager._add_recovery_message(
-                "**Invalid output**: bad return token.\n"
-                "- user messages must be issued on the 'final' channel "
-                "and end in a <|return|> token.\n"
-                "- calls to tools or functions must be issued on one of "
-                "'analysis' or 'commentary' channels, include a namespace and "
-                "recipient (e.g.: functions.shell) and end in a special <|call|> token.\n"
-                "- transitional messages, if any, (eg.: analysis to commentary) must "
-                "end in a special <|end|> token.\n"
-                "You are trying to output the token "
-                f"'{last_token}' on the channel '{channel}'."
+            last_token = self.manager.response_tokens[-1].text
+            msg = get_prompt("sentinel_bad_return_token").format(
+                token=last_token, channel=channel
             )
+            self.manager._add_recovery_message(msg)
             return False
         return True
 
@@ -347,10 +286,11 @@ class TransitionHandler:
             return self.manager._recover_state()
 
         if new_state != old_state:
-            self.logger.debug(
-                f"state change: {old_state.value:<18} -> {new_state.value}",
-                extra=self.log_extra,
-            )
+            if settings.DEBUG_STATE_CHANGE:
+                self.logger.debug(
+                    f"state change: {old_state.value:<18} -> {new_state.value}",
+                    extra=self.log_extra,
+                )
 
             for plugin in self.manager._active_plugins_by_state.get(old_state, []):
                 await plugin.on_exit_state(old_state)

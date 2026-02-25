@@ -1,10 +1,10 @@
 from typing import Set
 
-from anthropic.types.content_block_delta_event import ContentBlockDeltaEvent
-from anthropic.types.content_block_start_event import ContentBlockStartEvent
-from anthropic.types.content_block_stop_event import ContentBlockStopEvent
 from anthropic.types.input_json_delta import InputJSONDelta
 from anthropic.types.message import Message
+from anthropic.types.raw_content_block_delta_event import RawContentBlockDeltaEvent
+from anthropic.types.raw_content_block_start_event import RawContentBlockStartEvent
+from anthropic.types.raw_content_block_stop_event import RawContentBlockStopEvent
 from anthropic.types.tool_use_block import ToolUseBlock
 
 from burrito.handlers.token_handler import AdapterCompletionToken
@@ -49,7 +49,7 @@ class ToolInputPluginAnthropic(BasePluginAnthropic):
         content_block = self.build_output_item()
 
         self.manager.output_index += 1
-        event = ContentBlockStartEvent(
+        event = RawContentBlockStartEvent(
             type="content_block_start",
             index=self.manager.output_index,
             content_block=content_block,
@@ -62,7 +62,7 @@ class ToolInputPluginAnthropic(BasePluginAnthropic):
         assert isinstance(self.manager.output_object, Message), (
             f"Expected a Message, but got {type(output_object)}"
         )
-        event = ContentBlockStopEvent(
+        event = RawContentBlockStopEvent(
             type="content_block_stop", index=self.manager.output_index
         )
         await self.put_event(event)
@@ -74,7 +74,7 @@ class ToolInputPluginAnthropic(BasePluginAnthropic):
         )
 
         delta = InputJSONDelta(type="input_json_delta", partial_json=token.text)
-        event = ContentBlockDeltaEvent(
+        event = RawContentBlockDeltaEvent(
             type="content_block_delta",
             index=self.manager.output_index,
             delta=delta,
