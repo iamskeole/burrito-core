@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
-    DEBUG_STATE_CHANGE: bool = False
+    DEBUG_STATE_CHANGE: bool = True
     DEBUG_GENERATOR_CLEANUP: bool = False
 
     CORS_ALLOWED_ORIGINS: str = "*"
@@ -56,12 +56,12 @@ class Settings(BaseSettings):
     IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
     IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
 
-    BROWSER_TIMEOUT_FETCH: int = 3
-    BROWSER_TIMEOUT_SEARCH: int = 10
-
     PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
 
+    BROWSER_TIMEOUT_FETCH: int = 3
+    BROWSER_TIMEOUT_SEARCH: int = 10
     BROWSER_LOCALE: str = "en-US"
+    BROWSER_LANGUAGE: str = "en"
     BROWSER_TIMEZONE: str = "America/New_York"
 
     BRAVE_API_KEY: str = ""

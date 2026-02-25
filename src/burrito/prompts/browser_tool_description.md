@@ -31,20 +31,20 @@ The literal search string sent to the search engine. It expresses *what to look 
 **Rules**
 - Use keywords, not questions or full sentences.
 - Include core entities and concepts explicitly.
-- Do not include instructions (e.g. “summarize”, “analyze”, “compare”).
+- Do not include instructions (e.g. 'summarize', 'analyze', 'compare').
 - Do not include source, language, locale, or recency directives.
 - Do not include relative time terms if `time_range` is used.
 - Be concise and specific (typically 3-10 meaningful tokens).
 
 **Valid examples**
-- `Federal Reserve interest rate decision January 2026`
-- `CRISPR off-target effects study`
-- `Linux cgroup v2 memory limits`
+- 'Federal Reserve interest rate decision January 2026'
+- 'CRISPR off-target effects study'
+- 'Linux cgroup v2 memory limits'
 
 **Invalid examples**
-- `What did the Fed announce today?`
-- `Summarize recent Reuters articles about oil`
-- `Latest AI news this week`
+- 'What did the Fed announce today?'
+- 'Summarize recent Reuters articles about oil'
+- 'Latest AI news this week'
 
 ---
 
@@ -93,13 +93,13 @@ The language the query is written in and the language the results should be retu
 
 **Rules**
 - Always set explicitly.
-- Use ISO 639-1 codes (e.g. `en`, `ro`, `fr`, `de`).
+- Use ISO 639-1 codes (e.g. `en`, `fr`, `ja`).
 - Do not infer from `locale`.
 
 **Examples**
 - `en`
-- `ro`
-- `de`
+- `fr`
+- `ja`
 
 ---
 
@@ -115,9 +115,8 @@ The geographic or market region to bias results toward. Controls regional editio
 
 **Examples**
 - `en-US`
-- `en-GB`
-- `ro-RO`
-- `de-DE`
+- `fr-FR`
+- `ja-JP`
 
 ---
 

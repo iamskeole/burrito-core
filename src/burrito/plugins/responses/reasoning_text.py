@@ -145,6 +145,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
         content = Content(text=text, type="reasoning_text")
         delta = PartReasoningTextDone(text=text, type="reasoning_text")
         output_item.content = [content]
+        output_item.status = "completed"
 
         event_reasoning_done = ResponseReasoningTextDoneEvent(
             content_index=self.content_index,

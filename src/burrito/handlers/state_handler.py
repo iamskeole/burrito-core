@@ -401,28 +401,28 @@ class AdapterStateHandler:
 
     def _log_stats(self):
         r_t = self.response_tokens
-        n_p, n_e = len(self.prompt_tokens), len(r_t)
+        if not r_t:
+            return
+
         t_p = (r_t[0].created_at - self.created_at) / 1000
         t_e = (r_t[-1].created_at - r_t[0].created_at) / 1000
-        t_c = len(self.tool_handler.tool_calls)
-        t_l = "calls" if t_c != 1 else "call"
+        t_tot = t_p + t_e
 
+        n_p, n_e = len(self.prompt_tokens), len(r_t)
         tps_p = n_p / t_p if t_p > 0 else 0
         tps_e = n_e / t_e if t_e > 0 else 0
+        t_c = len(self.tool_handler.tool_calls)
 
-        def fmt_tokens(n):
-            if n < 1000:
-                return f"{n:>4d}  "
-            return f"{n / 1000:>4.1f}k "
+        def fmt(val):
+            return f"{val / 1000:.1f}k" if val >= 1000 else f"{int(val)}"
 
-        self.logger.info(
-            f"DONE: {t_p + t_e:>6.2f}s | "
-            f"{fmt_tokens(n_p)}→{fmt_tokens(n_e)}| "
-            f"{tps_p:>5,.0f} p/s | "
-            f"{tps_e:>5.1f} e/s | "
-            f"{t_c:>2} {t_l}",
-            extra=self.log_extra,
-        )
+        t_seg = f"{t_tot:.2f}s ({t_p:.2f}p + {t_e:.2f}e)"
+        p_seg = f"p: {fmt(n_p)} ({fmt(tps_p)}/s)"
+        e_seg = f"e: {fmt(n_e)} ({fmt(tps_e)}/s)"
+        c_seg = f"⚒ {t_c}"
+        msg = f"DONE {t_seg} • {p_seg} ‣ {e_seg} • {c_seg}"
+
+        self.logger.info(msg, extra=self.log_extra)
 
     def _cleanup_on_done(self, completion: Union[Completion, str]):
         self.is_done = isinstance(completion, str) and completion == "[DONE]"

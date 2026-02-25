@@ -57,45 +57,51 @@ def user_message(message_data: UserMessageParamChat) -> Message:
 def assistant_message(
     message_data: AssistantMessageParamChat,
     tool_calls: Dict[str, AssistantToolCallParamChat],
-) -> Message:
-    content: List[Content] = []
-    channel = None
-    recipient = None
+) -> list[Message]:
+    messages: list[Message] = []
+    author = Author(role=Role.ASSISTANT)
+    # content: List[Content] = []
+    # channel = None
+    # recipient = None
 
-    if message_data.reasoning_content is not None:
-        channel = AdapterAssistantChannel.ANALYSIS
+    if message_data.reasoning_content:
+        content: list[Content] = [TextContent(text=message_data.reasoning_content)]
+        channel = AdapterAssistantChannel.ANALYSIS.value
+        message = Message(author=author, content=content)
+        message.with_channel(channel)
+        messages.append(message)
 
-    elif message_data.tool_calls is not None:
-        channel = AdapterAssistantChannel.COMMENTARY
-
-    elif message_data.content is not None:
-        channel = AdapterAssistantChannel.FINAL
-
-    if message_data.content and isinstance(message_data.content, str):
-        content = [TextContent(text=message_data.content)]
-    elif message_data.content and isinstance(message_data.content, list):
-        content = [TextContent(text=i.text or "") for i in message_data.content]
-    elif message_data.reasoning_content is not None:
-        content = [TextContent(text=message_data.reasoning_content)]
-    elif (
-        not message_data.content
-        and not message_data.reasoning_content
-        and message_data.tool_calls is not None
-    ):
+    if message_data.tool_calls:
         for tc in message_data.tool_calls:
             tool_call = tool_calls.get(tc.id)
             assert tool_call is not None, "Tool call can not be none."
-            recipient = "functions." + tool_call.function.name
+            tool_name = tool_call.function.name
+            is_native_tool = "python" in tool_name or "browser" in tool_name
+            prefix = "" if is_native_tool else "functions."
+            recipient = f"{prefix}{tool_name}"
             content = [TextContent(text=tool_call.function.arguments)]
-    else:
-        raise ValueError("Should not happen.")
+            message = Message(author=author, content=content)
+            message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
+            message.with_recipient(recipient)
+            messages.append(message)
 
-    message = Message(author=Author(role=Role.ASSISTANT), content=content)
-    if channel:
-        message.with_channel(channel=channel.value)
-    if recipient:
-        message.with_recipient(recipient)
-    return message
+    if message_data.content and isinstance(message_data.content, str):
+        content: list[Content] = [TextContent(text=message_data.content)]
+        channel = AdapterAssistantChannel.FINAL.value
+        message = Message(author=author, content=content)
+        message.with_channel(channel)
+        messages.append(message)
+
+    if message_data.content and isinstance(message_data.content, list):
+        content = [TextContent(text=i.text or "") for i in message_data.content]
+        channel = AdapterAssistantChannel.FINAL.value
+        message = Message(author=author, content=content)
+        message.with_channel(channel)
+        messages.append(message)
+
+    if len(messages) == 0:
+        raise ValueError("Should not happen.")
+    return messages
 
 
 def tool_call_output_message(
@@ -137,7 +143,8 @@ def parse_messages(params: AdapterCreateParamsChat) -> List[Message]:
             case UserMessageParamChat():
                 messages.append(user_message(i))
             case AssistantMessageParamChat():
-                messages.append(assistant_message(i, tool_calls))
+                parsed = assistant_message(i, tool_calls)
+                messages += parsed
             case ToolCallOutputParamChat():
                 messages.append(tool_call_output_message(i, tool_calls))
             case _:

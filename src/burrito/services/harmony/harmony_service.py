@@ -365,6 +365,7 @@ def build_conversation_from_params(
     return (conversation, inputs, python_tool, browser_tool)
 
 
+# TODO: figure out if / how we can support structured outputs (eg grammar, json)
 def render_conversation_for_completion(
     conversation: Conversation, is_on_init: bool = False
 ) -> list[int]:

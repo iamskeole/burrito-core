@@ -90,19 +90,23 @@ class BurritoBrowser(SimpleBrowserTool):
             "type": "string",
             "description": get_prompt("browser_search_param_source"),
             "enum": ["general", "news", "it", "science", "files", "social media"],
+            "default": "general",
         }
         _tool.parameters["properties"]["locale"] = {
             "type": "string",
             "description": get_prompt("browser_search_param_locale"),
+            "default": settings.BROWSER_LOCALE,
         }
         _tool.parameters["properties"]["language"] = {
             "type": "string",
             "description": get_prompt("browser_search_param_language"),
+            "default": settings.BROWSER_LANGUAGE,
         }
         _tool.parameters["properties"]["time_range"] = {
             "type": "string",
             "enum": ["day", "week", "month", "year", "alltime"],
             "description": get_prompt("browser_search_param_time_range"),
+            "default": "alltime",
         }
         _tool.parameters["required"] = [
             "query",
@@ -147,8 +151,8 @@ class BurritoBrowser(SimpleBrowserTool):
     async def search(  # pyright: ignore[reportIncompatibleMethodOverride]
         self,
         query: str,
-        locale: str = "en-US",
-        language: str = "en",
+        locale: str = settings.BROWSER_LOCALE,
+        language: str = settings.BROWSER_LANGUAGE,
         time_range: Literal["day", "week", "month", "year", "alltime"] = "alltime",
         topn: int = 10,
         top_n: int = 10,
