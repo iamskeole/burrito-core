@@ -15,8 +15,8 @@ from burrito.common.utils import unix_timestamp_in_ms
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
 from burrito.handlers.state_handler import StateHandler
-from burrito.types.stream_error import StreamError
 from burrito.types.create_params import CreateParams
+from burrito.types.stream_error import StreamError
 
 
 class AdapterConversationHandler:

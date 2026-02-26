@@ -1,29 +1,26 @@
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from burrito.common.config import settings
+from burrito.common.dependencies import get_backend_models
 
 router = APIRouter()
 
 
 @router.get("/v1/models")
-async def v1_responses() -> JSONResponse:
+async def v1_models(models: list = Depends(get_backend_models)) -> JSONResponse:
+    if not models:
+        detail = "Backend unreachable or no models set up yet."
+        raise HTTPException(status_code=503, detail=detail)
     try:
-        async with httpx.AsyncClient(timeout=None) as client:
-            base_url = settings.BACKEND_BASE_URL
-            url = f"{base_url}/v1/models"
-            response = await client.get(url)
-            response.raise_for_status()
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code,
-                headers=response.headers,
-            )
+        return JSONResponse(
+            content=models,
+            status_code=200,
+        )
 
     except httpx.HTTPStatusError as exc:
         status_code, status_text = exc.response.status_code, exc.response.text
-        msg = f"Backend returned status {status_code}: {status_text}"
+        msg = f"Backend returned status {status_code}: {status_text}."
         error_json = {
             "error": {
                 "message": msg,

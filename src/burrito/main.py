@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from burrito import __version__
 from burrito.common.config import settings
-from burrito.routes import chat, messages, models, responses
+from burrito.routes import chat, health, messages, models, responses
 from burrito.tools.browser.engine import BurritoBrowserEngine
 
 
@@ -16,9 +16,7 @@ from burrito.tools.browser.engine import BurritoBrowserEngine
 async def lifespan(app: FastAPI):
     # start singletons / dependencies
     await BurritoBrowserEngine.start()
-
     yield
-
     # cleanup
     await BurritoBrowserEngine.stop()
 
@@ -46,6 +44,7 @@ app.add_middleware(
     allow_headers=settings.CORS_ALLOWED_HEADERS.split(","),
     allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
 )
+app.include_router(health.router)
 app.include_router(models.router)
 app.include_router(chat.router)
 app.include_router(responses.router)

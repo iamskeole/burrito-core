@@ -63,13 +63,13 @@ from burrito.services.harmony import (
 )
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
-from burrito.types.stream_error import StreamError
 from burrito.types.conversation_inputs import ConversationInputs
 from burrito.types.conversation_token import ConversationToken
 from burrito.types.create_params_chat import CreateParamsChat
 from burrito.types.create_params_messages import CreateParamsMessages
 from burrito.types.create_params_responses import CreateParamsResponses
 from burrito.types.enums import ConversationStateEnum
+from burrito.types.stream_error import StreamError
 
 
 class StateHandler:
