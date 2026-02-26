@@ -7,31 +7,28 @@ from burrito.common.logger import FastAPILogger
 from burrito.common.utils import get_prompt, random_uuid
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
-from burrito.types.adapter import AdapterConversationState
-from burrito.types.adapter.adapter_conversation_inputs import (
-    AdapterConversationInputTool,
-)
-from burrito.types.adapter.adapter_tool_namespace import AdapterToolNamespace
+from burrito.types.conversation_inputs import ConversationToolParam
+from burrito.types.enums import ConversationStateEnum, ToolNamespaceEnum
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.state_handler import StateHandler
 
 
 class ToolHandler:
     def __init__(
         self,
-        manager: "AdapterStateHandler",
+        manager: "StateHandler",
         python_tool: Optional[BurritoPython],
         browser_tool: Optional[BurritoBrowser],
     ):
         self.manager = manager
         self.namespaces: List[str] = []
         self.tool_names: List[str] = []
-        self.tools: Dict[str, AdapterConversationInputTool] = {}
+        self.tools: Dict[str, ConversationToolParam] = {}
 
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
+        self.log_extra = {"log_id": self.log_id}
 
         self.msg_namespaces: str = ""
         self.msg_tools: str = ""
@@ -47,13 +44,13 @@ class ToolHandler:
 
     def _init_namespaces(self):
         if self.python_tool is not None:
-            self.namespaces.append(AdapterToolNamespace.NATIVE_PYTHON.value)
+            self.namespaces.append(ToolNamespaceEnum.PYTHON.value)
 
         if self.browser_tool is not None:
-            self.namespaces.append(AdapterToolNamespace.NATIVE_BROWSER.value)
+            self.namespaces.append(ToolNamespaceEnum.BROWSER.value)
 
         if self.manager.manager.params.tools:
-            self.namespaces.append(AdapterToolNamespace.CUSTOM_DEVELOPER.value)
+            self.namespaces.append(ToolNamespaceEnum.FUNCTIONS.value)
 
         self.msg_namespaces = "\n".join([i.replace(".", "") for i in self.namespaces])
 
@@ -65,8 +62,8 @@ class ToolHandler:
             for i in tools
             if i.name
             not in [
-                AdapterToolNamespace.NATIVE_PYTHON.value,
-                AdapterToolNamespace.NATIVE_BROWSER.value,
+                ToolNamespaceEnum.PYTHON.value,
+                ToolNamespaceEnum.BROWSER.value,
             ]
         ]
         self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
@@ -98,7 +95,7 @@ class ToolHandler:
 
     def get_tool_model_is_trying_to_call(
         self,
-    ) -> Optional[Union[AdapterConversationInputTool, BurritoBrowser, BurritoPython]]:
+    ) -> Optional[Union[ConversationToolParam, BurritoBrowser, BurritoPython]]:
         current_recipient = self.manager.parser.current_recipient
         prev_recipient = None
         messages = self.manager.parser.messages  # rust view, maybe still in progress
@@ -141,7 +138,7 @@ class ToolHandler:
     def _is_python(
         self, recipient: str, treat_functions_python_as_builtin: bool = True
     ) -> bool:
-        _name = AdapterToolNamespace.NATIVE_PYTHON.value
+        _name = ToolNamespaceEnum.PYTHON.value
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return _name in recipient
         return (
@@ -159,7 +156,7 @@ class ToolHandler:
     def _is_browser(
         self, recipient: str, treat_functions_browser_as_builtin: bool = True
     ) -> bool:
-        _name = AdapterToolNamespace.NATIVE_BROWSER.value
+        _name = ToolNamespaceEnum.BROWSER.value
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return _name in recipient
         return (
@@ -299,12 +296,12 @@ class ToolHandler:
             return self.manager._recover_state()
 
         await self.manager.transition_handler.transition(
-            token=None, state=AdapterConversationState.NATIVE_TOOL_DONE
+            token=None, state=ConversationStateEnum.NATIVE_TOOL_DONE
         )
         self.manager._update_state_with_tool_result(tool_result)
 
     async def maybe_call_native_tool(self):
-        if self.manager.parser_state != AdapterConversationState.NATIVE_TOOL_CALL:
+        if self.manager.parser_state != ConversationStateEnum.NATIVE_TOOL_CALL:
             return
 
         messages = self.manager.conversation.messages  # rust view

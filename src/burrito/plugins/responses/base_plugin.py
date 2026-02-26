@@ -4,14 +4,14 @@ from openai.types.responses.response import Response
 
 from burrito.common.utils import random_uuid, unix_timestamp
 from burrito.plugins.base_plugin import BasePlugin
-from burrito.types.adapter import AdapterConversationState
+from burrito.types.enums import ConversationStateEnum
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.state_handler import StateHandler
 
 
 class BasePluginResponses(BasePlugin):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         self.manager = manager
         self.log_extra = {"log_id": f"apr_{self.log_id}"}
@@ -23,7 +23,7 @@ class BasePluginResponses(BasePlugin):
             "created_at": unix_timestamp(),
             "object": "response",
             "output": [],
-            "status": AdapterConversationState.IN_PROGRESS.value,  # type: ignore
+            "status": ConversationStateEnum.IN_PROGRESS.value,  # type: ignore
             "parallel_tool_calls": False,
             "tool_choice": "auto",
             "tools": [],

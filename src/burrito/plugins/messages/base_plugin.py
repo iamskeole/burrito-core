@@ -1,21 +1,17 @@
 from typing import TYPE_CHECKING
 
-from anthropic.types import (
-    Message,
-)
-from anthropic.types import (
-    Usage as AnthropicUsage,
-)
+from anthropic.types import Message
+from anthropic.types import Usage as AnthropicUsage
 
 from burrito.common.utils import random_uuid
 from burrito.plugins import BasePlugin
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.state_handler import StateHandler
 
 
-class BasePluginAnthropic(BasePlugin):
-    def __init__(self, manager: "AdapterStateHandler"):
+class BasePluginMessages(BasePlugin):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         self.manager = manager
         self.log_extra = {"log_id": f"apr_{self.log_id}"}
@@ -35,5 +31,5 @@ class BasePluginAnthropic(BasePlugin):
         self.manager.output_object = message
         return message
 
-    def build_output_object(self) -> Message: # type: ignore
+    def build_output_object(self) -> Message:  # type: ignore
         pass

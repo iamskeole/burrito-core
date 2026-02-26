@@ -1,6 +1,5 @@
 import re
 
-
 from burrito.common.config import settings
 
 # We don't import harness or settings here to keep this file purely about
@@ -234,7 +233,7 @@ async def run_test_scenario(client, scenario: str, endpoint: str, stream: bool) 
                                 # If it's Burrito Responses format (list of outputs):
                                 elif "delta" in data:
                                     content += data["delta"]
-                            except:
+                            except Exception:
                                 pass
                     # Fallback if parsing failed: if content is still empty but we got data,
                     # maybe we missed the specific field.

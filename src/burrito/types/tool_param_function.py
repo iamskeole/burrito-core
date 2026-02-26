@@ -3,19 +3,20 @@ from typing import Any, Dict, Literal, Optional, Union
 from pydantic import BaseModel
 
 
-class AdapterFunctionToolDefinitionChat(BaseModel):
+# TODO: no anthropic?
+class FunctionToolDefinitionChat(BaseModel):
     name: str
     description: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
     strict: Optional[bool] = False
 
 
-class AdapterFunctionToolParamChat(BaseModel):
+class ToolParamFunctionChat(BaseModel):
     type: Literal["function"]
-    function: AdapterFunctionToolDefinitionChat
+    function: FunctionToolDefinitionChat
 
 
-class AdapterFunctionToolParamResponses(BaseModel):
+class ToolParamFunctionResponses(BaseModel):
     type: Literal["function"]
     name: str
     description: Optional[str] = None
@@ -23,6 +24,4 @@ class AdapterFunctionToolParamResponses(BaseModel):
     strict: Optional[bool] = False
 
 
-AdapterFunctionToolParam = Union[
-    AdapterFunctionToolParamResponses, AdapterFunctionToolParamChat
-]
+ToolParamFunction = Union[ToolParamFunctionResponses, ToolParamFunctionChat]

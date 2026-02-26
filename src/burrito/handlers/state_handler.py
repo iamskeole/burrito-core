@@ -8,10 +8,8 @@ from openai.types.completion import Completion
 from openai.types.responses.response import Response
 from pydantic import BaseModel
 
-from burrito.types.adapter.adapter_chat_completion import AdapterChatCompletion
-from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunk,
-)
+from burrito.types.patched_chat_completion import PatchedChatCompletion
+from burrito.types.patched_chat_completion_chunk import PatchedChatCompletionChunk
 
 if TYPE_CHECKING:
     from .conversation_handler import AdapterConversationHandler
@@ -27,26 +25,26 @@ from openai_harmony import (
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import get_prompt, unix_timestamp_in_ms
+from burrito.common.utils import get_prompt, render_terminal_glyph, unix_timestamp_in_ms
 from burrito.handlers.token_handler import (
     normalize_completion_token,
 )
 from burrito.handlers.tool_handler import ToolHandler
 from burrito.handlers.transition_handler import TransitionHandler
 from burrito.plugins import BasePlugin
-from burrito.plugins.anthropic import (
-    ContextManagerPluginAnthropic,
-    NativeToolsPluginAnthropic,
-    OutputTextPluginAnthropic,
-    ReasoningTextPluginAnthropic,
-    ToolInputPluginAnthropic,
-)
 from burrito.plugins.chat import (
     ContextManagerPluginChat,
     NativeToolsPluginChat,
     OutputTextPluginChat,
     ReasoningTextPluginChat,
     ToolInputPluginChat,
+)
+from burrito.plugins.messages import (
+    ContextManagerPluginMessages,
+    NativeToolsPluginMessages,
+    OutputTextPluginMessages,
+    ReasoningTextPluginMessages,
+    ToolInputPluginMessages,
 )
 from burrito.plugins.responses import (
     ContextManagerPluginResponses,
@@ -65,24 +63,22 @@ from burrito.services.harmony import (
 )
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
-from burrito.types.adapter import (
-    AdapterCompletionToken,
-    AdapterConversationInputs,
-    AdapterConversationState,
-    AdapterCreateParamsAnthropic,
-    AdapterCreateParamsChat,
-    AdapterCreateParamsResponses,
-    AdapterErrorEvent,
-)
+from burrito.types.stream_error import StreamError
+from burrito.types.conversation_inputs import ConversationInputs
+from burrito.types.conversation_token import ConversationToken
+from burrito.types.create_params_chat import CreateParamsChat
+from burrito.types.create_params_messages import CreateParamsMessages
+from burrito.types.create_params_responses import CreateParamsResponses
+from burrito.types.enums import ConversationStateEnum
 
 
-class AdapterStateHandler:
+class StateHandler:
     def __init__(self, manager: AdapterConversationHandler, stream_to_caller: bool):
         self.manager = manager
         self.stream_to_caller = stream_to_caller
 
         self.conversation: Conversation
-        self.conversation_inputs: AdapterConversationInputs
+        self.conversation_inputs: ConversationInputs
         self.prompt_tokens: List[int]
         self.parser: StreamableParser
 
@@ -91,28 +87,28 @@ class AdapterStateHandler:
         self.response_buffer: str = ""
 
         # token stores for stats
-        self.response_tokens: List[AdapterCompletionToken] = []
-        self.reasoning_tokens: List[AdapterCompletionToken] = []
-        self.preamble_tokens: List[AdapterCompletionToken] = []
-        self.native_tool_input_tokens: List[AdapterCompletionToken] = []
-        self.caller_tool_input_tokens: List[AdapterCompletionToken] = []
-        self.output_text_tokens: List[AdapterCompletionToken] = []
+        self.response_tokens: List[ConversationToken] = []
+        self.reasoning_tokens: List[ConversationToken] = []
+        self.preamble_tokens: List[ConversationToken] = []
+        self.native_tool_input_tokens: List[ConversationToken] = []
+        self.caller_tool_input_tokens: List[ConversationToken] = []
+        self.output_text_tokens: List[ConversationToken] = []
 
         self.log_id: str = ""
         self.logger: logging.Logger
         self.log_extra: Dict[str, str]
 
         self.parser_channel: Optional[str] = None
-        self.parser_state = AdapterConversationState.INITIAL
+        self.parser_state = ConversationStateEnum.INITIAL
         self.parser_message_count = 0
         self.sequence_number = 0
         self.output_index = -1
         self.is_done: bool = False
 
         self.output_object: Union[
-            AdapterErrorEvent,
+            StreamError,
             Response,
-            List[Union[AdapterChatCompletionChunk, AdapterChatCompletion]],
+            List[Union[PatchedChatCompletionChunk, PatchedChatCompletion]],
             AnthropicMessage,
         ]
 
@@ -135,12 +131,12 @@ class AdapterStateHandler:
 
     def _init_logger(self):
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
+        self.log_extra = {"log_id": self.log_id}
 
     def _init_plugins(self):
         self.transition_handler = TransitionHandler(self)
         match self.manager.params:
-            case AdapterCreateParamsChat():
+            case CreateParamsChat():
                 self.plugins = [
                     ContextManagerPluginChat(self),
                     ReasoningTextPluginChat(self),
@@ -148,7 +144,7 @@ class AdapterStateHandler:
                     ToolInputPluginChat(self),
                     NativeToolsPluginChat(self),
                 ]
-            case AdapterCreateParamsResponses():
+            case CreateParamsResponses():
                 self.plugins = [
                     ContextManagerPluginResponses(self),
                     ReasoningTextPluginResponses(self),
@@ -156,13 +152,13 @@ class AdapterStateHandler:
                     ToolInputPluginResponses(self),
                     NativeToolsPluginResponses(self),
                 ]
-            case AdapterCreateParamsAnthropic():
+            case CreateParamsMessages():
                 self.plugins = [
-                    ContextManagerPluginAnthropic(self),
-                    ReasoningTextPluginAnthropic(self),
-                    OutputTextPluginAnthropic(self),
-                    ToolInputPluginAnthropic(self),
-                    NativeToolsPluginAnthropic(self),
+                    ContextManagerPluginMessages(self),
+                    ReasoningTextPluginMessages(self),
+                    OutputTextPluginMessages(self),
+                    ToolInputPluginMessages(self),
+                    NativeToolsPluginMessages(self),
                 ]
             case _:
                 return
@@ -243,12 +239,12 @@ class AdapterStateHandler:
 
     # only responses supports streamed errors
     async def put_error(self, message: str, code: str):
-        self.parser_state = AdapterConversationState.ERROR
+        self.parser_state = ConversationStateEnum.ERROR
         self.is_done = True
         if hasattr(self.manager, "is_finished"):
             self.manager.is_finished.set()
 
-        event = AdapterErrorEvent(
+        event = StreamError(
             type="error",
             code=code,
             message=message,
@@ -284,7 +280,7 @@ class AdapterStateHandler:
             raise RecursionError("Reached maximum state recover attempts.")
 
         self.manager._stop_stream()
-        self.parser_state = AdapterConversationState.ERROR
+        self.parser_state = ConversationStateEnum.ERROR
         prev_messages = self.parser.messages  # we operate on rust view
         if self.recovery_message:
             prev_messages.append(self.recovery_message)
@@ -296,40 +292,37 @@ class AdapterStateHandler:
         self.manager._init_stream()
         self.recover_state_attempts += 1
 
-    def _store_token(self, token: AdapterCompletionToken):
+    def _store_token(self, token: ConversationToken):
         state = self.parser_state
 
         match state:
             case (
-                AdapterConversationState.INITIAL
-                | AdapterConversationState.CREATED
-                | AdapterConversationState.IN_PROGRESS
-                | AdapterConversationState.REASONING
-                | AdapterConversationState.REASONING_END
+                ConversationStateEnum.INITIAL
+                | ConversationStateEnum.CREATED
+                | ConversationStateEnum.IN_PROGRESS
+                | ConversationStateEnum.REASONING
+                | ConversationStateEnum.REASONING_END
             ):
                 self.reasoning_tokens.append(token)
 
-            case AdapterConversationState.PREAMBLE:
+            case ConversationStateEnum.PREAMBLE:
                 self.preamble_tokens.append(token)
 
             case (
-                AdapterConversationState.NATIVE_TOOL_INPUT_START
-                | AdapterConversationState.NATIVE_TOOL_INPUT
-                | AdapterConversationState.NATIVE_TOOL_CALL
+                ConversationStateEnum.NATIVE_TOOL_INPUT_START
+                | ConversationStateEnum.NATIVE_TOOL_INPUT
+                | ConversationStateEnum.NATIVE_TOOL_CALL
             ):
                 self.native_tool_input_tokens.append(token)
 
             case (
-                AdapterConversationState.TOOL_INPUT_START
-                | AdapterConversationState.TOOL_INPUT
-                | AdapterConversationState.TOOL_CALL
+                ConversationStateEnum.TOOL_INPUT_START
+                | ConversationStateEnum.TOOL_INPUT
+                | ConversationStateEnum.TOOL_CALL
             ):
                 self.caller_tool_input_tokens.append(token)
 
-            case (
-                AdapterConversationState.OUTPUT_TEXT
-                | AdapterConversationState.COMPLETED
-            ):
+            case ConversationStateEnum.OUTPUT_TEXT | ConversationStateEnum.COMPLETED:
                 self.output_text_tokens.append(token)
 
         self.response_tokens.append(token)
@@ -339,7 +332,7 @@ class AdapterStateHandler:
 
     async def _process_completion(
         self, completion: Union[Completion, str]
-    ) -> Union[AdapterCompletionToken, None]:
+    ) -> Union[ConversationToken, None]:
         if isinstance(completion, str):
             return
 
@@ -417,30 +410,30 @@ class AdapterStateHandler:
         tps_e = n_e / t_e if t_e > 0 else 0
 
         match self.manager.params:
-            case AdapterCreateParamsChat():
+            case CreateParamsChat():
                 m = "oai:chat"
-            case AdapterCreateParamsResponses():
+            case CreateParamsResponses():
                 m = "oai:responses"
-            case AdapterCreateParamsAnthropic():
+            case CreateParamsMessages():
                 m = "ant:messages"
             case _:
                 m = "unknown"
 
         # formatters
-        def fn(n):  # Tokens: "105.0k" or "  215 "
+        def fn(n):  # tokens: "105.0k" or "  215 "
             if n >= 1000:
                 return f"{n / 1000:>5.1f}k"
             return f"{int(n):>5} "
 
-        def ft(t):  # Time: " 51.97s" or "  0.31s"
+        def ft(t):  # time: " 51.97s" or "  0.31s"
             return f"{t:>6.2f}s"
 
-        def fs(s):  # Speed: " 22.7k" or "   45 "
+        def fs(s):  # speed: " 22.7k" or "   45 "
             if s >= 1000:
                 return f"{s / 1000:>5.1f}k"
             return f"{int(s):>5} "
 
-        m_blk = f"🌯 {m:<16}"
+        m_blk = f"{m:<16}"
 
         # total block: "  35.9k ‣  51.97s (i:  1.48s ‣ o: 50.49s)"
         t_blk = f"{fn(n_t)} ‣ {ft(t_t)} (i:{ft(t_p)} ‣ o:{ft(t_e)})"
@@ -451,19 +444,19 @@ class AdapterStateHandler:
         # output block: "o:   2.3k (   45 /s)"
         o_blk = f"o:{fn(n_e)} ({fs(tps_e)}/s)"
 
-        # tool call block
-        c_blk = f"⚒ {t_c:<2}"
+        # tool call block ⚒ 🗜️ 🔧 🔨 🛠 ⚒️ 🧰 ⚙️
+        c_blk = f"{render_terminal_glyph('🔧', '⚒')} {t_c:<2}"
 
         l_msg = f"{m_blk} • {t_blk} • {i_blk} ‣ {o_blk} • {c_blk}"
 
-        self.logger.info(l_msg, extra=self.log_extra)
+        self.logger.info(l_msg, extra={"log_id": self.log_id, "skip_module_name": True})
 
     def _cleanup_on_done(self, completion: Union[Completion, str]):
         self.is_done = isinstance(completion, str) and completion == "[DONE]"
         if not self.is_done:
             return
         self._log_stats()
-        return # self.response_buffer
+        return  # self.response_buffer
 
     def _debug_completion(self, completion: Union[Completion, str]):
         if not settings.DEBUG_COMPLETIONS:

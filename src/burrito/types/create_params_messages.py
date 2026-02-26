@@ -5,6 +5,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
+from burrito.types.tool_param_browser import ToolParamBrowserMessages
 
 
 class ContentBlockText(BaseModel):
@@ -52,12 +53,12 @@ ContentBlock = Annotated[
 ]
 
 
-class AdapterInputParamMessageAnthropic(BaseModel):
+class ContentParam(BaseModel):
     role: Literal["user", "assistant"]
     content: Union[str, List[ContentBlock]]
 
 
-class AdapterToolParamInputAnthropic(BaseModel):
+class ToolParam(BaseModel):
     name: str
     description: Optional[str] = None
     input_schema: Optional[Dict[str, Any]] = None
@@ -68,19 +69,7 @@ class AdapterToolParamInputAnthropic(BaseModel):
     max_uses: Optional[int] = None
 
 
-class WebSearchToolParamAnthropic(BaseModel):
-    type: Literal["web_search_20250305", "web_search"] = "web_search"
-    name: Literal["web_search"]
-    allowed_domains: Optional[List[str]] = None
-    blocked_domains: Optional[List[str]] = None
-    max_uses: Optional[int] = None
-
-    # compatibility with ToolParam
-    description: Optional[str] = None
-    input_schema: Optional[Dict[str, Any]] = None
-
-
-ToolInputParam = Union[AdapterToolParamInputAnthropic, WebSearchToolParamAnthropic]
+ToolInputParam = Union[ToolParam, ToolParamBrowserMessages]
 
 
 class ToolChoiceAuto(BaseModel):
@@ -99,21 +88,21 @@ class ToolChoiceTool(BaseModel):
 ToolChoice = Union[ToolChoiceAuto, ToolChoiceAny, ToolChoiceTool]
 
 
-class Conversation(BaseModel):
+class ConversationParam(BaseModel):
     id: str
 
 
-class AdapterReasoningParamAnthropic(BaseModel):
+class ReasoningParam(BaseModel):
     budget_tokens: Optional[int] = 32000
     type: Optional[Literal["enabled"]] = "enabled"
 
 
-class AdapterCreateParamsAnthropic(BaseModel):
+class CreateParamsMessages(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
-    messages: List[AdapterInputParamMessageAnthropic]
-    conversation: Optional[Conversation] = None
+    messages: List[ContentParam]
+    conversation: Optional[ConversationParam] = None
     system: Optional[Union[str, List[ContentBlockText]]] = None
-    max_tokens: int = 4096
+    max_tokens: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
     stop_sequences: Optional[List[str]] = None
     stream: Optional[bool] = True
@@ -123,21 +112,5 @@ class AdapterCreateParamsAnthropic(BaseModel):
     top_k: Optional[int] = None
     tools: Optional[List[ToolInputParam]] = None
     tool_choice: Optional[ToolChoice] = None
-    thinking: Optional[AdapterReasoningParamAnthropic] = None
+    thinking: Optional[ReasoningParam] = None
     model_config = ConfigDict(extra="allow")
-
-
-class Usage(BaseModel):
-    input_tokens: int
-    output_tokens: int
-
-
-class AdapterMessageResponse(BaseModel):
-    id: str
-    type: Literal["message"] = "message"
-    role: Literal["assistant"] = "assistant"
-    content: List[ContentBlock]
-    model: str
-    stop_reason: Optional[str] = None
-    stop_sequence: Optional[str] = None
-    usage: Usage

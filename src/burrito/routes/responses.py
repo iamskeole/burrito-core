@@ -13,7 +13,7 @@ from burrito.common.dependencies import (
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.inference_handler import run_inference
 from burrito.handlers.session_handler import AdapterSessionHandler
-from burrito.types.adapter import AdapterCreateParamsResponses
+from burrito.types.create_params_responses import CreateParamsResponses
 
 router = APIRouter()
 
@@ -27,7 +27,7 @@ async def v1_responses(
     session_handler: AdapterSessionHandler = Depends(get_session_handler),
 ) -> Union[StreamingResponse, JSONResponse]:
     try:
-        params = AdapterCreateParamsResponses(**raw_params)
+        params = CreateParamsResponses(**raw_params)
     except Exception as e:
         return JSONResponse(
             content={"error": {"type": "invalid_request_error", "message": str(e)}},

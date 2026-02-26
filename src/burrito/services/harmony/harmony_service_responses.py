@@ -4,19 +4,15 @@ from typing import Dict, List, Optional, Union
 
 from openai_harmony import Author, Content, Message, Role, TextContent
 
-from burrito.types.adapter import (
-    AdapterAssistantChannel,
-    AdapterConversationInputs,
-    AdapterConversationInputTool,
-    AdapterReasoningParam,
+from burrito.types.conversation_inputs import (
+    ConversationInputs,
+    ConversationReasoningParam,
+    ConversationToolParam,
 )
-from burrito.types.adapter.adapter_browser_tool_param import (
-    AdapterBrowserToolParamResponses,
-)
-from burrito.types.adapter.adapter_create_params_responses import (
-    AdapterCreateParamsResponses,
+from burrito.types.create_params_responses import (
     AssistantMessageParamResponses,
     AssistantReasoningParamResponses,
+    CreateParamsResponses,
     CustomToolCallOutputParamResponses,
     CustomToolInputParamResponses,
     DeveloperInputMessageParamResponses,
@@ -28,14 +24,14 @@ from burrito.types.adapter.adapter_create_params_responses import (
     ToolCallOutputParamResponses,
     UserInputMessageParamResponses,
 )
-from burrito.types.adapter.adapter_custom_tool_param import (
-    AdapterCustomToolParamResponses,
+from burrito.types.enums import ConversationChannelEnum
+from burrito.types.tool_param_browser import ToolParamBrowserResponses
+from burrito.types.tool_param_custom import (
     CustomToolInputFormatGrammar,
     CustomToolInputFormatText,
+    ToolParamCustomResponses,
 )
-from burrito.types.adapter.adapter_function_tool_param import (
-    AdapterFunctionToolParamResponses,
-)
+from burrito.types.tool_param_function import ToolParamFunctionResponses
 
 
 def user_message_from_text_input(user_input: str) -> Message:
@@ -74,17 +70,17 @@ def assistant_message(
     ],
 ) -> Message:
     content: List[Content] = []
-    channel: Optional[AdapterAssistantChannel] = None
+    channel: Optional[ConversationChannelEnum] = None
 
     match message_data:
         case AssistantMessageParamResponses():
-            channel = AdapterAssistantChannel.FINAL
+            channel = ConversationChannelEnum.FINAL
             if isinstance(message_data.content, str):
                 content = [TextContent(text=message_data.content)]
             else:
                 content = [TextContent(text=i.text) for i in message_data.content]
         case AssistantReasoningParamResponses():
-            channel = AdapterAssistantChannel.ANALYSIS
+            channel = ConversationChannelEnum.ANALYSIS
             content = [TextContent(text=i.text) for i in message_data.content]
         case _:  # tool calls handled separately; anything else?
             pass
@@ -97,7 +93,10 @@ def assistant_message(
 
 
 def tool_call_input_message(
-    message_data: Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
+    message_data: Union[
+        FunctionToolInputParamResponses,
+        CustomToolInputParamResponses,
+    ],
 ) -> Message:
     content: List[Content]
     recipient: str
@@ -116,7 +115,7 @@ def tool_call_input_message(
             )
 
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
-    message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
+    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
     if recipient:
         message.with_recipient(recipient)
     return message
@@ -126,7 +125,10 @@ def tool_call_output_message(
     message_data: ToolCallOutputParamResponses,
     tool_calls: Dict[
         str,
-        Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
+        Union[
+            FunctionToolInputParamResponses,
+            CustomToolInputParamResponses,
+        ],
     ],
 ) -> Message:
     call_id = message_data.call_id
@@ -136,7 +138,7 @@ def tool_call_output_message(
         author=Author(role=Role.TOOL, name=f"functions.{tool_call.name}"),
         content=[TextContent(text=message_data.output)],
     )
-    message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
+    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
     message.with_recipient(Role.ASSISTANT.value)
     return message
 
@@ -150,7 +152,10 @@ def parse_messages(
     messages: List[Message] = []
     tool_calls: Dict[
         str,
-        Union[FunctionToolInputParamResponses, CustomToolInputParamResponses],
+        Union[
+            FunctionToolInputParamResponses,
+            CustomToolInputParamResponses,
+        ],
     ] = {}
     for i in inputs:
         match i:
@@ -186,13 +191,13 @@ def parse_messages(
 
 # TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(
-    params: AdapterCreateParamsResponses,
-) -> List[AdapterConversationInputTool]:
-    tools: List[AdapterConversationInputTool] = []
+    params: CreateParamsResponses,
+) -> List[ConversationToolParam]:
+    tools: List[ConversationToolParam] = []
     for tool in params.tools or []:
         match tool:
-            case AdapterFunctionToolParamResponses():
-                tool = AdapterConversationInputTool(
+            case ToolParamFunctionResponses():
+                tool = ConversationToolParam(
                     name=tool.name,
                     parameters=tool.parameters,
                     strict=tool.strict,
@@ -201,7 +206,7 @@ def parse_tools(
                 )
                 tools.append(tool)
 
-            case AdapterCustomToolParamResponses():
+            case ToolParamCustomResponses():
                 fmt = None
                 if tool.format:
                     if tool.format.type == "grammar":
@@ -213,7 +218,7 @@ def parse_tools(
                     else:
                         fmt = CustomToolInputFormatText(type=tool.format.type or "text")
 
-                tool = AdapterConversationInputTool(
+                tool = ConversationToolParam(
                     name=tool.name,
                     type=tool.type,
                     description=tool.description or "",
@@ -221,7 +226,7 @@ def parse_tools(
                 )
                 tools.append(tool)
 
-            case AdapterBrowserToolParamResponses():
+            case ToolParamBrowserResponses():
                 continue  # we handle web search natively
 
             case _:
@@ -229,7 +234,7 @@ def parse_tools(
     return tools
 
 
-def parse_instructions(params: AdapterCreateParamsResponses) -> str:
+def parse_instructions(params: CreateParamsResponses) -> str:
     instructions = params.instructions or ""
     messages = params.input if isinstance(params.input, list) else []
 
@@ -243,14 +248,14 @@ def parse_instructions(params: AdapterCreateParamsResponses) -> str:
 
 
 def build_message_list_responses(
-    params: AdapterCreateParamsResponses,
-) -> AdapterConversationInputs:
+    params: CreateParamsResponses,
+) -> ConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params.input)
     tools = parse_tools(params)
-    reasoning = params.reasoning or AdapterReasoningParam()
+    reasoning = params.reasoning or ConversationReasoningParam()
 
-    converation_inputs = AdapterConversationInputs(
+    converation_inputs = ConversationInputs(
         instructions=instructions,
         messages=messages,
         tools=tools,

@@ -19,25 +19,25 @@ CustomToolInputFormat: TypeAlias = Annotated[
 ]
 
 
-class AdapterCustomToolDefinitionChat(BaseModel):
+class CustomToolDefinitionChat(BaseModel):
     name: str
     description: Optional[str] = None
     format: Optional[CustomToolInputFormat] = None
 
 
-class AdapterCustomToolParamChat(BaseModel):
+class ToolParamCustomChat(BaseModel):
     type: Literal["custom"]
-    custom: AdapterCustomToolDefinitionChat
+    custom: CustomToolDefinitionChat
 
 
-class AdapterCustomToolParamResponses(BaseModel):
+class ToolParamCustomResponses(BaseModel):
     name: str
     type: Literal["custom"]
     description: Optional[str] = None
     format: Optional[CustomToolInputFormat] = None
 
 
-AdapterCustomToolParam = Union[
-    AdapterCustomToolParamResponses,
-    AdapterCustomToolParamChat,
+ToolParamCustom = Union[
+    ToolParamCustomResponses,
+    ToolParamCustomChat,
 ]

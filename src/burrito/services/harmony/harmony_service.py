@@ -20,35 +20,32 @@ from openai_harmony import (
 
 from burrito.common.config import settings
 from burrito.common.utils import get_prompt, simple_markdown_renderer, yyyymmdd
-from burrito.services.harmony.harmony_service_anthropic import (
-    build_message_list_anthropic,
-)
 from burrito.services.harmony.harmony_service_chat import build_message_list_chat
+from burrito.services.harmony.harmony_service_messages import (
+    build_message_list_messages,
+)
 from burrito.services.harmony.harmony_service_responses import (
     build_message_list_responses,
 )
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
-from burrito.types.adapter import (
-    AdapterConversationChannel,
-    AdapterConversationInputs,
-    AdapterConversationInputTool,
-    AdapterCreateParams,
-    AdapterCreateParamsAnthropic,
-    AdapterCreateParamsChat,
-    AdapterCreateParamsResponses,
+from burrito.types.conversation_inputs import ConversationInputs, ConversationToolParam
+from burrito.types.create_params import CreateParams
+from burrito.types.create_params_chat import CreateParamsChat
+from burrito.types.create_params_messages import (
+    CreateParamsMessages,
+    ToolParam,
+    ToolParamBrowserMessages,
 )
-from burrito.types.adapter.adapter_browser_tool_param import (
-    AdapterBrowserToolParamChat,
-    AdapterBrowserToolParamResponses,
+from burrito.types.create_params_responses import CreateParamsResponses
+from burrito.types.enums import ConversationChannelEnum
+from burrito.types.tool_param_browser import (
+    ToolParamBrowserChat,
+    ToolParamBrowserResponses,
 )
-from burrito.types.adapter.adapter_create_params_anthropic import (
-    AdapterToolParamInputAnthropic,
-    WebSearchToolParamAnthropic,
-)
-from burrito.types.adapter.adapter_python_tool_param import (
-    AdapterPythonToolParamChat,
-    AdapterPythonToolParamResponses,
+from burrito.types.tool_param_python import (
+    ToolParamPythonChat,
+    ToolParamPythonResponses,
 )
 
 REASONING = {
@@ -77,15 +74,15 @@ class SPECIAL_TOKENS(Enum):
 
 
 def build_system_message(
-    inputs: AdapterConversationInputs,
+    inputs: ConversationInputs,
     python_tool: Optional[BurritoPython],
     browser_tool: Optional[BurritoBrowser],
 ) -> Message:
     channel_config = ChannelConfig(
         valid_channels=[
-            AdapterConversationChannel.ANALYSIS.value,
-            AdapterConversationChannel.COMMENTARY.value,
-            AdapterConversationChannel.FINAL.value,
+            ConversationChannelEnum.ANALYSIS.value,
+            ConversationChannelEnum.COMMENTARY.value,
+            ConversationChannelEnum.FINAL.value,
         ],
         channel_required=True,
     )
@@ -112,7 +109,7 @@ def build_system_message(
     return msg
 
 
-def build_developer_message(inputs: AdapterConversationInputs) -> Message:
+def build_developer_message(inputs: ConversationInputs) -> Message:
     instructions = inputs.instructions or ""
     dev_message = DeveloperContent.new().with_instructions(instructions)
 
@@ -167,8 +164,8 @@ def prune_reasoning(messages: List[Message]) -> list[Message]:
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
         is_assistant = msg.author.role == Role.ASSISTANT
-        is_reasoning = msg.channel == AdapterConversationChannel.ANALYSIS.value
-        is_final = msg.channel == AdapterConversationChannel.FINAL.value
+        is_reasoning = msg.channel == ConversationChannelEnum.ANALYSIS.value
+        is_final = msg.channel == ConversationChannelEnum.FINAL.value
         has_recipient = msg.recipient is not None
 
         # is_reasoning and has_recipient a bit defensive, but probabilistic sampling!
@@ -181,7 +178,7 @@ def prune_reasoning(messages: List[Message]) -> list[Message]:
     for ix, message in enumerate(messages):
         is_reasoning = (
             message.author.role == Role.ASSISTANT
-            and message.channel == AdapterConversationChannel.ANALYSIS.value
+            and message.channel == ConversationChannelEnum.ANALYSIS.value
         )
 
         # keep reasoning items relevant to a tool call loop in progress
@@ -220,7 +217,7 @@ def build_conversation_from_messages(messages: List[Message]) -> Conversation:
 
 
 def build_conversation_history(
-    inputs: AdapterConversationInputs,
+    inputs: ConversationInputs,
     python_tool: Optional[BurritoPython],
     browser_tool: Optional[BurritoBrowser],
 ) -> Conversation:
@@ -234,7 +231,7 @@ def build_conversation_history(
     return conversation
 
 
-def resolve_python_tool(params: AdapterCreateParams) -> Optional[BurritoPython]:
+def resolve_python_tool(params: CreateParams) -> Optional[BurritoPython]:
     has_default = settings.IS_PYTHON_TOOL_ENABLED
     backend = settings.PYTHON_BACKEND
     should_enable = False
@@ -244,7 +241,7 @@ def resolve_python_tool(params: AdapterCreateParams) -> Optional[BurritoPython]:
     # enabling capability by adding tool to tools list
     for tool in params.tools or []:
         match tool:
-            case AdapterPythonToolParamChat() | AdapterPythonToolParamResponses():
+            case ToolParamPythonChat() | ToolParamPythonResponses():
                 backend = tool.backend or settings.PYTHON_BACKEND
                 should_enable = True
                 break
@@ -267,7 +264,7 @@ def resolve_python_tool(params: AdapterCreateParams) -> Optional[BurritoPython]:
     return tool
 
 
-def resolve_browser_tool(params: AdapterCreateParams) -> Optional[BurritoBrowser]:
+def resolve_browser_tool(params: CreateParams) -> Optional[BurritoBrowser]:
     has_default = settings.IS_BROWSER_TOOL_ENABLED
     should_enable = False
 
@@ -276,14 +273,14 @@ def resolve_browser_tool(params: AdapterCreateParams) -> Optional[BurritoBrowser
     # enabling capability by adding tool to tools list
     for tool in params.tools or []:
         match tool:
-            case AdapterBrowserToolParamChat() | AdapterBrowserToolParamResponses():
+            case ToolParamBrowserChat() | ToolParamBrowserResponses():
                 should_enable = tool.web_search_enabled
                 break
 
             # we use tool names to enable native browser
             # but in harmony_service_anthropic we disable claude code tools
             # since they are allover the place
-            case AdapterToolParamInputAnthropic():
+            case ToolParam():
                 if tool.name in ["WebFetch", "WebSearch"]:
                     should_enable = True
 
@@ -291,7 +288,7 @@ def resolve_browser_tool(params: AdapterCreateParams) -> Optional[BurritoBrowser
             # starts a new conversation with just web_search as tool,
             # then asks the model to search for `topic`
             # so we use this as a signal to toggle native browser on
-            case WebSearchToolParamAnthropic():
+            case ToolParamBrowserMessages():
                 should_enable = True
             case _:
                 continue
@@ -313,37 +310,37 @@ def resolve_browser_tool(params: AdapterCreateParams) -> Optional[BurritoBrowser
 
 
 def build_conversation_from_params(
-    params: AdapterCreateParams, extra_messages: Optional[List[Message]]
+    params: CreateParams, extra_messages: Optional[List[Message]]
 ) -> tuple[
     Conversation,
-    AdapterConversationInputs,
+    ConversationInputs,
     Optional[BurritoPython],
     Optional[BurritoBrowser],
 ]:
     assert isinstance(
         params,
         (
-            AdapterCreateParamsChat,
-            AdapterCreateParamsResponses,
-            AdapterCreateParamsAnthropic,
+            CreateParamsChat,
+            CreateParamsResponses,
+            CreateParamsMessages,
         ),
     ), f"Unsupported params type: {type(params)}."
     match params:
-        case AdapterCreateParamsResponses():
+        case CreateParamsResponses():
             inputs = build_message_list_responses(params)
-        case AdapterCreateParamsChat():
+        case CreateParamsChat():
             inputs = build_message_list_chat(params)
-        case AdapterCreateParamsAnthropic():
-            inputs = build_message_list_anthropic(params)
+        case CreateParamsMessages():
+            inputs = build_message_list_messages(params)
 
-    tools: List[AdapterConversationInputTool] = []
+    tools: List[ConversationToolParam] = []
 
     python_tool = resolve_python_tool(params)
     browser_tool = resolve_browser_tool(params)
 
     if python_tool:
         tools.append(
-            AdapterConversationInputTool(
+            ConversationToolParam(
                 name=python_tool.tool_config.name,
                 description=python_tool.tool_config.description,
                 type="python",
@@ -351,7 +348,7 @@ def build_conversation_from_params(
         )
     if browser_tool:
         tools.append(
-            AdapterConversationInputTool(
+            ConversationToolParam(
                 name=browser_tool.tool_config.name,
                 description=browser_tool.tool_config.description,
                 type="browser",

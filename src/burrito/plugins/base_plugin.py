@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING, Set
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
-    from burrito.handlers.token_handler import AdapterCompletionToken
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.handlers.token_handler import ConversationToken
 
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import populate_openai_typed_dict
-from burrito.types.adapter import AdapterConversationState, AdapterTokenCounts
+from burrito.types.enums import ConversationStateEnum
+from burrito.types.usage import Usage
 
 
 class BasePlugin(ABC):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         self.manager = manager
         self.logger = FastAPILogger.get_logger(__name__)
         self.log_id = manager.log_id
@@ -24,20 +24,16 @@ class BasePlugin(ABC):
     def subscribed_states(self) -> Set[str]:
         pass
 
-    @staticmethod
-    def _cast_type_dict(typed_dict_class: type, partial_data: dict):
-        return populate_openai_typed_dict(typed_dict_class, partial_data)
-
-    async def on_enter_state(self, state: AdapterConversationState):
+    async def on_enter_state(self, state: ConversationStateEnum):
         pass
 
-    async def on_exit_state(self, state: AdapterConversationState):
+    async def on_exit_state(self, state: ConversationStateEnum):
         pass
 
-    async def on_token(self, token: "AdapterCompletionToken"):
+    async def on_token(self, token: "ConversationToken"):
         pass
 
-    def get_token_counts(self) -> AdapterTokenCounts:
+    def get_token_counts(self) -> Usage:
         n_input = len(self.manager.prompt_tokens)
         n_reasoning = len(self.manager.reasoning_tokens)
         n_preamble = len(self.manager.preamble_tokens)
@@ -48,7 +44,7 @@ class BasePlugin(ABC):
         n_native_tool_input = len(self.manager.native_tool_input_tokens)
         n_caller_tool_input = len(self.manager.caller_tool_input_tokens)
 
-        return AdapterTokenCounts(
+        return Usage(
             n_input=n_input,
             n_reasoning=n_reasoning,
             n_preamble=n_preamble,

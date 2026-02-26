@@ -5,7 +5,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class AdapterCompletionToken(BaseModel):
+class ConversationToken(BaseModel):
     created_at: float
     id: int
     text: str

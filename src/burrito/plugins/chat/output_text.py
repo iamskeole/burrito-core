@@ -1,25 +1,24 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Set, Any, List
+from typing import TYPE_CHECKING, Any, List, Set
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
-    from burrito.handlers.token_handler import AdapterCompletionToken
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.handlers.token_handler import ConversationToken
 
 
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
-
-from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunkChoice,
-    AdapterChatCompletionChunkChoiceDelta,
-)
-from burrito.types.adapter import AdapterConversationState
 from burrito.plugins.chat.base_plugin import BasePluginChat
+from burrito.types.enums import ConversationStateEnum
+from burrito.types.patched_chat_completion_chunk import (
+    PatchedChatCompletionChunkChoice,
+    PatchedChatCompletionChunkChoiceDelta,
+)
 
 
 class OutputTextPluginChat(BasePluginChat):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         self.manager = manager
 
@@ -33,7 +32,7 @@ class OutputTextPluginChat(BasePluginChat):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {AdapterConversationState.OUTPUT_TEXT}
+        return {ConversationStateEnum.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         pass  # no enter event for chat/completions
@@ -81,7 +80,7 @@ class OutputTextPluginChat(BasePluginChat):
                 self.current_citations.append(url)
             self.annotations.append(a)
 
-    async def handle_on_token(self, token: AdapterCompletionToken):
+    async def handle_on_token(self, token: ConversationToken):
         assert isinstance(self.manager.output_object, List), (
             f"Expected a List, but got {type(self.manager.output_object)}"
         )
@@ -97,9 +96,9 @@ class OutputTextPluginChat(BasePluginChat):
         if self.has_partial_citations:
             return
 
-        choice = AdapterChatCompletionChunkChoice(
+        choice = PatchedChatCompletionChunkChoice(
             index=0,
-            delta=AdapterChatCompletionChunkChoiceDelta(
+            delta=PatchedChatCompletionChunkChoiceDelta(
                 role="assistant",
                 content=self.output_delta_buffer,
             ),
@@ -120,5 +119,5 @@ class OutputTextPluginChat(BasePluginChat):
     async def on_exit_state(self, state: str):
         await self.handle_on_exit_state()
 
-    async def on_token(self, token: "AdapterCompletionToken"):
+    async def on_token(self, token: "ConversationToken"):
         await self.handle_on_token(token)

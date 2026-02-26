@@ -5,7 +5,7 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 
 # extend so we can use in output json with reasoning + summary
-class AdapterChatCompletionChoiceMessage(ChatCompletionMessage):
+class PatchedChatCompletionChoiceMessage(ChatCompletionMessage):
     reasoning_content: Optional[str] = None
     """The contents of the chunk message."""
 
@@ -13,9 +13,9 @@ class AdapterChatCompletionChoiceMessage(ChatCompletionMessage):
     """The summary of the model's reasoning content."""
 
 
-class AdapterChatCompletionChoice(Choice):
-    message: AdapterChatCompletionChoiceMessage  # type: ignore
+class PatchedChatCompletionChoice(Choice):
+    message: PatchedChatCompletionChoiceMessage  # type: ignore
 
 
-class AdapterChatCompletion(ChatCompletion):
-    choices: List[AdapterChatCompletionChoice]  # type: ignore
+class PatchedChatCompletion(ChatCompletion):
+    choices: List[PatchedChatCompletionChoice]  # type: ignore

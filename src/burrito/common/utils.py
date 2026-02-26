@@ -10,7 +10,6 @@ import uuid
 from datetime import datetime, timezone
 from functools import lru_cache
 from textwrap import dedent
-from typing import get_type_hints
 
 from fastapi import Request
 
@@ -69,54 +68,43 @@ def unix_timestamp_in_ms():
     return int(time.time() * 1000)
 
 
-def populate_openai_typed_dict(typed_dict_class: type, partial_data: dict) -> dict:
-    all_field_names = get_type_hints(typed_dict_class).keys()
-    complete_dict = {key: None for key in all_field_names}
-    complete_dict.update(partial_data)
-    return complete_dict
+def render_terminal_glyph(glyph: str, fallback: str) -> str:
+    enc = sys.stdout.encoding or "utf-8"
+    try:
+        glyph.encode(enc, errors="strict")
+        return glyph
+    except (UnicodeEncodeError, LookupError):
+        return fallback
 
 
 def get_stable_machine_id():
-    """Gets a unique ID that stays the same for the hardware OS instance."""
     os_type = platform.system()
-
     try:
         if os_type == "Linux":
-            # Standard on most Linux distros
             if os.path.exists("/etc/machine-id"):
                 return open("/etc/machine-id").read().strip()
             if os.path.exists("/var/lib/dbus/machine-id"):
                 return open("/var/lib/dbus/machine-id").read().strip()
 
         elif os_type == "Windows":
-            # Registry key for the specific Windows installation
             cmd = 'reg query "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography" /v MachineGuid'
             output = subprocess.check_output(cmd, shell=True).decode()
             return output.split()[-1]
 
         elif os_type == "Darwin":  # macOS
-            # Hardware UUID from system_profiler
             cmd = "ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID"
             output = subprocess.check_output(cmd, shell=True).decode()
             return output.split("=")[-1].strip().replace('"', "")
 
     except Exception:
-        # Fallback to something stable but less unique (CPU + Core count)
         return f"{platform.processor()}-{os.cpu_count()}"
 
 
 def get_system_fingerprint(version_string=__version__):
-    # 1. Identify the Machine
     machine_id = get_stable_machine_id()
-
-    # 2. Identify the Environment (Python version + Architecture)
-    # We include this because code runs differently on 32-bit vs 64-bit or Py 3.10 vs 3.12
     env_info = f"{platform.architecture()[0]}-{platform.python_version()}"
-
-    # Combine and hash
     combined = f"{machine_id}-{env_info}-{version_string}"
     fingerprint = hashlib.sha256(combined.encode()).hexdigest()
-
     return f"fp_{fingerprint[:12]}"
 
 
@@ -199,13 +187,3 @@ def simple_markdown_renderer(markdown_text):
         rendered_lines.append(line)
 
     return "\n".join(rendered_lines)
-
-
-def clean_traceback(tb: str) -> str:
-    # strip ansi colors
-    tb = ANSI_RE.sub("", tb)
-    # remove jupyter cell references eg 'Cell In[25], line 1'
-    tb = re.sub(r"^\s*Cell In\[\d+\], line \d+\n", "", tb, flags=re.MULTILINE)
-    # remove the caret line pointing to syntax column
-    tb = re.sub(r"^\s*\^.*\n", "", tb, flags=re.MULTILINE)
-    return tb.strip()

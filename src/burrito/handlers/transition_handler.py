@@ -5,14 +5,11 @@ from openai_harmony import StreamableParser, StreamState
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import get_prompt
 from burrito.services.harmony import SPECIAL_TOKENS
-from burrito.types.adapter import (
-    AdapterAssistantChannel,
-    AdapterCompletionToken,
-    AdapterConversationState,
-)
+from burrito.types.conversation_token import ConversationToken
+from burrito.types.enums import ConversationChannelEnum, ConversationStateEnum
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.state_handler import StateHandler
 
 from burrito.common.config import settings
 
@@ -27,14 +24,12 @@ def is_in_progress(parser: StreamableParser) -> bool:
 
 def is_reasoning(parser: StreamableParser) -> bool:
     # producing reasoning tokens
-    match_channel = parser.current_channel == AdapterAssistantChannel.ANALYSIS.value
+    match_channel = parser.current_channel == ConversationChannelEnum.ANALYSIS.value
     match_recipient = parser.current_recipient is None
     return match_channel and match_recipient
 
 
-def is_reasoning_end(
-    parser: StreamableParser, tokens: List[AdapterCompletionToken]
-) -> bool:
+def is_reasoning_end(parser: StreamableParser, tokens: List[ConversationToken]) -> bool:
     # reasoning done
     # last token == <|end|>
     # expecting <|start|>assistant<|channel>(commentary|final)
@@ -49,7 +44,7 @@ def is_reasoning_end(
 # that should technically put it on the output channel i think
 def is_preamble(parser: StreamableParser) -> bool:
     match_recipient = parser.current_recipient is None
-    match_channel = parser.current_channel == AdapterAssistantChannel.COMMENTARY.value
+    match_channel = parser.current_channel == ConversationChannelEnum.COMMENTARY.value
     return match_channel and match_recipient
 
 
@@ -64,8 +59,8 @@ def is_tool_input(parser: StreamableParser) -> bool:
     # <|call|>'
     match_recipient = parser.current_recipient is not None
     match_channel = parser.current_channel in [
-        AdapterAssistantChannel.ANALYSIS.value,
-        AdapterAssistantChannel.COMMENTARY.value,
+        ConversationChannelEnum.ANALYSIS.value,
+        ConversationChannelEnum.COMMENTARY.value,
     ]
     return match_recipient and match_channel
 
@@ -78,7 +73,7 @@ def is_tool_input_start(parser: StreamableParser) -> bool:
     return parser.last_content_delta is None
 
 
-def is_tool_call(tokens: List[AdapterCompletionToken]) -> bool:
+def is_tool_call(tokens: List[ConversationToken]) -> bool:
     last_token_id = tokens[-1].id if tokens else -1
     match_token = last_token_id == SPECIAL_TOKENS.CALL.id
     if match_token:
@@ -87,10 +82,10 @@ def is_tool_call(tokens: List[AdapterCompletionToken]) -> bool:
 
 
 def is_output(parser: StreamableParser) -> bool:
-    return parser.current_channel == AdapterAssistantChannel.FINAL.value
+    return parser.current_channel == ConversationChannelEnum.FINAL.value
 
 
-def is_return(tokens: List[AdapterCompletionToken]) -> bool:
+def is_return(tokens: List[ConversationToken]) -> bool:
     last_token_id = tokens[-1].id if tokens else -1
     match_token = last_token_id == SPECIAL_TOKENS.RETURN.id
     if match_token:
@@ -99,16 +94,16 @@ def is_return(tokens: List[AdapterCompletionToken]) -> bool:
 
 
 class TransitionHandler:
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         self.manager = manager
 
         self.reasoning_loops = 0
 
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
+        self.log_extra = {"log_id": self.log_id}
 
-    def map_state(self) -> AdapterConversationState:
+    def map_state(self) -> ConversationStateEnum:
         parser = self.manager.parser
         messages = self.manager.parser.messages
         tokens = self.manager.response_tokens
@@ -118,35 +113,35 @@ class TransitionHandler:
         is_native_tool = self.manager.tool_handler._is_native_tool(recipient)
 
         if is_created(parser):
-            return AdapterConversationState.CREATED
+            return ConversationStateEnum.CREATED
         elif is_in_progress(parser):
-            return AdapterConversationState.IN_PROGRESS
+            return ConversationStateEnum.IN_PROGRESS
         elif is_reasoning(parser):
-            return AdapterConversationState.REASONING
+            return ConversationStateEnum.REASONING
         elif is_reasoning_end(parser, tokens):
-            return AdapterConversationState.REASONING_END
+            return ConversationStateEnum.REASONING_END
         elif is_preamble(parser):
-            return AdapterConversationState.PREAMBLE
+            return ConversationStateEnum.PREAMBLE
         elif is_tool_input_start(parser):
             if is_native_tool:
-                return AdapterConversationState.NATIVE_TOOL_INPUT_START
-            return AdapterConversationState.TOOL_INPUT_START
+                return ConversationStateEnum.NATIVE_TOOL_INPUT_START
+            return ConversationStateEnum.TOOL_INPUT_START
         elif is_tool_input(parser):
             if is_native_tool:
-                return AdapterConversationState.NATIVE_TOOL_INPUT
-            return AdapterConversationState.TOOL_INPUT
+                return ConversationStateEnum.NATIVE_TOOL_INPUT
+            return ConversationStateEnum.TOOL_INPUT
         elif is_tool_call(tokens):
             if is_native_tool:
-                return AdapterConversationState.NATIVE_TOOL_CALL
-            return AdapterConversationState.TOOL_CALL
+                return ConversationStateEnum.NATIVE_TOOL_CALL
+            return ConversationStateEnum.TOOL_CALL
         elif is_output(parser):
-            return AdapterConversationState.OUTPUT_TEXT
+            return ConversationStateEnum.OUTPUT_TEXT
         elif is_return(tokens):
-            return AdapterConversationState.COMPLETED
+            return ConversationStateEnum.COMPLETED
         else:
-            return AdapterConversationState.TRANSITION
+            return ConversationStateEnum.TRANSITION
 
-    def _is_valid_transition(self, new_state: AdapterConversationState) -> bool:
+    def _is_valid_transition(self, new_state: ConversationStateEnum) -> bool:
         tool_handler = self.manager.tool_handler
         parser = self.manager.parser
         # we operate on the rust view since new messages may be building
@@ -156,7 +151,7 @@ class TransitionHandler:
         current_recipient = parser.current_recipient
         channel = last_message.channel if last_message else None
 
-        if new_state == AdapterConversationState.REASONING:
+        if new_state == ConversationStateEnum.REASONING:
             self.reasoning_loops += 1
 
         if self.reasoning_loops >= settings.MAX_REASONING_LOOPS:
@@ -170,18 +165,18 @@ class TransitionHandler:
                 )
             return False
 
-        if new_state == AdapterConversationState.NATIVE_TOOL_DONE:
+        if new_state == ConversationStateEnum.NATIVE_TOOL_DONE:
             return True
 
-        state_tool_input_start = AdapterConversationState.TOOL_INPUT_START
-        state_reasoning = AdapterConversationState.REASONING
-        state_tool_call = AdapterConversationState.TOOL_CALL
-        state_preamble = AdapterConversationState.PREAMBLE
-        state_completed = AdapterConversationState.COMPLETED
+        state_tool_input_start = ConversationStateEnum.TOOL_INPUT_START
+        state_reasoning = ConversationStateEnum.REASONING
+        state_tool_call = ConversationStateEnum.TOOL_CALL
+        state_preamble = ConversationStateEnum.PREAMBLE
+        state_completed = ConversationStateEnum.COMPLETED
 
-        channel_analysis = AdapterAssistantChannel.ANALYSIS.value
-        channel_commentary = AdapterAssistantChannel.COMMENTARY.value
-        channel_final = AdapterAssistantChannel.FINAL.value
+        channel_analysis = ConversationChannelEnum.ANALYSIS.value
+        channel_commentary = ConversationChannelEnum.COMMENTARY.value
+        channel_final = ConversationChannelEnum.FINAL.value
 
         # sometimes assistant will use tool name as channel, so we catch that before
         # wasting tokens to complete the full command
@@ -268,26 +263,26 @@ class TransitionHandler:
             return False
         return True
 
-    def _update_state(self) -> AdapterConversationState:
+    def _update_state(self) -> ConversationStateEnum:
         old_state = self.manager.parser_state
         new_state = self.map_state()
         is_transition = new_state != old_state
 
         if is_transition and not self._is_valid_transition(new_state):
-            return AdapterConversationState.ERROR
+            return ConversationStateEnum.ERROR
 
         self.manager.parser_state = new_state
         return new_state
 
     async def transition(
         self,
-        token: Optional[AdapterCompletionToken],
-        state: Optional[AdapterConversationState] = None,  # handle native tool done
+        token: Optional[ConversationToken],
+        state: Optional[ConversationStateEnum] = None,  # handle native tool done
     ):
         old_state = self.manager.parser_state
         new_state = state or self._update_state()
 
-        if new_state == AdapterConversationState.ERROR:
+        if new_state == ConversationStateEnum.ERROR:
             return self.manager._recover_state()
 
         if new_state != old_state:

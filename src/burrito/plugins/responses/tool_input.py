@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Set, Union
 
-from burrito.types.adapter import AdapterConversationInputTool, AdapterConversationState
+from burrito.types.conversation_inputs import ConversationToolParam
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.state_handler import StateHandler
 
 from openai.types.responses.response import Response
 from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
@@ -31,18 +31,18 @@ from openai.types.responses.response_output_item_done_event import (
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.types.adapter import AdapterCompletionToken
-from burrito.types.adapter.adapter_tool_namespace import AdapterToolType
+from burrito.types.conversation_token import ConversationToken
+from burrito.types.enums import ConversationStateEnum, ToolTypeEnum
 
 
 class ToolInputPluginResponses(BasePluginResponses):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         self.manager = manager
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {AdapterConversationState.TOOL_INPUT}
+        return {ConversationStateEnum.TOOL_INPUT}
 
     def build_output_item(
         self,
@@ -53,9 +53,9 @@ class ToolInputPluginResponses(BasePluginResponses):
         ]
     ]:
         entry = self.manager.tool_handler.register_tool_call()
-        tool: AdapterConversationInputTool = entry["tool"]
+        tool: ConversationToolParam = entry["tool"]
         match tool.type:
-            case AdapterToolType.FUNCTION.value:
+            case ToolTypeEnum.FUNCTION.value:
                 return ResponseFunctionToolCall(
                     call_id=entry["call_id"],
                     name=tool.name,
@@ -64,7 +64,7 @@ class ToolInputPluginResponses(BasePluginResponses):
                     status="in_progress",
                     arguments="",
                 )
-            case AdapterToolType.CUSTOM.value:
+            case ToolTypeEnum.CUSTOM.value:
                 return ResponseCustomToolCall(
                     call_id=entry["call_id"],
                     input="",
@@ -77,7 +77,7 @@ class ToolInputPluginResponses(BasePluginResponses):
 
     def build_output_item_delta_event(
         self,
-        token: AdapterCompletionToken,
+        token: ConversationToken,
         output_item: Union[ResponseFunctionToolCall, ResponseCustomToolCall],
     ) -> Union[
         ResponseFunctionCallArgumentsDeltaEvent, ResponseCustomToolCallInputDeltaEvent
@@ -150,7 +150,7 @@ class ToolInputPluginResponses(BasePluginResponses):
         self.manager.output_object.output.append(output_item)
         await self.put_event(event)
 
-    async def handle_on_token(self, token: AdapterCompletionToken):
+    async def handle_on_token(self, token: ConversationToken):
         assert isinstance(self.manager.output_object, Response), (
             f"Expected a Response, but got {type(self.manager.output_object)}"
         )
@@ -209,5 +209,5 @@ class ToolInputPluginResponses(BasePluginResponses):
     async def on_exit_state(self, state: str):
         await self.handle_on_exit_state()
 
-    async def on_token(self, token: "AdapterCompletionToken"):
+    async def on_token(self, token: "ConversationToken"):
         await self.handle_on_token(token)

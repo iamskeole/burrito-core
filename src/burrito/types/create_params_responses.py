@@ -5,16 +5,10 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
-from burrito.types.adapter.adapter_browser_tool_param import (
-    AdapterBrowserToolParamResponses,
-)
-from burrito.types.adapter.adapter_function_tool_param import (
-    AdapterFunctionToolParamResponses,
-)
-from burrito.types.adapter.adapter_python_tool_param import (
-    AdapterPythonToolParamResponses,
-)
-from burrito.types.adapter.adapter_reasoning import AdapterReasoningParam
+from burrito.types.conversation_inputs import ConversationReasoningParam
+from burrito.types.tool_param_browser import ToolParamBrowserResponses
+from burrito.types.tool_param_function import ToolParamFunctionResponses
+from burrito.types.tool_param_python import ToolParamPythonResponses
 
 # TODO: investiagate whether we can support custom tools
 # harmony only seems to support defining regular function tools
@@ -23,7 +17,6 @@ from burrito.types.adapter.adapter_reasoning import AdapterReasoningParam
 # may not be trained to use them?
 # so we disable that option as an input to force schema validation failure
 # valid for all wire apis (chat, anthropic too)
-# from .adapter_custom_tool_param import AdapterCustomToolParamResponses
 
 
 class InputTextParamResponses(BaseModel):
@@ -161,13 +154,13 @@ class Conversation(BaseModel):
     id: str
 
 
-class AdapterCreateParamsResponses(BaseModel):
+class CreateParamsResponses(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     input: Union[str, List[InputItemParamResponses]]
     instructions: Optional[str] = None
     conversation: Optional[Conversation] = None
 
-    reasoning: Optional[AdapterReasoningParam] = None
+    reasoning: Optional[ConversationReasoningParam] = None
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
@@ -178,9 +171,9 @@ class AdapterCreateParamsResponses(BaseModel):
     tools: Optional[
         List[
             Union[
-                AdapterBrowserToolParamResponses,
-                AdapterPythonToolParamResponses,
-                AdapterFunctionToolParamResponses,
+                ToolParamBrowserResponses,
+                ToolParamPythonResponses,
+                ToolParamFunctionResponses,
                 # AdapterCustomToolParamChat, # see todo note above
             ]
         ]

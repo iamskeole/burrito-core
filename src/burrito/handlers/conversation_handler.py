@@ -14,16 +14,16 @@ from burrito.common.logger import FastAPILogger
 from burrito.common.utils import unix_timestamp_in_ms
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
-from burrito.handlers.state_handler import AdapterStateHandler
-from burrito.types.adapter import AdapterCreateParams
-from burrito.types.adapter.adapter_error_event import AdapterErrorEvent
+from burrito.handlers.state_handler import StateHandler
+from burrito.types.stream_error import StreamError
+from burrito.types.create_params import CreateParams
 
 
 class AdapterConversationHandler:
     def __init__(
         self,
         request: Request,
-        params: AdapterCreateParams,
+        params: CreateParams,
         generator: AdapterGenerationHandler,
         session_handler: AdapterSessionHandler,
         forwarded_headers: Dict[str, str] = {},
@@ -40,7 +40,7 @@ class AdapterConversationHandler:
         self.generator = generator
         self.stream: AsyncGenerator[Union[Completion, Dict, str], None]
         self.prompt_tokens: List[int]
-        self.state_handler: AdapterStateHandler
+        self.state_handler: StateHandler
         self.browser_tool_used = False
         self.forwarded_headers = forwarded_headers
 
@@ -57,10 +57,10 @@ class AdapterConversationHandler:
     def _init_logger(self):
         self.log_id = self.state_handler.log_id
         self.logger = FastAPILogger.get_logger(__name__)
-        self.log_extra = {"log_id": f"{self.log_id} | {__name__}"}
+        self.log_extra = {"log_id": self.log_id}
 
     def _init_state_handler(self):
-        self.state_handler = AdapterStateHandler(
+        self.state_handler = StateHandler(
             manager=self, stream_to_caller=self.stream_to_caller
         )
 
@@ -194,7 +194,7 @@ class AdapterConversationHandler:
         if isinstance(output_object, AnthropicMessage):
             return output_object.model_dump()
 
-        if isinstance(output_object, AdapterErrorEvent):
+        if isinstance(output_object, StreamError):
             return output_object.model_dump()
 
         raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

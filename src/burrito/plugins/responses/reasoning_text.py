@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Set
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
-    from burrito.types.adapter import AdapterCompletionToken
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.types.conversation_token import ConversationToken
 
 from openai.types.responses.response import Response
 from openai.types.responses.response_content_part_added_event import (
@@ -38,11 +38,11 @@ from openai.types.responses.response_reasoning_text_done_event import (
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.types.adapter import AdapterConversationState
+from burrito.types.enums import ConversationStateEnum
 
 
 class ReasoningTextPluginResponses(BasePluginResponses):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         # hardcoded, not incremented, to match gpt-oss reference implementation
         # only one content item, which means somehow multiple are allowed in .content=[]?
@@ -55,8 +55,8 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             # this is the official guideline for gpt-oss, but since we're
             # running locally, responsibility should be client's, we expose
             # everything here so caller can decide ui stuff
-            AdapterConversationState.REASONING,
-            AdapterConversationState.PREAMBLE,
+            ConversationStateEnum.REASONING,
+            ConversationStateEnum.PREAMBLE,
         }
 
     async def handle_on_enter_state(self):
@@ -93,7 +93,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
         )
         await self.put_event(event_content)
 
-    async def handle_on_token(self, token: AdapterCompletionToken):
+    async def handle_on_token(self, token: ConversationToken):
         assert isinstance(self.manager.output_object, Response), (
             f"Expected a Response, but got {type(self.manager.output_object)}"
         )
@@ -181,5 +181,5 @@ class ReasoningTextPluginResponses(BasePluginResponses):
     async def on_exit_state(self, state: str):
         await self.handle_on_exit_state()
 
-    async def on_token(self, token: AdapterCompletionToken):
+    async def on_token(self, token: ConversationToken):
         await self.handle_on_token(token)

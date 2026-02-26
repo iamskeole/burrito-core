@@ -8,25 +8,24 @@ from openai_harmony import (
     TextContent,
 )
 
-from burrito.types.adapter import (
-    AdapterAssistantChannel,
-    AdapterConversationInputs,
-    AdapterConversationInputTool,
-    AdapterReasoningEffort,
-    AdapterReasoningParam,
+from burrito.types.conversation_inputs import (
+    ConversationInputs,
+    ConversationReasoningParam,
+    ConversationToolParam,
 )
-from burrito.types.adapter.adapter_create_params_anthropic import (
-    AdapterCreateParamsAnthropic,
-    AdapterInputParamMessageAnthropic,
-    AdapterToolParamInputAnthropic,
+from burrito.types.create_params_messages import (
     ContentBlockText,
     ContentBlockToolUse,
-    WebSearchToolParamAnthropic,
+    ContentParam,
+    CreateParamsMessages,
+    ToolParam,
+    ToolParamBrowserMessages,
 )
+from burrito.types.enums import ConversationChannelEnum, ReasoningEffortEnum
 
 
 def user_message(
-    input: AdapterInputParamMessageAnthropic, tool_calls: Dict[str, ContentBlockToolUse]
+    input: ContentParam, tool_calls: Dict[str, ContentBlockToolUse]
 ) -> Optional[List[Message]]:
     if input.role != "user":
         return
@@ -67,14 +66,14 @@ def user_message(
 
                 for txt in maybe_loop:
                     message = Message(author=author, content=[TextContent(text=txt)])  # type: ignore
-                    message.with_channel(AdapterAssistantChannel.COMMENTARY.value)
+                    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
                     message.with_recipient(Role.ASSISTANT.value)
                     messages.append(message)
     return messages
 
 
 def assistant_message(
-    input: AdapterInputParamMessageAnthropic,
+    input: ContentParam,
 ) -> Optional[List[Message]]:
     if input.role != "assistant":
         return
@@ -85,7 +84,7 @@ def assistant_message(
             Message(
                 author=author,
                 content=[TextContent(text=input.content)],
-                channel=AdapterAssistantChannel.FINAL.value,
+                channel=ConversationChannelEnum.FINAL.value,
             )
         )
     else:
@@ -94,14 +93,14 @@ def assistant_message(
             recipient = None
             if i.type == "text":
                 text = i.text
-                channel = AdapterAssistantChannel.FINAL
+                channel = ConversationChannelEnum.FINAL
             if i.type == "thinking":
                 text = i.thinking
-                channel = AdapterAssistantChannel.ANALYSIS
+                channel = ConversationChannelEnum.ANALYSIS
             if i.type == "tool_use":
                 text = json.dumps(i.input)
                 recipient = i.name
-                channel = AdapterAssistantChannel.COMMENTARY
+                channel = ConversationChannelEnum.COMMENTARY
 
             # should not happen, tool_result message sent as user message
             if i.type == "tool_result":
@@ -116,7 +115,7 @@ def assistant_message(
     return messages
 
 
-def parse_messages(inputs: List[AdapterInputParamMessageAnthropic]) -> List[Message]:
+def parse_messages(inputs: List[ContentParam]) -> List[Message]:
     messages: List[Message] = []
 
     tool_calls: Dict[str, ContentBlockToolUse] = {}
@@ -146,12 +145,12 @@ def parse_messages(inputs: List[AdapterInputParamMessageAnthropic]) -> List[Mess
 
 
 def parse_tools(
-    params: AdapterCreateParamsAnthropic,
-) -> List[AdapterConversationInputTool]:
-    tools: List[AdapterConversationInputTool] = []
+    params: CreateParamsMessages,
+) -> List[ConversationToolParam]:
+    tools: List[ConversationToolParam] = []
     for tool in params.tools or []:
         match tool:
-            case AdapterToolParamInputAnthropic():
+            case ToolParam():
                 # claude code at least has a weird way of fetching pages
                 # seems to either call an api or use some curl-type fetch
                 # then issues another call to the model to process
@@ -166,7 +165,7 @@ def parse_tools(
                 # instructing the model to search for topic)
                 if tool.name in ["WebSearch"]:
                     continue
-                t = AdapterConversationInputTool(
+                t = ConversationToolParam(
                     name=tool.name,
                     description=tool.description,
                     parameters=tool.input_schema,
@@ -178,14 +177,14 @@ def parse_tools(
             # this does nothing in the claude code harness, so probably
             # expected to call anthripic apis for results, hence we disable
             # so we can use native browser.search as a shim
-            case WebSearchToolParamAnthropic():
+            case ToolParamBrowserMessages():
                 continue
             case _:
                 continue
     return tools
 
 
-def parse_instructions(params: AdapterCreateParamsAnthropic) -> str:
+def parse_instructions(params: CreateParamsMessages) -> str:
     instructions = ""
     if not params.system:
         return instructions
@@ -203,7 +202,9 @@ def parse_instructions(params: AdapterCreateParamsAnthropic) -> str:
     return instructions
 
 
-def parse_reasoning(params: AdapterCreateParamsAnthropic) -> AdapterReasoningParam:
+def parse_reasoning(
+    params: CreateParamsMessages,
+) -> ConversationReasoningParam:
     budget_tokens = 0
     if params.thinking and params.thinking.budget_tokens:
         budget_tokens = params.thinking.budget_tokens
@@ -216,18 +217,19 @@ def parse_reasoning(params: AdapterCreateParamsAnthropic) -> AdapterReasoningPar
     else:
         reasoning_effort = "low"
 
-    reasoning = AdapterReasoningParam(effort=AdapterReasoningEffort(reasoning_effort))
+    effort = ReasoningEffortEnum(reasoning_effort)
+    reasoning = ConversationReasoningParam(effort=effort)
     return reasoning
 
 
-def build_message_list_anthropic(
-    params: AdapterCreateParamsAnthropic,
-) -> AdapterConversationInputs:
+def build_message_list_messages(
+    params: CreateParamsMessages,
+) -> ConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params.messages)
     tools = parse_tools(params)
     reasoning = parse_reasoning(params)
-    conversation_inputs = AdapterConversationInputs(
+    conversation_inputs = ConversationInputs(
         instructions=instructions, messages=messages, tools=tools, reasoning=reasoning
     )
     return conversation_inputs

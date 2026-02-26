@@ -11,7 +11,7 @@ from openai.types.completion_create_params import (
 )
 
 from burrito.common.config import settings
-from burrito.types.adapter import AdapterCreateParams
+from burrito.types.create_params import CreateParams
 
 
 # TODO: handle cases where choices n > 1 ?
@@ -78,7 +78,7 @@ def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
 
 
 def build_payload(
-    prompt_token_ids: list[int], params: AdapterCreateParams
+    prompt_token_ids: list[int], params: CreateParams
 ) -> CompletionCreateParamsBase:
     default_keys = CompletionCreateParamsBase.__annotations__.keys()
     payload_default = CompletionCreateParamsBase(
@@ -133,7 +133,7 @@ def build_payload(
 
 async def infer_next_token(
     prompt_token_ids: list[int],
-    params: AdapterCreateParams,
+    params: CreateParams,
     headers: Dict[str, str] = {},
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
     url = settings.BACKEND_BASE_URL.rstrip("/") + "/v1/completions"

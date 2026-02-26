@@ -9,12 +9,12 @@ from burrito.common.utils import get_headers_to_forward
 from burrito.handlers.conversation_handler import AdapterConversationHandler
 from burrito.handlers.generation_handler import AdapterGenerationHandler
 from burrito.handlers.session_handler import AdapterSessionHandler
-from burrito.types.adapter import AdapterCreateParams
+from burrito.types.create_params import CreateParams
 
 
 async def run_inference(
     request: Request,
-    params: AdapterCreateParams,
+    params: CreateParams,
     semaphore: asyncio.Semaphore,
     generator: AdapterGenerationHandler,
     session_handler: AdapterSessionHandler,

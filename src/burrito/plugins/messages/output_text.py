@@ -11,12 +11,12 @@ from anthropic.types.raw_content_block_stop_event import RawContentBlockStopEven
 from anthropic.types.text_block import TextBlock
 from anthropic.types.text_delta import TextDelta
 
-from burrito.handlers.token_handler import AdapterCompletionToken
-from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
-from burrito.types.adapter import AdapterConversationState
+from burrito.handlers.token_handler import ConversationToken
+from burrito.plugins.messages.base_plugin import BasePluginMessages
+from burrito.types.enums import ConversationStateEnum
 
 
-class OutputTextPluginAnthropic(BasePluginAnthropic):
+class OutputTextPluginMessages(BasePluginMessages):
     def __init__(self, manager):
         super().__init__(manager)
         self.has_partial_citations = False
@@ -30,7 +30,7 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {AdapterConversationState.OUTPUT_TEXT}
+        return {ConversationStateEnum.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object
@@ -117,7 +117,7 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
             self.annotations.append(a)
             self.citations.append(citation)
 
-    async def handle_on_token(self, token: AdapterCompletionToken):
+    async def handle_on_token(self, token: ConversationToken):
         output_object = self.manager.output_object
         assert isinstance(self.manager.output_object, Message), (
             f"Expected a Message, but got {type(output_object)}"
@@ -148,11 +148,11 @@ class OutputTextPluginAnthropic(BasePluginAnthropic):
         self.current_output_text_content += self.output_delta_buffer
         self.output_delta_buffer = ""
 
-    async def on_enter_state(self, state: AdapterConversationState):
+    async def on_enter_state(self, state: ConversationStateEnum):
         await self.handle_on_enter_state()
 
-    async def on_exit_state(self, state: AdapterConversationState):
+    async def on_exit_state(self, state: ConversationStateEnum):
         await self.handle_on_exit_state()
 
-    async def on_token(self, token: AdapterCompletionToken):
+    async def on_token(self, token: ConversationToken):
         await self.handle_on_token(token)

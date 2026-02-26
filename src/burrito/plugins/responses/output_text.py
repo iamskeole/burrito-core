@@ -5,12 +5,8 @@ from typing import TYPE_CHECKING, Any, Set
 from openai.types.responses.response import Response
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import (
-        AdapterStateHandler,
-    )
-    from burrito.handlers.token_handler import (
-        AdapterCompletionToken,
-    )
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.handlers.token_handler import ConversationToken
 
 from openai.types.responses.response_content_part_added_event import (
     ResponseContentPartAddedEvent,
@@ -37,11 +33,11 @@ from openai.types.responses.response_text_done_event import ResponseTextDoneEven
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.types.adapter import AdapterConversationState
+from burrito.types.enums import ConversationStateEnum
 
 
 class OutputTextPluginResponses(BasePluginResponses):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         self.manager = manager
         # hardcoded, not incremented, to match gpt-oss reference implementation
@@ -58,7 +54,7 @@ class OutputTextPluginResponses(BasePluginResponses):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {AdapterConversationState.OUTPUT_TEXT}
+        return {ConversationStateEnum.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object
@@ -149,7 +145,7 @@ class OutputTextPluginResponses(BasePluginResponses):
             )
             await self.put_event(event)
 
-    async def handle_on_token(self, token: AdapterCompletionToken):
+    async def handle_on_token(self, token: ConversationToken):
         assert isinstance(self.manager.output_object, Response), (
             f"Expected a Response, but got {type(self.manager.output_object)}"
         )
@@ -248,5 +244,5 @@ class OutputTextPluginResponses(BasePluginResponses):
     async def on_exit_state(self, state: str):
         await self.handle_on_exit_state()
 
-    async def on_token(self, token: "AdapterCompletionToken"):
+    async def on_token(self, token: "ConversationToken"):
         await self.handle_on_token(token)

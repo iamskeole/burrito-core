@@ -3,10 +3,10 @@ from typing import List, Set
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
-from burrito.types.adapter import AdapterConversationState
-from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunk,
-    AdapterChatCompletionChunkChoice,
+from burrito.types.enums import ConversationStateEnum
+from burrito.types.patched_chat_completion_chunk import (
+    PatchedChatCompletionChunk,
+    PatchedChatCompletionChunkChoice,
 )
 
 
@@ -20,10 +20,10 @@ class ContextManagerPluginChat(BasePluginChat):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            AdapterConversationState.CREATED,
-            AdapterConversationState.IN_PROGRESS,
-            AdapterConversationState.COMPLETED,
-            AdapterConversationState.TOOL_CALL,
+            ConversationStateEnum.CREATED,
+            ConversationStateEnum.IN_PROGRESS,
+            ConversationStateEnum.COMPLETED,
+            ConversationStateEnum.TOOL_CALL,
         }
 
     async def handle_response_created_event(self):
@@ -34,7 +34,7 @@ class ContextManagerPluginChat(BasePluginChat):
             f"Expected List, got {type(self.manager.output_object)}"
         )
 
-        assert isinstance(self.manager.output_object[0], AdapterChatCompletionChunk), (
+        assert isinstance(self.manager.output_object[0], PatchedChatCompletionChunk), (
             f"Expected ChatCompletionChunk, got {type(self.manager.output_object)}"
         )
         first_chunk = self.manager.output_object[0]
@@ -46,7 +46,7 @@ class ContextManagerPluginChat(BasePluginChat):
             return
         pass  # no in_progress events? maybe hack python / browser somehow?
 
-    async def handle_response_completed_event(self, state: AdapterConversationState):
+    async def handle_response_completed_event(self, state: ConversationStateEnum):
         assert isinstance(self.manager.output_object, List), (
             f"Expected List, got {type(self.manager.output_object)}"
         )
@@ -57,10 +57,10 @@ class ContextManagerPluginChat(BasePluginChat):
 
         last_token = self.manager.response_tokens[-1]
         finish_reason = last_token.finish_reason
-        if state == AdapterConversationState.TOOL_CALL:
+        if state == ConversationStateEnum.TOOL_CALL:
             finish_reason = "tool_calls"
 
-        choice = AdapterChatCompletionChunkChoice(
+        choice = PatchedChatCompletionChunkChoice(
             index=0,
             finish_reason=finish_reason,  # type: ignore
             # empty choice, we don't rebuild full message like responses
@@ -72,15 +72,15 @@ class ContextManagerPluginChat(BasePluginChat):
         await self.send_close_marker()
         self.build_output_object()
 
-    async def on_enter_state(self, state: AdapterConversationState):
-        if state == AdapterConversationState.CREATED:
+    async def on_enter_state(self, state: ConversationStateEnum):
+        if state == ConversationStateEnum.CREATED:
             await self.handle_response_created_event()
 
-        if state == AdapterConversationState.IN_PROGRESS:
+        if state == ConversationStateEnum.IN_PROGRESS:
             await self.handle_response_in_progress_event()
 
         if state in [
-            AdapterConversationState.COMPLETED,
-            AdapterConversationState.TOOL_CALL,
+            ConversationStateEnum.COMPLETED,
+            ConversationStateEnum.TOOL_CALL,
         ]:
             await self.handle_response_completed_event(state)

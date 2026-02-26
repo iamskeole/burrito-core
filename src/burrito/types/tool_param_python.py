@@ -3,17 +3,18 @@ from typing import Literal, Optional, Union
 from pydantic import BaseModel
 
 
-class AdapterPythonToolParamChat(BaseModel):
+# TODO: anthropic?
+class ToolParamPythonChat(BaseModel):
     type: Literal["python", "code_interpreter"]
     backend: Optional[Literal["docker", "dangerously_use_local_jupyter"]] = "docker"
 
 
-class AdapterPythonToolParamResponses(BaseModel):
+class ToolParamPythonResponses(BaseModel):
     type: Literal["python", "code_interpreter"]
     backend: Optional[Literal["docker", "dangerously_use_local_jupyter"]] = "docker"
 
 
-AdapterPythonToolParam = Union[
-    AdapterPythonToolParamResponses,
-    AdapterPythonToolParamChat,
+ToolParamPython = Union[
+    ToolParamPythonResponses,
+    ToolParamPythonChat,
 ]

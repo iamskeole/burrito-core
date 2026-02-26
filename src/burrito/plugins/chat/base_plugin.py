@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, List
 
 if TYPE_CHECKING:
-    from burrito.handlers.state_handler import AdapterStateHandler
+    from burrito.handlers.state_handler import StateHandler
 
 from openai.types.chat.chat_completion_message_custom_tool_call import (
     ChatCompletionMessageCustomToolCall,
@@ -22,23 +22,23 @@ from burrito.common.utils import (
     unix_timestamp,
 )
 from burrito.plugins.base_plugin import BasePlugin
-from burrito.types.adapter.adapter_chat_completion import (
-    AdapterChatCompletion,
-    AdapterChatCompletionChoice,
-    AdapterChatCompletionChoiceMessage,
+from burrito.types.patched_chat_completion import (
+    PatchedChatCompletion,
+    PatchedChatCompletionChoice,
+    PatchedChatCompletionChoiceMessage,
 )
-from burrito.types.adapter.adapter_chat_completion_chunk import (
-    AdapterChatCompletionChunk,
-    AdapterChatCompletionChunkChoice,
-    AdapterChatCompletionChunkChoiceDelta,
-    AdapterChoiceDeltaCustomCallFunction,
-    AdapterChoiceDeltaToolCall,
-    AdapterChoiceDeltaToolCallFunction,
+from burrito.types.patched_chat_completion_chunk import (
+    PatchedChatCompletionChunk,
+    PatchedChatCompletionChunkChoice,
+    PatchedChatCompletionChunkChoiceDelta,
+    PatchedChoiceDeltaCustomCallFunction,
+    PatchedChoiceDeltaToolCall,
+    PatchedChoiceDeltaToolCallFunction,
 )
 
 
 class BasePluginChat(BasePlugin):
-    def __init__(self, manager: "AdapterStateHandler"):
+    def __init__(self, manager: "StateHandler"):
         super().__init__(manager)
         self.manager = manager
         self.log_extra = {"log_id": f"apr_{self.log_id}"}
@@ -64,16 +64,16 @@ class BasePluginChat(BasePlugin):
         )
         return usage
 
-    def build_chunk_object(self, choice: AdapterChatCompletionChunkChoice):
+    def build_chunk_object(self, choice: PatchedChatCompletionChunkChoice):
         assert isinstance(self.manager.output_object, List), (
             f"Expected a List, but got {type(self.manager.output_object)}"
         )
 
-        assert isinstance(self.manager.output_object[0], AdapterChatCompletionChunk), (
+        assert isinstance(self.manager.output_object[0], PatchedChatCompletionChunk), (
             f"Expected a ChatCompletionChunk, but got {type(self.manager.output_object[0])}"
         )
         first_chunk = self.manager.output_object[0]
-        chunk_object = AdapterChatCompletionChunk(
+        chunk_object = PatchedChatCompletionChunk(
             id=first_chunk.id,
             created=first_chunk.created,
             object="chat.completion.chunk",
@@ -85,7 +85,7 @@ class BasePluginChat(BasePlugin):
         )
         return chunk_object
 
-    def init_response_object(self) -> AdapterChatCompletionChunk:
+    def init_response_object(self) -> PatchedChatCompletionChunk:
         init_data = {
             "id": f"chatcmpl-{random_uuid()}",
             "object": "chat.completion.chunk",
@@ -101,7 +101,7 @@ class BasePluginChat(BasePlugin):
             "system_fingerprint": f"{get_system_fingerprint()}",
             "usage": self.get_usage_details().model_dump(),
         }
-        completion = AdapterChatCompletionChunk(**init_data)
+        completion = PatchedChatCompletionChunk(**init_data)
         self.manager.output_object = [completion]
         return completion
 
@@ -118,18 +118,18 @@ class BasePluginChat(BasePlugin):
         output_arr = self.manager.output_object
         content = ""
         reasoning_content = ""
-        tool_call_buffer: List[AdapterChoiceDeltaToolCall] = []
+        tool_call_buffer: List[PatchedChoiceDeltaToolCall] = []
         tools_called = {}
         tool_calls = []
 
         for chunk in output_arr:
-            assert isinstance(chunk, AdapterChatCompletionChunk), (
+            assert isinstance(chunk, PatchedChatCompletionChunk), (
                 f"Expected AdapterChatCompletionChunk, got {type(chunk)}"
             )
             delta = chunk.choices[0].delta
             if isinstance(delta, dict):
                 continue  # first and last deltas are empty dicts..
-            assert isinstance(delta, AdapterChatCompletionChunkChoiceDelta), (
+            assert isinstance(delta, PatchedChatCompletionChunkChoiceDelta), (
                 f"Expected AdapterChatCompletionChunkChoiceDelta, got {type(delta)}"
             )
             if delta.content:
@@ -152,9 +152,9 @@ class BasePluginChat(BasePlugin):
                     "content": "",
                 }
             match part.function:
-                case AdapterChoiceDeltaToolCallFunction():
+                case PatchedChoiceDeltaToolCallFunction():
                     tools_called[part.index]["content"] += part.function.arguments
-                case AdapterChoiceDeltaCustomCallFunction():
+                case PatchedChoiceDeltaCustomCallFunction():
                     tools_called[part.index]["content"] += part.function.input
                 case _:
                     raise TypeError(
@@ -191,7 +191,7 @@ class BasePluginChat(BasePlugin):
             if tc:
                 tool_calls.append(tc)
 
-        message = AdapterChatCompletionChoiceMessage(
+        message = PatchedChatCompletionChoiceMessage(
             content=content,
             reasoning_content=reasoning_content,
             reasoning_summary=None,  # TODO implement reasoning_text_summary plugin?
@@ -199,12 +199,12 @@ class BasePluginChat(BasePlugin):
             role="assistant",
         )
 
-        choice = AdapterChatCompletionChoice(
+        choice = PatchedChatCompletionChoice(
             index=output_arr[-1].choices[0].index,
             finish_reason=output_arr[-1].choices[0].finish_reason or "stop",
             message=message,
         )
-        completion = AdapterChatCompletion(
+        completion = PatchedChatCompletion(
             id=output_arr[0].id,
             created=output_arr[0].created,
             object="chat.completion",

@@ -1,16 +1,15 @@
 from typing import Set
 
-from anthropic.types.message_delta_event import MessageDeltaEvent
 from anthropic.types.message_delta_usage import MessageDeltaUsage
-from anthropic.types.message_start_event import MessageStartEvent
-from anthropic.types.message_stop_event import MessageStopEvent
-from anthropic.types.raw_message_delta_event import Delta
+from anthropic.types.raw_message_delta_event import Delta, RawMessageDeltaEvent
+from anthropic.types.raw_message_start_event import RawMessageStartEvent
+from anthropic.types.raw_message_stop_event import RawMessageStopEvent
 
-from burrito.plugins.anthropic.base_plugin import BasePluginAnthropic
-from burrito.types.adapter import AdapterConversationState
+from burrito.plugins.messages.base_plugin import BasePluginMessages
+from burrito.types.enums import ConversationStateEnum
 
 
-class ContextManagerPluginAnthropic(BasePluginAnthropic):
+class ContextManagerPluginMessages(BasePluginMessages):
     def __init__(self, manager):
         super().__init__(manager)
 
@@ -19,10 +18,10 @@ class ContextManagerPluginAnthropic(BasePluginAnthropic):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            AdapterConversationState.CREATED,
-            AdapterConversationState.IN_PROGRESS,
-            AdapterConversationState.COMPLETED,
-            AdapterConversationState.TOOL_CALL,
+            ConversationStateEnum.CREATED,
+            ConversationStateEnum.IN_PROGRESS,
+            ConversationStateEnum.COMPLETED,
+            ConversationStateEnum.TOOL_CALL,
         }
 
     async def handle_message_start_event(self):
@@ -30,20 +29,20 @@ class ContextManagerPluginAnthropic(BasePluginAnthropic):
             return
         self.init_response_object()
         message = self.manager.output_object
-        event = MessageStartEvent(
+        event = RawMessageStartEvent(
             type="message_start",
             message=message,  # type: ignore
         )
         await self.put_event(event)
         self.sent_start_event = True
 
-    async def handle_message_stop_event(self, state: AdapterConversationState):
+    async def handle_message_stop_event(self, state: ConversationStateEnum):
         token_counts = self.get_token_counts()
         stop_reason = "end_turn"
-        if state == AdapterConversationState.TOOL_CALL:
+        if state == ConversationStateEnum.TOOL_CALL:
             stop_reason = "tool_use"
 
-        event_delta = MessageDeltaEvent(
+        event_delta = RawMessageDeltaEvent(
             type="message_delta",
             delta=Delta(
                 stop_reason=stop_reason  # type: ignore
@@ -53,17 +52,17 @@ class ContextManagerPluginAnthropic(BasePluginAnthropic):
                 output_tokens=token_counts.n_completion,
             ),
         )
-        event_stop = MessageStopEvent(type="message_stop")
+        event_stop = RawMessageStopEvent(type="message_stop")
         await self.put_event(event_delta)
         await self.put_event(event_stop)
         await self.send_close_marker()
 
-    async def on_enter_state(self, state: AdapterConversationState):
-        if state == AdapterConversationState.CREATED:
+    async def on_enter_state(self, state: ConversationStateEnum):
+        if state == ConversationStateEnum.CREATED:
             await self.handle_message_start_event()
 
         if state in [
-            AdapterConversationState.COMPLETED,
-            AdapterConversationState.TOOL_CALL,
+            ConversationStateEnum.COMPLETED,
+            ConversationStateEnum.TOOL_CALL,
         ]:
             await self.handle_message_stop_event(state)
