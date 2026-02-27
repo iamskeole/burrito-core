@@ -3,7 +3,7 @@ from typing import List, Set
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 from burrito.types.patched_chat_completion_chunk import (
     PatchedChatCompletionChunk,
     PatchedChatCompletionChunkChoice,
@@ -20,10 +20,10 @@ class ContextManagerPluginChat(BasePluginChat):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            ConversationStateEnum.CREATED,
-            ConversationStateEnum.IN_PROGRESS,
-            ConversationStateEnum.COMPLETED,
-            ConversationStateEnum.TOOL_CALL,
+            ConversationState.CREATED,
+            ConversationState.IN_PROGRESS,
+            ConversationState.COMPLETED,
+            ConversationState.TOOL_CALL,
         }
 
     async def handle_response_created_event(self):
@@ -46,7 +46,7 @@ class ContextManagerPluginChat(BasePluginChat):
             return
         pass  # no in_progress events? maybe hack python / browser somehow?
 
-    async def handle_response_completed_event(self, state: ConversationStateEnum):
+    async def handle_response_completed_event(self, state: ConversationState):
         assert isinstance(self.manager.output_object, List), (
             f"Expected List, got {type(self.manager.output_object)}"
         )
@@ -57,7 +57,7 @@ class ContextManagerPluginChat(BasePluginChat):
 
         last_token = self.manager.response_tokens[-1]
         finish_reason = last_token.finish_reason
-        if state == ConversationStateEnum.TOOL_CALL:
+        if state == ConversationState.TOOL_CALL:
             finish_reason = "tool_calls"
 
         choice = PatchedChatCompletionChunkChoice(
@@ -72,15 +72,15 @@ class ContextManagerPluginChat(BasePluginChat):
         await self.send_close_marker()
         self.build_output_object()
 
-    async def on_enter_state(self, state: ConversationStateEnum):
-        if state == ConversationStateEnum.CREATED:
+    async def on_enter_state(self, state: ConversationState):
+        if state == ConversationState.CREATED:
             await self.handle_response_created_event()
 
-        if state == ConversationStateEnum.IN_PROGRESS:
+        if state == ConversationState.IN_PROGRESS:
             await self.handle_response_in_progress_event()
 
         if state in [
-            ConversationStateEnum.COMPLETED,
-            ConversationStateEnum.TOOL_CALL,
+            ConversationState.COMPLETED,
+            ConversationState.TOOL_CALL,
         ]:
             await self.handle_response_completed_event(state)

@@ -9,8 +9,8 @@ from anthropic.types.tool_use_block import ToolUseBlock
 
 from burrito.handlers.token_handler import ConversationToken
 from burrito.plugins.messages.base_plugin import BasePluginMessages
+from burrito.types.conversation_enums import ConversationState, ConversationToolType
 from burrito.types.conversation_inputs import ConversationToolParam
-from burrito.types.enums import ConversationStateEnum, ToolTypeEnum
 
 
 class ToolInputPluginMessages(BasePluginMessages):
@@ -22,7 +22,7 @@ class ToolInputPluginMessages(BasePluginMessages):
         entry = self.manager.tool_handler.register_tool_call()
         tool: ConversationToolParam = entry["tool"]
         match tool.type:
-            case ToolTypeEnum.FUNCTION.value:
+            case ConversationToolType.FUNCTION.value:
                 return ToolUseBlock(
                     type="tool_use",
                     id=entry["call_id"],
@@ -31,12 +31,12 @@ class ToolInputPluginMessages(BasePluginMessages):
                 )
             case _:
                 raise ValueError(
-                    f"Expected {ToolTypeEnum.FUNCTION.value}, got {tool.type}"
+                    f"Expected {ConversationToolType.FUNCTION.value}, got {tool.type}"
                 )
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {ConversationStateEnum.TOOL_INPUT}
+        return {ConversationState.TOOL_INPUT}
 
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object
@@ -78,10 +78,10 @@ class ToolInputPluginMessages(BasePluginMessages):
         )
         await self.put_event(event)
 
-    async def on_enter_state(self, state: ConversationStateEnum):
+    async def on_enter_state(self, state: ConversationState):
         await self.handle_on_enter_state()
 
-    async def on_exit_state(self, state: ConversationStateEnum):
+    async def on_exit_state(self, state: ConversationState):
         await self.handle_on_exit_state()
 
     async def on_token(self, token: ConversationToken):

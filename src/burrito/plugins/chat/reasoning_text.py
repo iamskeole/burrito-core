@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Set
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-    from burrito.types.conversation_token import ConversationToken
-
 from burrito.plugins.chat.base_plugin import BasePluginChat
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 from burrito.types.patched_chat_completion_chunk import (
     PatchedChatCompletionChunk,
     PatchedChatCompletionChunkChoice,
     PatchedChatCompletionChunkChoiceDelta,
 )
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.types.conversation_token import ConversationToken
 
 
 class ReasoningTextPluginChat(BasePluginChat):
@@ -26,8 +26,8 @@ class ReasoningTextPluginChat(BasePluginChat):
             # this is the official guideline for gpt-oss, but since we're
             # running locally, responsibility should be client's, we expose
             # everything here so caller can decide ui stuff
-            ConversationStateEnum.REASONING,
-            ConversationStateEnum.PREAMBLE,
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
         }
 
     async def handle_on_enter_state(self):

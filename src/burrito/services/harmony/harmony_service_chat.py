@@ -4,23 +4,12 @@ from typing import Dict, List
 
 from openai_harmony import Author, Content, Message, Role, TextContent
 
+from burrito.types.conversation_enums import ConversationChannel
 from burrito.types.conversation_inputs import (
     ConversationInputs,
     ConversationReasoningParam,
     ConversationToolParam,
 )
-from burrito.types.create_params_chat import (
-    AssistantMessageParam,
-    AssistantToolCallParam,
-    ContentPartImageUrl,
-    ContentPartText,
-    CreateParamsChat,
-    DeveloperMessageParam,
-    SystemMessageParam,
-    ToolCallOutputParam,
-    UserMessageParam,
-)
-from burrito.types.enums import ConversationChannelEnum
 from burrito.types.tool_param_browser import ToolParamBrowserChat
 from burrito.types.tool_param_custom import (
     CustomToolInputFormatGrammar,
@@ -28,6 +17,17 @@ from burrito.types.tool_param_custom import (
     ToolParamCustomChat,
 )
 from burrito.types.tool_param_function import ToolParamFunctionChat
+from burrito.types.wire_api_params_chat import (
+    AssistantMessageParam,
+    AssistantToolCallParam,
+    ContentPartImageUrl,
+    ContentPartText,
+    DeveloperMessageParam,
+    SystemMessageParam,
+    ToolCallOutputParam,
+    UserMessageParam,
+    WireApiParamsChat,
+)
 
 
 def user_message(message_data: UserMessageParam) -> Message:
@@ -62,7 +62,7 @@ def assistant_message(
 
     if message_data.reasoning_content:
         content: list[Content] = [TextContent(text=message_data.reasoning_content)]
-        channel = ConversationChannelEnum.ANALYSIS.value
+        channel = ConversationChannel.ANALYSIS.value
         message = Message(author=author, content=content)
         message.with_channel(channel)
         messages.append(message)
@@ -77,20 +77,20 @@ def assistant_message(
             recipient = f"{prefix}{tool_name}"
             content = [TextContent(text=tool_call.function.arguments)]
             message = Message(author=author, content=content)
-            message.with_channel(ConversationChannelEnum.COMMENTARY.value)
+            message.with_channel(ConversationChannel.COMMENTARY.value)
             message.with_recipient(recipient)
             messages.append(message)
 
     if message_data.content and isinstance(message_data.content, str):
         content: list[Content] = [TextContent(text=message_data.content)]
-        channel = ConversationChannelEnum.FINAL.value
+        channel = ConversationChannel.FINAL.value
         message = Message(author=author, content=content)
         message.with_channel(channel)
         messages.append(message)
 
     if message_data.content and isinstance(message_data.content, list):
         content = [TextContent(text=i.text or "") for i in message_data.content]
-        channel = ConversationChannelEnum.FINAL.value
+        channel = ConversationChannel.FINAL.value
         message = Message(author=author, content=content)
         message.with_channel(channel)
         messages.append(message)
@@ -112,14 +112,12 @@ def tool_call_output_message(
         author=Author(role=Role.TOOL, name=f"functions.{tool_call.function.name}"),
         content=[TextContent(text=message_data.content)],
     )
-    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
+    message.with_channel(ConversationChannel.COMMENTARY.value)
     message.with_recipient(Role.ASSISTANT.value)
     return message
 
 
-def map_tool_calls(
-    params: CreateParamsChat,
-) -> Dict[str, AssistantToolCallParam]:
+def map_tool_calls(params: WireApiParamsChat) -> Dict[str, AssistantToolCallParam]:
     tool_calls: Dict[str, AssistantToolCallParam] = {}
     for i in params.messages:
         match i:
@@ -130,7 +128,7 @@ def map_tool_calls(
     return tool_calls
 
 
-def parse_messages(params: CreateParamsChat) -> List[Message]:
+def parse_messages(params: WireApiParamsChat) -> List[Message]:
     messages: List[Message] = []
     tool_calls = map_tool_calls(params)
 
@@ -148,7 +146,7 @@ def parse_messages(params: CreateParamsChat) -> List[Message]:
     return messages
 
 
-def parse_instructions(params: CreateParamsChat) -> str:
+def parse_instructions(params: WireApiParamsChat) -> str:
     instructions = ""
     for message in params.messages or []:
         match message:
@@ -165,7 +163,7 @@ def parse_instructions(params: CreateParamsChat) -> str:
 
 # TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(
-    params: CreateParamsChat,
+    params: WireApiParamsChat,
 ) -> List[ConversationToolParam]:
     tools = []
     for tool in params.tools or []:
@@ -207,12 +205,10 @@ def parse_tools(
     return tools
 
 
-def build_message_list_chat(
-    params: CreateParamsChat,
-) -> ConversationInputs:
+def build_message_list_chat(params: WireApiParamsChat) -> ConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params)
-    tools = parse_tools(params)
+    tools = [] #parse_tools(params)
     reasoning = ConversationReasoningParam(effort=params.reasoning_effort)
 
     conversation_inputs = ConversationInputs(

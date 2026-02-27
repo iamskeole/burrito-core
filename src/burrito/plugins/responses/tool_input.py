@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional, Set, Union
 
-from burrito.types.conversation_inputs import ConversationToolParam
-
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-
 from openai.types.responses.response import Response
 from openai.types.responses.response_custom_tool_call import ResponseCustomToolCall
 from openai.types.responses.response_custom_tool_call_input_delta_event import (
@@ -31,8 +26,12 @@ from openai.types.responses.response_output_item_done_event import (
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.conversation_enums import ConversationState, ConversationToolType
+from burrito.types.conversation_inputs import ConversationToolParam
 from burrito.types.conversation_token import ConversationToken
-from burrito.types.enums import ConversationStateEnum, ToolTypeEnum
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
 
 
 class ToolInputPluginResponses(BasePluginResponses):
@@ -42,7 +41,7 @@ class ToolInputPluginResponses(BasePluginResponses):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {ConversationStateEnum.TOOL_INPUT}
+        return {ConversationState.TOOL_INPUT}
 
     def build_output_item(
         self,
@@ -55,7 +54,7 @@ class ToolInputPluginResponses(BasePluginResponses):
         entry = self.manager.tool_handler.register_tool_call()
         tool: ConversationToolParam = entry["tool"]
         match tool.type:
-            case ToolTypeEnum.FUNCTION.value:
+            case ConversationToolType.FUNCTION.value:
                 return ResponseFunctionToolCall(
                     call_id=entry["call_id"],
                     name=tool.name,
@@ -64,7 +63,7 @@ class ToolInputPluginResponses(BasePluginResponses):
                     status="in_progress",
                     arguments="",
                 )
-            case ToolTypeEnum.CUSTOM.value:
+            case ConversationToolType.CUSTOM.value:
                 return ResponseCustomToolCall(
                     call_id=entry["call_id"],
                     input="",

@@ -1,8 +1,5 @@
 from typing import TYPE_CHECKING, List
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-
 from openai.types.chat.chat_completion_message_custom_tool_call import (
     ChatCompletionMessageCustomToolCall,
     Custom,
@@ -35,6 +32,9 @@ from burrito.types.patched_chat_completion_chunk import (
     PatchedChoiceDeltaToolCall,
     PatchedChoiceDeltaToolCallFunction,
 )
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
 
 
 class BasePluginChat(BasePlugin):
@@ -124,13 +124,13 @@ class BasePluginChat(BasePlugin):
 
         for chunk in output_arr:
             assert isinstance(chunk, PatchedChatCompletionChunk), (
-                f"Expected AdapterChatCompletionChunk, got {type(chunk)}"
+                f"Expected PatchedChatCompletionChunk, got {type(chunk)}"
             )
             delta = chunk.choices[0].delta
             if isinstance(delta, dict):
                 continue  # first and last deltas are empty dicts..
             assert isinstance(delta, PatchedChatCompletionChunkChoiceDelta), (
-                f"Expected AdapterChatCompletionChunkChoiceDelta, got {type(delta)}"
+                f"Expected PatchedChatCompletionChunkChoiceDelta, got {type(delta)}"
             )
             if delta.content:
                 content += delta.content
@@ -159,8 +159,8 @@ class BasePluginChat(BasePlugin):
                 case _:
                     raise TypeError(
                         "Expected "
-                        "`AdapterChoiceDeltaToolCallFunction` or "
-                        "`AdapterChoiceDeltaCustomCallFunction`, "
+                        "`PatchedChoiceDeltaToolCallFunction` or "
+                        "`PatchedChoiceDeltaCustomCallFunction`, "
                         f"got {type(part)}"
                     )
 

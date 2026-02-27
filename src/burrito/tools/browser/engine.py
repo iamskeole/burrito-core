@@ -21,6 +21,7 @@ from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 
 
+# app level singleton
 class BurritoBrowserEngine:
     _playwright: Optional[Playwright] = None
     _browser: Optional[Browser] = None

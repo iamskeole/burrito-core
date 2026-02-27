@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Set
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-    from burrito.handlers.token_handler import ConversationToken
-
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
+from burrito.types.conversation_enums import ConversationState, ConversationToolType
 from burrito.types.conversation_inputs import ConversationToolParam
-from burrito.types.enums import ConversationStateEnum, ToolTypeEnum
 from burrito.types.patched_chat_completion_chunk import (
     PatchedChatCompletionChunkChoice,
     PatchedChatCompletionChunkChoiceDelta,
@@ -18,6 +14,10 @@ from burrito.types.patched_chat_completion_chunk import (
     PatchedChoiceDeltaToolCall,
     PatchedChoiceDeltaToolCallFunction,
 )
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.handlers.token_handler import ConversationToken
 
 
 class ToolInputPluginChat(BasePluginChat):
@@ -31,7 +31,7 @@ class ToolInputPluginChat(BasePluginChat):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {ConversationStateEnum.TOOL_INPUT}
+        return {ConversationState.TOOL_INPUT}
 
     async def _send_tool_delta_event(self, do_register: bool = False):
         assert isinstance(self.manager.output_object, List), (
@@ -53,12 +53,12 @@ class ToolInputPluginChat(BasePluginChat):
         tool_type = tool.type
 
         match tool_type:
-            case ToolTypeEnum.FUNCTION.value:
+            case ConversationToolType.FUNCTION.value:
                 tool_call = PatchedChoiceDeltaToolCall(
                     index=entry["index"],
                     function=PatchedChoiceDeltaToolCallFunction(arguments=args),
                 )
-            case ToolTypeEnum.CUSTOM.value:
+            case ConversationToolType.CUSTOM.value:
                 tool_call = PatchedChoiceDeltaToolCall(
                     index=entry["index"],
                     function=PatchedChoiceDeltaCustomCallFunction(input=args),

@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-    from burrito.types.conversation_token import ConversationToken
-
 from openai.types.responses.response import Response
 from openai.types.responses.response_content_part_added_event import (
     PartReasoningText as PartReasoningTextAdded,
@@ -38,7 +34,11 @@ from openai.types.responses.response_reasoning_text_done_event import (
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.types.conversation_token import ConversationToken
 
 
 class ReasoningTextPluginResponses(BasePluginResponses):
@@ -55,8 +55,8 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             # this is the official guideline for gpt-oss, but since we're
             # running locally, responsibility should be client's, we expose
             # everything here so caller can decide ui stuff
-            ConversationStateEnum.REASONING,
-            ConversationStateEnum.PREAMBLE,
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
         }
 
     async def handle_on_enter_state(self):

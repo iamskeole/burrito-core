@@ -7,8 +7,11 @@ from burrito.common.logger import FastAPILogger
 from burrito.common.utils import get_prompt, random_uuid
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
+from burrito.types.conversation_enums import (
+    ConversationState,
+    ConversationToolNamespace,
+)
 from burrito.types.conversation_inputs import ConversationToolParam
-from burrito.types.enums import ConversationStateEnum, ToolNamespaceEnum
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
@@ -44,13 +47,13 @@ class ToolHandler:
 
     def _init_namespaces(self):
         if self.python_tool is not None:
-            self.namespaces.append(ToolNamespaceEnum.PYTHON.value)
+            self.namespaces.append(ConversationToolNamespace.PYTHON.value)
 
         if self.browser_tool is not None:
-            self.namespaces.append(ToolNamespaceEnum.BROWSER.value)
+            self.namespaces.append(ConversationToolNamespace.BROWSER.value)
 
         if self.manager.manager.params.tools:
-            self.namespaces.append(ToolNamespaceEnum.FUNCTIONS.value)
+            self.namespaces.append(ConversationToolNamespace.FUNCTIONS.value)
 
         self.msg_namespaces = "\n".join([i.replace(".", "") for i in self.namespaces])
 
@@ -62,8 +65,8 @@ class ToolHandler:
             for i in tools
             if i.name
             not in [
-                ToolNamespaceEnum.PYTHON.value,
-                ToolNamespaceEnum.BROWSER.value,
+                ConversationToolNamespace.PYTHON.value,
+                ConversationToolNamespace.BROWSER.value,
             ]
         ]
         self.msg_tools = "\n".join([i.replace(".", "") for i in self.tool_names])
@@ -122,9 +125,7 @@ class ToolHandler:
 
     def register_tool_call(self) -> Dict[str, Any]:
         tool = self.get_tool_model_is_trying_to_call()
-        assert tool is not None, (
-            "Expected a AdapterConversationInputTool, but got `None`"
-        )
+        assert tool is not None, "Expected a ConversationToolParam, but got `None`"
         call_id = f"call_{random_uuid()}"
         self.tool_calls.append(
             {
@@ -138,7 +139,7 @@ class ToolHandler:
     def _is_python(
         self, recipient: str, treat_functions_python_as_builtin: bool = True
     ) -> bool:
-        _name = ToolNamespaceEnum.PYTHON.value
+        _name = ConversationToolNamespace.PYTHON.value
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return _name in recipient
         return (
@@ -156,7 +157,7 @@ class ToolHandler:
     def _is_browser(
         self, recipient: str, treat_functions_browser_as_builtin: bool = True
     ) -> bool:
-        _name = ToolNamespaceEnum.BROWSER.value
+        _name = ConversationToolNamespace.BROWSER.value
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return _name in recipient
         return (
@@ -296,12 +297,12 @@ class ToolHandler:
             return self.manager._recover_state()
 
         await self.manager.transition_handler.transition(
-            token=None, state=ConversationStateEnum.NATIVE_TOOL_DONE
+            token=None, state=ConversationState.NATIVE_TOOL_DONE
         )
         self.manager._update_state_with_tool_result(tool_result)
 
     async def maybe_call_native_tool(self):
-        if self.manager.parser_state != ConversationStateEnum.NATIVE_TOOL_CALL:
+        if self.manager.parser_state != ConversationState.NATIVE_TOOL_CALL:
             return
 
         messages = self.manager.conversation.messages  # rust view

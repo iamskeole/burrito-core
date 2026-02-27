@@ -6,28 +6,28 @@ from fastapi import Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from burrito.common.utils import get_headers_to_forward
-from burrito.handlers.conversation_handler import AdapterConversationHandler
-from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.session_handler import AdapterSessionHandler
-from burrito.types.create_params import CreateParams
+from burrito.handlers.conversation_handler import ConversationHandler
+from burrito.handlers.generation_handler import GenerationHandler
+from burrito.handlers.session_handler import SessionHandler
+from burrito.types.wire_api_params import WireApiParams
 
 
 async def run_inference(
     request: Request,
-    params: CreateParams,
+    params: WireApiParams,
     semaphore: asyncio.Semaphore,
-    generator: AdapterGenerationHandler,
-    session_handler: AdapterSessionHandler,
+    generator: GenerationHandler,
+    session_handler: SessionHandler,
 ) -> Union[StreamingResponse, JSONResponse]:
     forwarded_headers = get_headers_to_forward(request)
 
-    async def stream_with_semaphore(handler: AdapterConversationHandler):
+    async def stream_with_semaphore(handler: ConversationHandler):
         async with semaphore:
             async for chunk in handler.return_stream():
                 yield chunk
 
     try:
-        handler = AdapterConversationHandler(
+        handler = ConversationHandler(
             request=request,
             params=params,
             generator=generator,

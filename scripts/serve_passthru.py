@@ -17,7 +17,7 @@ app.add_middleware(
     allow_origins=settings.CORS_ALLOWED_ORIGINS.split(","),
     allow_methods=settings.CORS_ALLOWED_METHODS.split(","),
     allow_headers=settings.CORS_ALLOWED_HEADERS.split(","),
-    allow_credentials=settings.CORS_ALLOWED_CREDENTIALS,
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
 )
 
 client = httpx.AsyncClient(

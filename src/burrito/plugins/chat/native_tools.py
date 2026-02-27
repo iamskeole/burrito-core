@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set
 
+from burrito.plugins.chat.base_plugin import BasePluginChat
+from burrito.types.conversation_enums import ConversationState
+from burrito.types.conversation_token import ConversationToken
+
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
-
-
-from burrito.plugins.chat.base_plugin import BasePluginChat
-from burrito.types.conversation_token import ConversationToken
-from burrito.types.enums import ConversationStateEnum
 
 
 class NativeToolsPluginChat(BasePluginChat):
@@ -19,17 +18,17 @@ class NativeToolsPluginChat(BasePluginChat):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            ConversationStateEnum.NATIVE_TOOL_INPUT,
+            ConversationState.NATIVE_TOOL_INPUT,
         }
 
-    async def send_browser_event(self, state: ConversationStateEnum):
+    async def send_browser_event(self, state: ConversationState):
         pass  # no events for chat/completions
 
-    async def send_python_event(self, state: ConversationStateEnum):
+    async def send_python_event(self, state: ConversationState):
         pass  # no events for chat/completions
 
-    async def handle_on_enter_state(self, state: ConversationStateEnum):
-        if state == ConversationStateEnum.NATIVE_TOOL_INPUT:
+    async def handle_on_enter_state(self, state: ConversationState):
+        if state == ConversationState.NATIVE_TOOL_INPUT:
             self.manager.tool_handler.register_tool_call()
             return
 
@@ -39,7 +38,7 @@ class NativeToolsPluginChat(BasePluginChat):
     async def handle_on_exit_state(self):
         pass
 
-    async def on_enter_state(self, state: ConversationStateEnum):
+    async def on_enter_state(self, state: ConversationState):
         await self.handle_on_enter_state(state)
 
     async def on_exit_state(self, state: str):

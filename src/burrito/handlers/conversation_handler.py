@@ -11,21 +11,22 @@ from openai.types.responses import Response
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import unix_timestamp_in_ms
-from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.session_handler import AdapterSessionHandler
+from burrito.common.utils import unix_timestamp_in_ms, wire_api_label_from_params
+from burrito.handlers.generation_handler import GenerationHandler
+from burrito.handlers.session_handler import SessionHandler
 from burrito.handlers.state_handler import StateHandler
-from burrito.types.create_params import CreateParams
-from burrito.types.stream_error import StreamError
+from burrito.routes.metrics import generation_requests_total
+from burrito.types.conversation_error import ConversationError
+from burrito.types.wire_api_params import WireApiParams
 
 
-class AdapterConversationHandler:
+class ConversationHandler:
     def __init__(
         self,
         request: Request,
-        params: CreateParams,
-        generator: AdapterGenerationHandler,
-        session_handler: AdapterSessionHandler,
+        params: WireApiParams,
+        generator: GenerationHandler,
+        session_handler: SessionHandler,
         forwarded_headers: Dict[str, str] = {},
     ):
         self.request = request
@@ -63,6 +64,11 @@ class AdapterConversationHandler:
         self.state_handler = StateHandler(
             manager=self, stream_to_caller=self.stream_to_caller
         )
+
+        # increment generation requests counter
+        m = self.params.model
+        w = wire_api_label_from_params(self.params)
+        generation_requests_total.labels(wire_api=w, model=m).inc()
 
     def _init_stream(self):
         self._is_stopped = False
@@ -194,7 +200,7 @@ class AdapterConversationHandler:
         if isinstance(output_object, AnthropicMessage):
             return output_object.model_dump()
 
-        if isinstance(output_object, StreamError):
+        if isinstance(output_object, ConversationError):
             return output_object.model_dump()
 
         raise NotImplementedError(f"Unsupported output object: {type(output_object)}")

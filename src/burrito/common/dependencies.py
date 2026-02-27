@@ -1,28 +1,29 @@
 import asyncio
-from typing import Optional, List
+from typing import List, Optional
 
 import httpx
+from fastapi import Header, HTTPException, Request
 
 from burrito.common.config import settings
-from burrito.handlers.generation_handler import AdapterGenerationHandler
-from burrito.handlers.session_handler import AdapterSessionHandler
+from burrito.handlers.generation_handler import GenerationHandler
+from burrito.handlers.session_handler import SessionHandler
 
-_session_handler_singleton: Optional[AdapterSessionHandler] = None
-_generation_handler_singleton: Optional[AdapterGenerationHandler] = None
+_session_handler_singleton: Optional[SessionHandler] = None
+_generation_handler_singleton: Optional[GenerationHandler] = None
 _inference_semaphore_singleton: Optional[asyncio.Semaphore] = None
 
 
-def get_session_handler() -> AdapterSessionHandler:
+def get_session_handler() -> SessionHandler:
     global _session_handler_singleton
     if _session_handler_singleton is None:
-        _session_handler_singleton = AdapterSessionHandler()
+        _session_handler_singleton = SessionHandler()
     return _session_handler_singleton
 
 
-def get_generation_handler() -> AdapterGenerationHandler:
+def get_generation_handler() -> GenerationHandler:
     global _generation_handler_singleton
     if _generation_handler_singleton is None:
-        _generation_handler_singleton = AdapterGenerationHandler()
+        _generation_handler_singleton = GenerationHandler()
     return _generation_handler_singleton
 
 
@@ -44,3 +45,44 @@ async def get_backend_models() -> List[dict]:
             return response.json()
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# Metrics‑specific dependencies
+# ---------------------------------------------------------------------------
+
+
+def require_metrics_token(
+    authorization: str | None = Header(None, alias="Authorization"),
+):
+    """Validate a Bearer token for the /metrics endpoint.
+
+    The token is read from ``settings.METRICS_AUTH_TOKEN``.  If the setting
+    is empty the check is skipped, making the endpoint publicly readable.
+    """
+    token = settings.METRICS_AUTH_TOKEN
+    if not token:
+        return None
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing or malformed Authorization header"
+        )
+    _, provided = authorization.split(" ", 1)
+    if provided != token:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return provided
+
+
+def allow_metrics_ip(request: Request):
+    """Allow only IPs listed in ``settings.METRICS_IP_WHITELIST``.
+
+    The environment variable can contain a comma or colon separated list.
+    Empty string disables the check.
+    """
+    whitelist = settings.METRICS_IP_WHITELIST
+    if not whitelist:
+        return None
+    hosts = {h.strip() for h in whitelist.replace(";", ",").split(",") if h.strip()}
+    if not request.client or request.client.host not in hosts:
+        raise HTTPException(status_code=403, detail="Forbidden IP")
+    return None

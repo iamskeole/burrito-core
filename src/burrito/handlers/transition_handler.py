@@ -2,16 +2,15 @@ from typing import TYPE_CHECKING, List, Optional
 
 from openai_harmony import StreamableParser, StreamState
 
+from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import get_prompt
 from burrito.services.harmony import SPECIAL_TOKENS
+from burrito.types.conversation_enums import ConversationChannel, ConversationState
 from burrito.types.conversation_token import ConversationToken
-from burrito.types.enums import ConversationChannelEnum, ConversationStateEnum
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
-
-from burrito.common.config import settings
 
 
 def is_created(parser: StreamableParser) -> bool:
@@ -24,7 +23,7 @@ def is_in_progress(parser: StreamableParser) -> bool:
 
 def is_reasoning(parser: StreamableParser) -> bool:
     # producing reasoning tokens
-    match_channel = parser.current_channel == ConversationChannelEnum.ANALYSIS.value
+    match_channel = parser.current_channel == ConversationChannel.ANALYSIS.value
     match_recipient = parser.current_recipient is None
     return match_channel and match_recipient
 
@@ -44,7 +43,7 @@ def is_reasoning_end(parser: StreamableParser, tokens: List[ConversationToken]) 
 # that should technically put it on the output channel i think
 def is_preamble(parser: StreamableParser) -> bool:
     match_recipient = parser.current_recipient is None
-    match_channel = parser.current_channel == ConversationChannelEnum.COMMENTARY.value
+    match_channel = parser.current_channel == ConversationChannel.COMMENTARY.value
     return match_channel and match_recipient
 
 
@@ -59,8 +58,8 @@ def is_tool_input(parser: StreamableParser) -> bool:
     # <|call|>'
     match_recipient = parser.current_recipient is not None
     match_channel = parser.current_channel in [
-        ConversationChannelEnum.ANALYSIS.value,
-        ConversationChannelEnum.COMMENTARY.value,
+        ConversationChannel.ANALYSIS.value,
+        ConversationChannel.COMMENTARY.value,
     ]
     return match_recipient and match_channel
 
@@ -82,7 +81,7 @@ def is_tool_call(tokens: List[ConversationToken]) -> bool:
 
 
 def is_output(parser: StreamableParser) -> bool:
-    return parser.current_channel == ConversationChannelEnum.FINAL.value
+    return parser.current_channel == ConversationChannel.FINAL.value
 
 
 def is_return(tokens: List[ConversationToken]) -> bool:
@@ -103,7 +102,7 @@ class TransitionHandler:
         self.logger = FastAPILogger.get_logger(__name__)
         self.log_extra = {"log_id": self.log_id}
 
-    def map_state(self) -> ConversationStateEnum:
+    def map_state(self) -> ConversationState:
         parser = self.manager.parser
         messages = self.manager.parser.messages
         tokens = self.manager.response_tokens
@@ -113,35 +112,35 @@ class TransitionHandler:
         is_native_tool = self.manager.tool_handler._is_native_tool(recipient)
 
         if is_created(parser):
-            return ConversationStateEnum.CREATED
+            return ConversationState.CREATED
         elif is_in_progress(parser):
-            return ConversationStateEnum.IN_PROGRESS
+            return ConversationState.IN_PROGRESS
         elif is_reasoning(parser):
-            return ConversationStateEnum.REASONING
+            return ConversationState.REASONING
         elif is_reasoning_end(parser, tokens):
-            return ConversationStateEnum.REASONING_END
+            return ConversationState.REASONING_END
         elif is_preamble(parser):
-            return ConversationStateEnum.PREAMBLE
+            return ConversationState.PREAMBLE
         elif is_tool_input_start(parser):
             if is_native_tool:
-                return ConversationStateEnum.NATIVE_TOOL_INPUT_START
-            return ConversationStateEnum.TOOL_INPUT_START
+                return ConversationState.NATIVE_TOOL_INPUT_START
+            return ConversationState.TOOL_INPUT_START
         elif is_tool_input(parser):
             if is_native_tool:
-                return ConversationStateEnum.NATIVE_TOOL_INPUT
-            return ConversationStateEnum.TOOL_INPUT
+                return ConversationState.NATIVE_TOOL_INPUT
+            return ConversationState.TOOL_INPUT
         elif is_tool_call(tokens):
             if is_native_tool:
-                return ConversationStateEnum.NATIVE_TOOL_CALL
-            return ConversationStateEnum.TOOL_CALL
+                return ConversationState.NATIVE_TOOL_CALL
+            return ConversationState.TOOL_CALL
         elif is_output(parser):
-            return ConversationStateEnum.OUTPUT_TEXT
+            return ConversationState.OUTPUT_TEXT
         elif is_return(tokens):
-            return ConversationStateEnum.COMPLETED
+            return ConversationState.COMPLETED
         else:
-            return ConversationStateEnum.TRANSITION
+            return ConversationState.TRANSITION
 
-    def _is_valid_transition(self, new_state: ConversationStateEnum) -> bool:
+    def _is_valid_transition(self, new_state: ConversationState) -> bool:
         tool_handler = self.manager.tool_handler
         parser = self.manager.parser
         # we operate on the rust view since new messages may be building
@@ -151,7 +150,7 @@ class TransitionHandler:
         current_recipient = parser.current_recipient
         channel = last_message.channel if last_message else None
 
-        if new_state == ConversationStateEnum.REASONING:
+        if new_state == ConversationState.REASONING:
             self.reasoning_loops += 1
 
         if self.reasoning_loops >= settings.MAX_REASONING_LOOPS:
@@ -165,18 +164,18 @@ class TransitionHandler:
                 )
             return False
 
-        if new_state == ConversationStateEnum.NATIVE_TOOL_DONE:
+        if new_state == ConversationState.NATIVE_TOOL_DONE:
             return True
 
-        state_tool_input_start = ConversationStateEnum.TOOL_INPUT_START
-        state_reasoning = ConversationStateEnum.REASONING
-        state_tool_call = ConversationStateEnum.TOOL_CALL
-        state_preamble = ConversationStateEnum.PREAMBLE
-        state_completed = ConversationStateEnum.COMPLETED
+        state_tool_input_start = ConversationState.TOOL_INPUT_START
+        state_reasoning = ConversationState.REASONING
+        state_tool_call = ConversationState.TOOL_CALL
+        state_preamble = ConversationState.PREAMBLE
+        state_completed = ConversationState.COMPLETED
 
-        channel_analysis = ConversationChannelEnum.ANALYSIS.value
-        channel_commentary = ConversationChannelEnum.COMMENTARY.value
-        channel_final = ConversationChannelEnum.FINAL.value
+        channel_analysis = ConversationChannel.ANALYSIS.value
+        channel_commentary = ConversationChannel.COMMENTARY.value
+        channel_final = ConversationChannel.FINAL.value
 
         # sometimes assistant will use tool name as channel, so we catch that before
         # wasting tokens to complete the full command
@@ -263,13 +262,13 @@ class TransitionHandler:
             return False
         return True
 
-    def _update_state(self) -> ConversationStateEnum:
+    def _update_state(self) -> ConversationState:
         old_state = self.manager.parser_state
         new_state = self.map_state()
         is_transition = new_state != old_state
 
         if is_transition and not self._is_valid_transition(new_state):
-            return ConversationStateEnum.ERROR
+            return ConversationState.ERROR
 
         self.manager.parser_state = new_state
         return new_state
@@ -277,12 +276,12 @@ class TransitionHandler:
     async def transition(
         self,
         token: Optional[ConversationToken],
-        state: Optional[ConversationStateEnum] = None,  # handle native tool done
+        state: Optional[ConversationState] = None,  # handle native tool done
     ):
         old_state = self.manager.parser_state
         new_state = state or self._update_state()
 
-        if new_state == ConversationStateEnum.ERROR:
+        if new_state == ConversationState.ERROR:
             return self.manager._recover_state()
 
         if new_state != old_state:

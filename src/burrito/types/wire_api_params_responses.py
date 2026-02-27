@@ -154,7 +154,7 @@ class Conversation(BaseModel):
     id: str
 
 
-class CreateParamsResponses(BaseModel):
+class WireApiParamsResponses(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     input: Union[str, List[InputItemParamResponses]]
     instructions: Optional[str] = None
@@ -174,7 +174,7 @@ class CreateParamsResponses(BaseModel):
                 ToolParamBrowserResponses,
                 ToolParamPythonResponses,
                 ToolParamFunctionResponses,
-                # AdapterCustomToolParamChat, # see todo note above
+                # ToolParamCustomResponses, # see todo note above
             ]
         ]
     ] = None

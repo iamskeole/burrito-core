@@ -7,7 +7,7 @@ from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
 
 
-class AdapterSessionHandler:
+class SessionHandler:
     def __init__(self):
         self.python_tools: Dict[str, Optional[BurritoPython]] = {}
         self.browser_tools: Dict[str, Optional[BurritoBrowser]] = {}

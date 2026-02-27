@@ -6,10 +6,10 @@ from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid
 from burrito.services.inference import infer_next_token
-from burrito.types.create_params import CreateParams
+from burrito.types.wire_api_params import WireApiParams
 
 
-class AdapterGenerationHandler:
+class GenerationHandler:
     def __init__(self):
         self.can_stream = True
         self.log_id = random_uuid()
@@ -19,7 +19,7 @@ class AdapterGenerationHandler:
     async def _generator(
         self,
         prompt_token_ids: List[int],
-        params: CreateParams,
+        params: WireApiParams,
         headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         try:
@@ -38,7 +38,7 @@ class AdapterGenerationHandler:
     async def generate(
         self,
         prompt_token_ids: List[int],
-        params: CreateParams,
+        params: WireApiParams,
         headers: Dict[str, str] = {},
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         generator = self._generator(prompt_token_ids, params, headers)

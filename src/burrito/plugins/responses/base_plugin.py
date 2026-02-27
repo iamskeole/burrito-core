@@ -4,7 +4,7 @@ from openai.types.responses.response import Response
 
 from burrito.common.utils import random_uuid, unix_timestamp
 from burrito.plugins.base_plugin import BasePlugin
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
@@ -23,7 +23,7 @@ class BasePluginResponses(BasePlugin):
             "created_at": unix_timestamp(),
             "object": "response",
             "output": [],
-            "status": ConversationStateEnum.IN_PROGRESS.value,  # type: ignore
+            "status": ConversationState.IN_PROGRESS.value,  # type: ignore
             "parallel_tool_calls": False,
             "tool_choice": "auto",
             "tools": [],

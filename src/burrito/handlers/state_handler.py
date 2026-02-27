@@ -6,14 +6,6 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 from anthropic.types.message import Message as AnthropicMessage
 from openai.types.completion import Completion
 from openai.types.responses.response import Response
-from pydantic import BaseModel
-
-from burrito.types.patched_chat_completion import PatchedChatCompletion
-from burrito.types.patched_chat_completion_chunk import PatchedChatCompletionChunk
-
-if TYPE_CHECKING:
-    from .conversation_handler import AdapterConversationHandler
-
 from openai_harmony import (
     Conversation,
     HarmonyError,
@@ -22,10 +14,16 @@ from openai_harmony import (
     StreamableParser,
     StreamState,
 )
+from pydantic import BaseModel
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import get_prompt, render_terminal_glyph, unix_timestamp_in_ms
+from burrito.common.utils import (
+    get_prompt,
+    render_terminal_glyph,
+    unix_timestamp_in_ms,
+    wire_api_label_from_params,
+)
 from burrito.handlers.token_handler import (
     normalize_completion_token,
 )
@@ -53,6 +51,20 @@ from burrito.plugins.responses import (
     ReasoningTextPluginResponses,
     ToolInputPluginResponses,
 )
+from burrito.routes.metrics import (
+    generation_duration_seconds,
+    generation_duration_seconds_eval,
+    generation_duration_seconds_prompt,
+    generation_errors_total,
+    generation_input_tokens,
+    generation_output_tokens,
+    generation_reasoning_tokens,
+    generation_tool_call_tokens,
+    generation_tool_calls,
+    generation_total_tokens,
+    generation_tps_eval,
+    generation_tps_prompt,
+)
 from burrito.services.harmony import (
     ENCODING,
     build_conversation_from_messages,
@@ -63,17 +75,22 @@ from burrito.services.harmony import (
 )
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
+from burrito.types.conversation_enums import ConversationState
+from burrito.types.conversation_error import ConversationError
 from burrito.types.conversation_inputs import ConversationInputs
 from burrito.types.conversation_token import ConversationToken
-from burrito.types.create_params_chat import CreateParamsChat
-from burrito.types.create_params_messages import CreateParamsMessages
-from burrito.types.create_params_responses import CreateParamsResponses
-from burrito.types.enums import ConversationStateEnum
-from burrito.types.stream_error import StreamError
+from burrito.types.patched_chat_completion import PatchedChatCompletion
+from burrito.types.patched_chat_completion_chunk import PatchedChatCompletionChunk
+from burrito.types.wire_api_params_chat import WireApiParamsChat
+from burrito.types.wire_api_params_messages import WireApiParamsMessages
+from burrito.types.wire_api_params_responses import WireApiParamsResponses
+
+if TYPE_CHECKING:
+    from .conversation_handler import ConversationHandler
 
 
 class StateHandler:
-    def __init__(self, manager: AdapterConversationHandler, stream_to_caller: bool):
+    def __init__(self, manager: ConversationHandler, stream_to_caller: bool):
         self.manager = manager
         self.stream_to_caller = stream_to_caller
 
@@ -99,14 +116,14 @@ class StateHandler:
         self.log_extra: Dict[str, str]
 
         self.parser_channel: Optional[str] = None
-        self.parser_state = ConversationStateEnum.INITIAL
+        self.parser_state = ConversationState.INITIAL
         self.parser_message_count = 0
         self.sequence_number = 0
         self.output_index = -1
         self.is_done: bool = False
 
         self.output_object: Union[
-            StreamError,
+            ConversationError,
             Response,
             List[Union[PatchedChatCompletionChunk, PatchedChatCompletion]],
             AnthropicMessage,
@@ -136,7 +153,7 @@ class StateHandler:
     def _init_plugins(self):
         self.transition_handler = TransitionHandler(self)
         match self.manager.params:
-            case CreateParamsChat():
+            case WireApiParamsChat():
                 self.plugins = [
                     ContextManagerPluginChat(self),
                     ReasoningTextPluginChat(self),
@@ -144,7 +161,7 @@ class StateHandler:
                     ToolInputPluginChat(self),
                     NativeToolsPluginChat(self),
                 ]
-            case CreateParamsResponses():
+            case WireApiParamsResponses():
                 self.plugins = [
                     ContextManagerPluginResponses(self),
                     ReasoningTextPluginResponses(self),
@@ -152,7 +169,7 @@ class StateHandler:
                     ToolInputPluginResponses(self),
                     NativeToolsPluginResponses(self),
                 ]
-            case CreateParamsMessages():
+            case WireApiParamsMessages():
                 self.plugins = [
                     ContextManagerPluginMessages(self),
                     ReasoningTextPluginMessages(self),
@@ -166,7 +183,7 @@ class StateHandler:
             for state in plugin.subscribed_states:
                 self._active_plugins_by_state.setdefault(state, []).append(plugin)
 
-    # NOTE: this enables session-ish storage of python and browser tools
+    # this enables session-ish storage of python and browser tools
     # should help assistant if these tools are not stateless
     # (eg. assistant can reference previously opened pages or code cells)
     # bit hacky, hashing first few prompt messages will not work
@@ -239,12 +256,12 @@ class StateHandler:
 
     # only responses supports streamed errors
     async def put_error(self, message: str, code: str):
-        self.parser_state = ConversationStateEnum.ERROR
+        self.parser_state = ConversationState.ERROR
         self.is_done = True
         if hasattr(self.manager, "is_finished"):
             self.manager.is_finished.set()
 
-        event = StreamError(
+        event = ConversationError(
             type="error",
             code=code,
             message=message,
@@ -280,7 +297,7 @@ class StateHandler:
             raise RecursionError("Reached maximum state recover attempts.")
 
         self.manager._stop_stream()
-        self.parser_state = ConversationStateEnum.ERROR
+        self.parser_state = ConversationState.ERROR
         prev_messages = self.parser.messages  # we operate on rust view
         if self.recovery_message:
             prev_messages.append(self.recovery_message)
@@ -297,32 +314,32 @@ class StateHandler:
 
         match state:
             case (
-                ConversationStateEnum.INITIAL
-                | ConversationStateEnum.CREATED
-                | ConversationStateEnum.IN_PROGRESS
-                | ConversationStateEnum.REASONING
-                | ConversationStateEnum.REASONING_END
+                ConversationState.INITIAL
+                | ConversationState.CREATED
+                | ConversationState.IN_PROGRESS
+                | ConversationState.REASONING
+                | ConversationState.REASONING_END
             ):
                 self.reasoning_tokens.append(token)
 
-            case ConversationStateEnum.PREAMBLE:
+            case ConversationState.PREAMBLE:
                 self.preamble_tokens.append(token)
 
             case (
-                ConversationStateEnum.NATIVE_TOOL_INPUT_START
-                | ConversationStateEnum.NATIVE_TOOL_INPUT
-                | ConversationStateEnum.NATIVE_TOOL_CALL
+                ConversationState.NATIVE_TOOL_INPUT_START
+                | ConversationState.NATIVE_TOOL_INPUT
+                | ConversationState.NATIVE_TOOL_CALL
             ):
                 self.native_tool_input_tokens.append(token)
 
             case (
-                ConversationStateEnum.TOOL_INPUT_START
-                | ConversationStateEnum.TOOL_INPUT
-                | ConversationStateEnum.TOOL_CALL
+                ConversationState.TOOL_INPUT_START
+                | ConversationState.TOOL_INPUT
+                | ConversationState.TOOL_CALL
             ):
                 self.caller_tool_input_tokens.append(token)
 
-            case ConversationStateEnum.OUTPUT_TEXT | ConversationStateEnum.COMPLETED:
+            case ConversationState.OUTPUT_TEXT | ConversationState.COMPLETED:
                 self.output_text_tokens.append(token)
 
         self.response_tokens.append(token)
@@ -405,19 +422,13 @@ class StateHandler:
 
         n_p, n_e = len(p_t), len(r_t)
         n_t = n_p + n_e
+        n_r = len(self.reasoning_tokens)
         t_c = len(self.tool_handler.tool_calls)
         tps_p = n_p / t_p if t_p > 0 else 0
         tps_e = n_e / t_e if t_e > 0 else 0
 
-        match self.manager.params:
-            case CreateParamsChat():
-                m = "oai:chat"
-            case CreateParamsResponses():
-                m = "oai:responses"
-            case CreateParamsMessages():
-                m = "ant:messages"
-            case _:
-                m = "unknown"
+        m = self.manager.params.model
+        w = wire_api_label_from_params(self.manager.params)
 
         # formatters
         def fn(n):  # tokens: "105.0k" or "  215 "
@@ -433,7 +444,7 @@ class StateHandler:
                 return f"{s / 1000:>5.1f}k"
             return f"{int(s):>5} "
 
-        m_blk = f"{m:<16}"
+        w_blk = f"{w:<16}"
 
         # total block: "  35.9k ‣  51.97s (i:  1.48s ‣ o: 50.49s)"
         t_blk = f"{fn(n_t)} ‣ {ft(t_t)} (i:{ft(t_p)} ‣ o:{ft(t_e)})"
@@ -447,9 +458,26 @@ class StateHandler:
         # tool call block ⚒ 🗜️ 🔧 🔨 🛠 ⚒️ 🧰 ⚙️
         c_blk = f"{render_terminal_glyph('🔧', '⚒')} {t_c:<2}"
 
-        l_msg = f"{m_blk} • {t_blk} • {i_blk} ‣ {o_blk} • {c_blk}"
+        l_msg = f"{w_blk} • {t_blk} • {i_blk} ‣ {o_blk} • {c_blk}"
 
         self.logger.info(l_msg, extra={"log_id": self.log_id, "skip_module_name": True})
+        # expose generation metrics to Prometheus
+
+        generation_duration_seconds.labels(wire_api=w, model=m).observe(t_t)
+        generation_duration_seconds_prompt.labels(wire_api=w, model=m).observe(t_p)
+        generation_duration_seconds_eval.labels(wire_api=w, model=m).observe(t_e)
+
+        generation_tps_prompt.labels(wire_api=w, model=m).observe(tps_p)
+        generation_tps_eval.labels(wire_api=w, model=m).observe(tps_e)
+
+        generation_total_tokens.labels(wire_api=w, model=m).inc(n_t)
+        generation_input_tokens.labels(wire_api=w, model=m).inc(n_p)
+        generation_output_tokens.labels(wire_api=w, model=m).inc(n_e)
+        generation_reasoning_tokens.labels(wire_api=w, model=m).inc(n_r)
+        for call in self.tool_handler.tool_calls:
+            tn = call["tool"].name
+            generation_tool_calls.labels(wire_api=w, model=m, tool_name=tn).inc()
+            generation_tool_call_tokens.labels(wire_api=w, model=m, tool_name=tn).inc()
 
     def _cleanup_on_done(self, completion: Union[Completion, str]):
         self.is_done = isinstance(completion, str) and completion == "[DONE]"
@@ -472,6 +500,10 @@ class StateHandler:
             self.logger.error(msg, extra=self.log_extra)
             await self.put_error(msg, "ERR_BACKEND_EXCEPTION")
             self.is_done = True
+            # increment generation error counter
+            m = self.manager.params.model
+            w = wire_api_label_from_params(self.manager.params)
+            generation_errors_total.labels(wire_api=w, model=m).inc()
             return
 
         self._debug_completion(completion)

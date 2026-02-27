@@ -1,6 +1,7 @@
 import asyncio
 from typing import Union
 
+from anthropic.types.message import Message
 from anthropic.types.message_tokens_count import MessageTokensCount
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -10,22 +11,24 @@ from burrito.common.dependencies import (
     get_inference_semaphore,
     get_session_handler,
 )
-from burrito.handlers.generation_handler import AdapterGenerationHandler
+from burrito.handlers.generation_handler import GenerationHandler
 from burrito.handlers.inference_handler import run_inference
-from burrito.handlers.session_handler import AdapterSessionHandler
+from burrito.handlers.session_handler import SessionHandler
 from burrito.services.harmony.harmony_service import (
     build_conversation_from_params,
     render_conversation_for_completion,
 )
-from burrito.types.create_params_messages import CreateParamsMessages
+from burrito.types.wire_api_params_messages import WireApiParamsMessages
 
 router = APIRouter()
 
 
-@router.post("/v1/messages/count_tokens", response_model=None)
-async def v1_count_tokens(raw_params: dict) -> MessageTokensCount | JSONResponse:
+@router.post(
+    "/v1/messages/count_tokens", response_model=MessageTokensCount, tags=["Anthropic"]
+)
+async def v1_count_tokens(raw_params: dict) -> Union[MessageTokensCount, JSONResponse]:
     try:
-        params = CreateParamsMessages(**raw_params)
+        params = WireApiParamsMessages(**raw_params)
     except Exception as e:
         return JSONResponse(
             content={"error": {"type": "invalid_request_error", "message": str(e)}},
@@ -41,21 +44,14 @@ async def v1_count_tokens(raw_params: dict) -> MessageTokensCount | JSONResponse
     return result
 
 
-@router.post("/v1/messages", response_model=None)
+@router.post("/v1/messages", response_model=Message, tags=["Anthropic"])
 async def v1_messages(
     request: Request,
-    raw_params: dict,
+    params: WireApiParamsMessages,
     semaphore: asyncio.Semaphore = Depends(get_inference_semaphore),
-    generator: AdapterGenerationHandler = Depends(get_generation_handler),
-    session_handler: AdapterSessionHandler = Depends(get_session_handler),
+    generator: GenerationHandler = Depends(get_generation_handler),
+    session_handler: SessionHandler = Depends(get_session_handler),
 ) -> Union[StreamingResponse, JSONResponse]:
-    try:
-        params = CreateParamsMessages(**raw_params)
-    except Exception as e:
-        return JSONResponse(
-            content={"error": {"type": "invalid_request_error", "message": str(e)}},
-            status_code=422,
-        )
     return await run_inference(
         request=request,
         params=params,

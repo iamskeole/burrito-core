@@ -1,0 +1,177 @@
+{
+  "editable": true,
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_requests_total{status=\"200\"}[5m])) by (method,endpoint)",
+          "legendFormat": "{{method}} {{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Requests (200)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_request_latency_seconds_success_bucket[5m])) by (le, method, endpoint)",
+          "legendFormat": "{{le}}",
+          "refId": "B"
+        }
+      ],
+      "title": "Request Latency Success",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_request_latency_seconds_error_bucket[5m])) by (le, method, endpoint)",
+          "legendFormat": "{{le}}",
+          "refId": "C"
+        }
+      ],
+      "title": "Request Latency Error",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_duration_seconds_bucket[5m])) by (le, wire_api, model)",
+          "legendFormat": "{{le}}",
+          "refId": "D"
+        }
+      ],
+      "title": "Generation Duration",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_tps_prompt_sum[5m])) by (wire_api, model) / sum(rate(burrito_generation_tps_prompt_count[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "E"
+        }
+      ],
+      "title": "Generation TPS Prompt",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_tps_eval_sum[5m])) by (wire_api, model) / sum(rate(burrito_generation_tps_eval_count[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "F"
+        }
+      ],
+      "title": "Generation TPS Eval",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_total_tokens[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "G"
+        }
+      ],
+      "title": "Total Tokens",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_input_tokens[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "H"
+        }
+      ],
+      "title": "Prompt Tokens",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_output_tokens[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "I"
+        }
+      ],
+      "title": "Output Tokens",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_reasoning_tokens[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "J"
+        }
+      ],
+      "title": "Reasoning Tokens",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_tool_call_tokens[5m])) by (wire_api, model, tool_name)",
+          "legendFormat": "{{model}} {{tool_name}}",
+          "refId": "K"
+        }
+      ],
+      "title": "Tool Call Tokens",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_tool_calls_total[5m])) by (wire_api, model, tool_name)",
+          "legendFormat": "{{model}} {{tool_name}}",
+          "refId": "L"
+        }
+      ],
+      "title": "Tool Calls",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_requests_total[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "M"
+        }
+      ],
+      "title": "Generation Requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(burrito_generation_errors_total[5m])) by (wire_api, model)",
+          "legendFormat": "{{model}}",
+          "refId": "N"
+        }
+      ],
+      "title": "Generation Errors",
+      "type": "timeseries"
+    }
+  ],
+  "title": "Burrito – LLM Inference Dashboard",
+  "uid": "quick-burrito-dashboard",
+  "version": 1,
+  "schemaVersion": 30
+}

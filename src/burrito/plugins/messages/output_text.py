@@ -13,7 +13,7 @@ from anthropic.types.text_delta import TextDelta
 
 from burrito.handlers.token_handler import ConversationToken
 from burrito.plugins.messages.base_plugin import BasePluginMessages
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 
 
 class OutputTextPluginMessages(BasePluginMessages):
@@ -30,7 +30,7 @@ class OutputTextPluginMessages(BasePluginMessages):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {ConversationStateEnum.OUTPUT_TEXT}
+        return {ConversationState.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object
@@ -148,10 +148,10 @@ class OutputTextPluginMessages(BasePluginMessages):
         self.current_output_text_content += self.output_delta_buffer
         self.output_delta_buffer = ""
 
-    async def on_enter_state(self, state: ConversationStateEnum):
+    async def on_enter_state(self, state: ConversationState):
         await self.handle_on_enter_state()
 
-    async def on_exit_state(self, state: ConversationStateEnum):
+    async def on_exit_state(self, state: ConversationState):
         await self.handle_on_exit_state()
 
     async def on_token(self, token: ConversationToken):

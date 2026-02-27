@@ -20,6 +20,23 @@ ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 PROMPT_DIR = pathlib.Path(__file__).parent.parent / "prompts"
 
 
+from burrito.types.wire_api_params import WireApiParams
+from burrito.types.wire_api_params_chat import WireApiParamsChat
+from burrito.types.wire_api_params_responses import WireApiParamsResponses
+from burrito.types.wire_api_params_messages import WireApiParamsMessages
+
+def wire_api_label_from_params(params: WireApiParams) -> str
+    match params:
+        case WireApiParamsChat():
+            w = "oai:chat"
+        case WireApiParamsResponses():
+            w = "oai:responses"
+        case WireApiParamsMessages():
+            w = "ant:messages"
+        case _:
+            w = "unknown"
+    return w
+
 @lru_cache(maxsize=None)
 def _read_file(path: pathlib.Path) -> str:
     return dedent(path.read_text(encoding="utf-8"))
@@ -53,8 +70,8 @@ def random_guid() -> str:
     return str(uuid.uuid4())
 
 
-def yyyymmdd():
-    now = datetime.now(tz=timezone.utc)
+def yyyymmdd(in_utc: bool = False):
+    now = datetime.now(tz=timezone.utc if in_utc else None)
     yy, mm, dd = now.year, str(now.month).zfill(2), str(now.day).zfill(2)
     return f"{yy}-{mm}-{dd}"
 

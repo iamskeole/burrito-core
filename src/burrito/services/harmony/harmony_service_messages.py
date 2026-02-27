@@ -8,20 +8,23 @@ from openai_harmony import (
     TextContent,
 )
 
+from burrito.types.conversation_enums import (
+    ConversationChannel,
+    ConversationReasoningEffort,
+)
 from burrito.types.conversation_inputs import (
     ConversationInputs,
     ConversationReasoningParam,
     ConversationToolParam,
 )
-from burrito.types.create_params_messages import (
+from burrito.types.wire_api_params_messages import (
     ContentBlockText,
     ContentBlockToolUse,
     ContentParam,
-    CreateParamsMessages,
     ToolParam,
     ToolParamBrowserMessages,
+    WireApiParamsMessages,
 )
-from burrito.types.enums import ConversationChannelEnum, ReasoningEffortEnum
 
 
 def user_message(
@@ -66,15 +69,13 @@ def user_message(
 
                 for txt in maybe_loop:
                     message = Message(author=author, content=[TextContent(text=txt)])  # type: ignore
-                    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
+                    message.with_channel(ConversationChannel.COMMENTARY.value)
                     message.with_recipient(Role.ASSISTANT.value)
                     messages.append(message)
     return messages
 
 
-def assistant_message(
-    input: ContentParam,
-) -> Optional[List[Message]]:
+def assistant_message(input: ContentParam) -> Optional[List[Message]]:
     if input.role != "assistant":
         return
     messages: List[Message] = []
@@ -84,7 +85,7 @@ def assistant_message(
             Message(
                 author=author,
                 content=[TextContent(text=input.content)],
-                channel=ConversationChannelEnum.FINAL.value,
+                channel=ConversationChannel.FINAL.value,
             )
         )
     else:
@@ -93,14 +94,14 @@ def assistant_message(
             recipient = None
             if i.type == "text":
                 text = i.text
-                channel = ConversationChannelEnum.FINAL
+                channel = ConversationChannel.FINAL
             if i.type == "thinking":
                 text = i.thinking
-                channel = ConversationChannelEnum.ANALYSIS
+                channel = ConversationChannel.ANALYSIS
             if i.type == "tool_use":
                 text = json.dumps(i.input)
                 recipient = i.name
-                channel = ConversationChannelEnum.COMMENTARY
+                channel = ConversationChannel.COMMENTARY
 
             # should not happen, tool_result message sent as user message
             if i.type == "tool_result":
@@ -117,8 +118,8 @@ def assistant_message(
 
 def parse_messages(inputs: List[ContentParam]) -> List[Message]:
     messages: List[Message] = []
-
     tool_calls: Dict[str, ContentBlockToolUse] = {}
+
     for i in inputs:
         if isinstance(i.content, str):
             continue
@@ -144,9 +145,7 @@ def parse_messages(inputs: List[ContentParam]) -> List[Message]:
     return messages
 
 
-def parse_tools(
-    params: CreateParamsMessages,
-) -> List[ConversationToolParam]:
+def parse_tools(params: WireApiParamsMessages) -> List[ConversationToolParam]:
     tools: List[ConversationToolParam] = []
     for tool in params.tools or []:
         match tool:
@@ -184,7 +183,7 @@ def parse_tools(
     return tools
 
 
-def parse_instructions(params: CreateParamsMessages) -> str:
+def parse_instructions(params: WireApiParamsMessages) -> str:
     instructions = ""
     if not params.system:
         return instructions
@@ -202,9 +201,7 @@ def parse_instructions(params: CreateParamsMessages) -> str:
     return instructions
 
 
-def parse_reasoning(
-    params: CreateParamsMessages,
-) -> ConversationReasoningParam:
+def parse_reasoning(params: WireApiParamsMessages) -> ConversationReasoningParam:
     budget_tokens = 0
     if params.thinking and params.thinking.budget_tokens:
         budget_tokens = params.thinking.budget_tokens
@@ -217,14 +214,12 @@ def parse_reasoning(
     else:
         reasoning_effort = "low"
 
-    effort = ReasoningEffortEnum(reasoning_effort)
+    effort = ConversationReasoningEffort(reasoning_effort)
     reasoning = ConversationReasoningParam(effort=effort)
     return reasoning
 
 
-def build_message_list_messages(
-    params: CreateParamsMessages,
-) -> ConversationInputs:
+def build_message_list_messages(params: WireApiParamsMessages) -> ConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params.messages)
     tools = parse_tools(params)

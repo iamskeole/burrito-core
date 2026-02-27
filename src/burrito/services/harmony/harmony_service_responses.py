@@ -4,15 +4,22 @@ from typing import Dict, List, Optional, Union
 
 from openai_harmony import Author, Content, Message, Role, TextContent
 
+from burrito.types.conversation_enums import ConversationChannel
 from burrito.types.conversation_inputs import (
     ConversationInputs,
     ConversationReasoningParam,
     ConversationToolParam,
 )
-from burrito.types.create_params_responses import (
+from burrito.types.tool_param_browser import ToolParamBrowserResponses
+from burrito.types.tool_param_custom import (
+    CustomToolInputFormatGrammar,
+    CustomToolInputFormatText,
+    ToolParamCustomResponses,
+)
+from burrito.types.tool_param_function import ToolParamFunctionResponses
+from burrito.types.wire_api_params_responses import (
     AssistantMessageParamResponses,
     AssistantReasoningParamResponses,
-    CreateParamsResponses,
     CustomToolCallOutputParamResponses,
     CustomToolInputParamResponses,
     DeveloperInputMessageParamResponses,
@@ -23,15 +30,8 @@ from burrito.types.create_params_responses import (
     SystemInputMessageParamResponses,
     ToolCallOutputParamResponses,
     UserInputMessageParamResponses,
+    WireApiParamsResponses,
 )
-from burrito.types.enums import ConversationChannelEnum
-from burrito.types.tool_param_browser import ToolParamBrowserResponses
-from burrito.types.tool_param_custom import (
-    CustomToolInputFormatGrammar,
-    CustomToolInputFormatText,
-    ToolParamCustomResponses,
-)
-from burrito.types.tool_param_function import ToolParamFunctionResponses
 
 
 def user_message_from_text_input(user_input: str) -> Message:
@@ -70,17 +70,17 @@ def assistant_message(
     ],
 ) -> Message:
     content: List[Content] = []
-    channel: Optional[ConversationChannelEnum] = None
+    channel: Optional[ConversationChannel] = None
 
     match message_data:
         case AssistantMessageParamResponses():
-            channel = ConversationChannelEnum.FINAL
+            channel = ConversationChannel.FINAL
             if isinstance(message_data.content, str):
                 content = [TextContent(text=message_data.content)]
             else:
                 content = [TextContent(text=i.text) for i in message_data.content]
         case AssistantReasoningParamResponses():
-            channel = ConversationChannelEnum.ANALYSIS
+            channel = ConversationChannel.ANALYSIS
             content = [TextContent(text=i.text) for i in message_data.content]
         case _:  # tool calls handled separately; anything else?
             pass
@@ -115,7 +115,7 @@ def tool_call_input_message(
             )
 
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
-    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
+    message.with_channel(ConversationChannel.COMMENTARY.value)
     if recipient:
         message.with_recipient(recipient)
     return message
@@ -138,14 +138,12 @@ def tool_call_output_message(
         author=Author(role=Role.TOOL, name=f"functions.{tool_call.name}"),
         content=[TextContent(text=message_data.output)],
     )
-    message.with_channel(ConversationChannelEnum.COMMENTARY.value)
+    message.with_channel(ConversationChannel.COMMENTARY.value)
     message.with_recipient(Role.ASSISTANT.value)
     return message
 
 
-def parse_messages(
-    inputs: Union[str, List[InputItemParamResponses]],
-) -> List[Message]:
+def parse_messages(inputs: Union[str, List[InputItemParamResponses]]) -> List[Message]:
     if isinstance(inputs, str):
         return [user_message_from_text_input(inputs)]
 
@@ -190,9 +188,7 @@ def parse_messages(
 
 
 # TODO: handle tool_choice from params, eg auto, specific etc
-def parse_tools(
-    params: CreateParamsResponses,
-) -> List[ConversationToolParam]:
+def parse_tools(params: WireApiParamsResponses) -> List[ConversationToolParam]:
     tools: List[ConversationToolParam] = []
     for tool in params.tools or []:
         match tool:
@@ -234,7 +230,7 @@ def parse_tools(
     return tools
 
 
-def parse_instructions(params: CreateParamsResponses) -> str:
+def parse_instructions(params: WireApiParamsResponses) -> str:
     instructions = params.instructions or ""
     messages = params.input if isinstance(params.input, list) else []
 
@@ -247,9 +243,7 @@ def parse_instructions(params: CreateParamsResponses) -> str:
     return instructions.strip()
 
 
-def build_message_list_responses(
-    params: CreateParamsResponses,
-) -> ConversationInputs:
+def build_message_list_responses(params: WireApiParamsResponses) -> ConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params.input)
     tools = parse_tools(params)

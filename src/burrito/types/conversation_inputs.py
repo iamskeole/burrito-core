@@ -7,7 +7,10 @@ from pydantic import BaseModel
 
 from burrito.common.config import settings
 
-from .enums import ReasoningEffortEnum, ReasoningSummaryEnum
+from .conversation_enums import (
+    ConversationReasoningEffort,
+    ConversationReasoningSummary,
+)
 from .tool_param_custom import CustomToolInputFormat
 
 
@@ -21,8 +24,12 @@ class ConversationToolParam(BaseModel):
 
 
 class ConversationReasoningParam(BaseModel):
-    effort: Optional[str] = ReasoningEffortEnum(settings.DEFAULT_REASONING_EFFORT)
-    summary: Optional[str] = ReasoningSummaryEnum(settings.DEFAULT_REASONING_SUMMARY)
+    effort: Optional[str] = ConversationReasoningEffort(
+        settings.DEFAULT_REASONING_EFFORT
+    )
+    summary: Optional[str] = ConversationReasoningSummary(
+        settings.DEFAULT_REASONING_SUMMARY
+    )
 
 
 class ConversationInputs(BaseModel):

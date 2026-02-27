@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-
 from openai.types.responses.response import Response
 from openai.types.responses.response_code_interpreter_tool_call import (
     OutputLogs,
@@ -25,8 +22,11 @@ from openai.types.responses.response_output_item_done_event import (
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.conversation_enums import ConversationState
 from burrito.types.conversation_token import ConversationToken
-from burrito.types.enums import ConversationStateEnum
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
 
 
 class NativeToolsPluginResponses(BasePluginResponses):
@@ -37,12 +37,12 @@ class NativeToolsPluginResponses(BasePluginResponses):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            ConversationStateEnum.NATIVE_TOOL_INPUT,
-            ConversationStateEnum.NATIVE_TOOL_CALL,
-            ConversationStateEnum.NATIVE_TOOL_DONE,
+            ConversationState.NATIVE_TOOL_INPUT,
+            ConversationState.NATIVE_TOOL_CALL,
+            ConversationState.NATIVE_TOOL_DONE,
         }
 
-    async def send_browser_event(self, state: ConversationStateEnum):
+    async def send_browser_event(self, state: ConversationState):
         output_object = self.manager.output_object
         assert isinstance(self.manager.output_object, Response), (
             f"Expected a Response, but got {type(output_object)}"
@@ -94,7 +94,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
         else:
             return  # should not happen, but with hallucinations you never know..
 
-        if state == ConversationStateEnum.NATIVE_TOOL_CALL:
+        if state == ConversationState.NATIVE_TOOL_CALL:
             self.manager.output_index += 1
             output_item = ResponseFunctionWebSearch(
                 id=f"ws_{random_uuid()}",
@@ -123,7 +123,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
             )
         await self.put_event(event)
 
-    async def send_python_event(self, state: ConversationStateEnum):
+    async def send_python_event(self, state: ConversationState):
         output_object = self.manager.output_object
         assert isinstance(self.manager.output_object, Response), (
             f"Expected a Response, but got {type(output_object)}"
@@ -136,7 +136,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
         if not tool_handler._is_python(recipient):
             return
 
-        if state == ConversationStateEnum.NATIVE_TOOL_CALL:
+        if state == ConversationState.NATIVE_TOOL_CALL:
             self.manager.output_index += 1
             output_item = ResponseCodeInterpreterToolCall(
                 id=f"ci_{random_uuid()}",
@@ -170,8 +170,8 @@ class NativeToolsPluginResponses(BasePluginResponses):
             )
         await self.put_event(event)
 
-    async def handle_on_enter_state(self, state: ConversationStateEnum):
-        if state == ConversationStateEnum.NATIVE_TOOL_INPUT:
+    async def handle_on_enter_state(self, state: ConversationState):
+        if state == ConversationState.NATIVE_TOOL_INPUT:
             self.manager.tool_handler.register_tool_call()
             return
         await self.send_python_event(state)
@@ -183,7 +183,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
     async def handle_on_exit_state(self):
         pass
 
-    async def on_enter_state(self, state: ConversationStateEnum):
+    async def on_enter_state(self, state: ConversationState):
         await self.handle_on_enter_state(state)
 
     async def on_exit_state(self, state: str):

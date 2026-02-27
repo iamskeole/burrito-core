@@ -11,7 +11,7 @@ from openai.types.responses.response_usage import (
 )
 
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 
 
 class ContextManagerPluginResponses(BasePluginResponses):
@@ -24,10 +24,10 @@ class ContextManagerPluginResponses(BasePluginResponses):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            ConversationStateEnum.CREATED,
-            ConversationStateEnum.IN_PROGRESS,
-            ConversationStateEnum.COMPLETED,
-            ConversationStateEnum.TOOL_CALL,
+            ConversationState.CREATED,
+            ConversationState.IN_PROGRESS,
+            ConversationState.COMPLETED,
+            ConversationState.TOOL_CALL,
         }
 
     async def handle_response_created_event(self):
@@ -48,7 +48,7 @@ class ContextManagerPluginResponses(BasePluginResponses):
         event = ResponseInProgressEvent(
             response=self.manager.output_object,  # type: ignore
             sequence_number=self.manager.sequence_number,
-            type=f"response.{ConversationStateEnum.IN_PROGRESS.value}",  # type: ignore
+            type=f"response.{ConversationState.IN_PROGRESS.value}",  # type: ignore
         )
         await self.put_event(event)
         self.sent_in_progress_event = True
@@ -79,20 +79,20 @@ class ContextManagerPluginResponses(BasePluginResponses):
         event = ResponseCompletedEvent(
             response=self.manager.output_object,
             sequence_number=self.manager.sequence_number,
-            type=f"response.{ConversationStateEnum.COMPLETED.value}",  # type: ignore
+            type=f"response.{ConversationState.COMPLETED.value}",  # type: ignore
         )
         await self.put_event(event)
         await self.send_close_marker()
 
-    async def on_enter_state(self, state: ConversationStateEnum):
-        if state == ConversationStateEnum.CREATED:
+    async def on_enter_state(self, state: ConversationState):
+        if state == ConversationState.CREATED:
             await self.handle_response_created_event()
 
-        if state == ConversationStateEnum.IN_PROGRESS:
+        if state == ConversationState.IN_PROGRESS:
             await self.handle_response_in_progress_event()
 
         if state in [
-            ConversationStateEnum.COMPLETED,
-            ConversationStateEnum.TOOL_CALL,
+            ConversationState.COMPLETED,
+            ConversationState.TOOL_CALL,
         ]:
             await self.handle_response_completed_event()

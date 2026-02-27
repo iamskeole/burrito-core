@@ -3,11 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Set
 
 from openai.types.responses.response import Response
-
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-    from burrito.handlers.token_handler import ConversationToken
-
 from openai.types.responses.response_content_part_added_event import (
     ResponseContentPartAddedEvent,
 )
@@ -33,7 +28,11 @@ from openai.types.responses.response_text_done_event import ResponseTextDoneEven
 
 from burrito.common.utils import random_uuid
 from burrito.plugins.responses.base_plugin import BasePluginResponses
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.handlers.token_handler import ConversationToken
 
 
 class OutputTextPluginResponses(BasePluginResponses):
@@ -54,7 +53,7 @@ class OutputTextPluginResponses(BasePluginResponses):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {ConversationStateEnum.OUTPUT_TEXT}
+        return {ConversationState.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         output_object = self.manager.output_object

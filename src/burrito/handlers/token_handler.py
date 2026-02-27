@@ -6,8 +6,8 @@ from openai.types.completion import Completion
 
 from burrito.common.utils import unix_timestamp_in_ms
 from burrito.services.harmony import ENCODING, SPECIAL_TOKENS
+from burrito.types.conversation_enums import ConversationChannel
 from burrito.types.conversation_token import ConversationToken
-from burrito.types.enums import ConversationChannelEnum
 
 
 def create_return_token(
@@ -37,7 +37,7 @@ def patch_token_finish_reason(
     # also requested (payload["logprob"] > 0 | != None)
     # instead, it returns a completion with empty text for choices[0],
     # as well as specific finish reason, so we create synthetic token to
-    # trigger AdapterConversationStateEnum.COMPLETED and finish generation
+    # trigger ConversationState.COMPLETED and finish generation
     if token.id == -1 and token.finish_reason is not None:
         end_token_ids = [SPECIAL_TOKENS.RETURN.id, SPECIAL_TOKENS.CALL.id]
 
@@ -49,8 +49,8 @@ def patch_token_finish_reason(
         is_tool_call = (
             parser_channel
             in [
-                ConversationChannelEnum.ANALYSIS.value,
-                ConversationChannelEnum.COMMENTARY.value,
+                ConversationChannel.ANALYSIS.value,
+                ConversationChannel.COMMENTARY.value,
             ]
             and parser_recipient is not None
         )

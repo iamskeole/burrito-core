@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 
-class Usage(BaseModel):
+class ConversationUsage(BaseModel):
     n_input: int
     n_reasoning: int
     n_preamble: int

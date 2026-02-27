@@ -96,8 +96,8 @@ class ReasoningParam(BaseModel):
     budget_tokens: Optional[int] = 32000
     type: Optional[Literal["enabled"]] = "enabled"
 
-
-class CreateParamsMessages(BaseModel):
+# TODO: check defaults for thinking and ints / floats
+class WireApiParamsMessages(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     messages: List[ContentParam]
     conversation: Optional[ConversationParam] = None

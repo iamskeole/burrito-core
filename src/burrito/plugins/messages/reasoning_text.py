@@ -9,7 +9,7 @@ from anthropic.types.thinking_delta import ThinkingDelta
 
 from burrito.handlers.token_handler import ConversationToken
 from burrito.plugins.messages.base_plugin import BasePluginMessages
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 
 
 class ReasoningTextPluginMessages(BasePluginMessages):
@@ -19,8 +19,8 @@ class ReasoningTextPluginMessages(BasePluginMessages):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            ConversationStateEnum.REASONING,
-            ConversationStateEnum.PREAMBLE,
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
         }
 
     async def handle_on_enter_state(self):

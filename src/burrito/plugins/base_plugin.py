@@ -3,13 +3,13 @@ from typing import TYPE_CHECKING, Set
 
 from pydantic import BaseModel
 
+from burrito.common.logger import FastAPILogger
+from burrito.types.conversation_enums import ConversationState
+from burrito.types.conversation_usage import ConversationUsage
+
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
     from burrito.handlers.token_handler import ConversationToken
-
-from burrito.common.logger import FastAPILogger
-from burrito.types.enums import ConversationStateEnum
-from burrito.types.usage import Usage
 
 
 class BasePlugin(ABC):
@@ -24,16 +24,16 @@ class BasePlugin(ABC):
     def subscribed_states(self) -> Set[str]:
         pass
 
-    async def on_enter_state(self, state: ConversationStateEnum):
+    async def on_enter_state(self, state: ConversationState):
         pass
 
-    async def on_exit_state(self, state: ConversationStateEnum):
+    async def on_exit_state(self, state: ConversationState):
         pass
 
     async def on_token(self, token: "ConversationToken"):
         pass
 
-    def get_token_counts(self) -> Usage:
+    def get_token_counts(self) -> ConversationUsage:
         n_input = len(self.manager.prompt_tokens)
         n_reasoning = len(self.manager.reasoning_tokens)
         n_preamble = len(self.manager.preamble_tokens)
@@ -44,7 +44,7 @@ class BasePlugin(ABC):
         n_native_tool_input = len(self.manager.native_tool_input_tokens)
         n_caller_tool_input = len(self.manager.caller_tool_input_tokens)
 
-        return Usage(
+        return ConversationUsage(
             n_input=n_input,
             n_reasoning=n_reasoning,
             n_preamble=n_preamble,

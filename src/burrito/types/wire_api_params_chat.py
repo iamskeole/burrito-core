@@ -5,7 +5,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field
 
 from burrito.common.config import settings
-from burrito.types.enums import ReasoningEffortEnum
+from burrito.types.conversation_enums import ConversationReasoningEffort
 from burrito.types.tool_param_browser import ToolParamBrowserChat
 from burrito.types.tool_param_function import ToolParamFunctionChat
 from burrito.types.tool_param_python import ToolParamPythonChat
@@ -88,12 +88,14 @@ class Conversation(BaseModel):
     id: str
 
 
-class CreateParamsChat(BaseModel):
+class WireApiParamsChat(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     messages: List[InputItemParamChat]
     conversation: Optional[Conversation] = None
 
-    reasoning_effort: Optional[str] = ReasoningEffortEnum(DEFAULT_REASONING_EFFORT)
+    reasoning_effort: Optional[str] = ConversationReasoningEffort(
+        DEFAULT_REASONING_EFFORT
+    )
 
     temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
@@ -110,7 +112,7 @@ class CreateParamsChat(BaseModel):
                     ToolParamBrowserChat,
                     ToolParamPythonChat,
                     ToolParamFunctionChat,
-                    # AdapterCustomToolParamChat, # see todo note above
+                    # ToolParamCustomChat, # see todo note above
                 ],
                 Field(discriminator="type"),
             ]

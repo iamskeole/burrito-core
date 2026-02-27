@@ -24,9 +24,6 @@ from burrito.tools.browser.backend import BurritoBrowserBackend
 
 CLEANUP_PATTERN = re.compile(r"【\d+†(?P<content>[^†】]+)(?:†[^†】]+)?】")
 
-TIMEOUT_FETCH = settings.BROWSER_TIMEOUT_FETCH
-TIMEOUT_SEARCH = settings.BROWSER_TIMEOUT_SEARCH
-
 logger = logging.getLogger("browser_backend")
 
 
@@ -162,7 +159,7 @@ class BurritoBrowser(SimpleBrowserTool):
 
         try:
             async with ClientSession(
-                timeout=ClientTimeout(total=TIMEOUT_SEARCH)
+                timeout=ClientTimeout(total=settings.BROWSER_TIMEOUT_SEARCH)
             ) as session:
                 search_page = await self.backend.search(
                     query=query,
@@ -192,7 +189,7 @@ class BurritoBrowser(SimpleBrowserTool):
 
         try:
             async with ClientSession(
-                timeout=ClientTimeout(total=TIMEOUT_FETCH)
+                timeout=ClientTimeout(total=settings.BROWSER_TIMEOUT_FETCH)
             ) as session:
                 page = await backend.fetch(url, is_docs_website, session=session)
             return page

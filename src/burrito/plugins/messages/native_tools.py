@@ -2,10 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Set
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-
-
 from anthropic.types.input_json_delta import InputJSONDelta
 from anthropic.types.message import Message
 from anthropic.types.raw_content_block_delta_event import RawContentBlockDeltaEvent
@@ -18,8 +14,11 @@ from anthropic.types.web_search_tool_result_block import (
 )
 
 from burrito.plugins.responses.base_plugin import BasePluginResponses
+from burrito.types.conversation_enums import ConversationState
 from burrito.types.conversation_token import ConversationToken
-from burrito.types.enums import ConversationStateEnum
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
 
 
 class NativeToolsPluginMessages(BasePluginResponses):
@@ -30,12 +29,12 @@ class NativeToolsPluginMessages(BasePluginResponses):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            ConversationStateEnum.NATIVE_TOOL_INPUT,
-            ConversationStateEnum.NATIVE_TOOL_CALL,
-            ConversationStateEnum.NATIVE_TOOL_DONE,
+            ConversationState.NATIVE_TOOL_INPUT,
+            ConversationState.NATIVE_TOOL_CALL,
+            ConversationState.NATIVE_TOOL_DONE,
         }
 
-    async def send_browser_event(self, state: ConversationStateEnum):
+    async def send_browser_event(self, state: ConversationState):
         output_object = self.manager.output_object
         assert isinstance(self.manager.output_object, Message), (
             f"Message a Response, but got {type(output_object)}"
@@ -92,7 +91,7 @@ class NativeToolsPluginMessages(BasePluginResponses):
         else:
             return
 
-        if state == ConversationStateEnum.NATIVE_TOOL_CALL:
+        if state == ConversationState.NATIVE_TOOL_CALL:
             if function_name == "search":
                 self.manager.output_index += 1
                 self.manager.output_object.content.append(block)
@@ -162,11 +161,11 @@ class NativeToolsPluginMessages(BasePluginResponses):
                 await self.put_event(event_delta)
                 await self.put_event(event_done)
 
-    async def send_python_event(self, state: ConversationStateEnum):
+    async def send_python_event(self, state: ConversationState):
         pass  # claude doesn't have a code interpreter / corresponding events?
 
-    async def handle_on_enter_state(self, state: ConversationStateEnum):
-        if state == ConversationStateEnum.NATIVE_TOOL_INPUT:
+    async def handle_on_enter_state(self, state: ConversationState):
+        if state == ConversationState.NATIVE_TOOL_INPUT:
             self.manager.tool_handler.register_tool_call()
             return
         await self.send_python_event(state)
@@ -178,7 +177,7 @@ class NativeToolsPluginMessages(BasePluginResponses):
     async def handle_on_exit_state(self):
         pass
 
-    async def on_enter_state(self, state: ConversationStateEnum):
+    async def on_enter_state(self, state: ConversationState):
         await self.handle_on_enter_state(state)
 
     async def on_exit_state(self, state: str):

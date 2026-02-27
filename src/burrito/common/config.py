@@ -7,6 +7,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
 
+def list_from_cfg(val: str, fallback: str) -> list[str]:
+    return [v for v in val.replace(";", ",").split(",") if v] or [fallback]
+
+
 class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
@@ -17,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG_TOOL_INPUTS: bool = False
     DEBUG_TOOL_OUTPUTS: bool = False
     DEBUG_COMPLETIONS: bool = False
-    DEBUG_PROMPT: bool = False
+    DEBUG_PROMPT: bool = True
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
     DEBUG_STATE_CHANGE: bool = False
@@ -30,7 +34,7 @@ class Settings(BaseSettings):
     CORS_ALLOWED_ORIGINS: str = "*"
     CORS_ALLOWED_METHODS: str = "*"
     CORS_ALLOWED_HEADERS: str = "*"
-    CORS_ALLOWED_CREDENTIALS: bool = True
+    CORS_ALLOW_CREDENTIALS: bool = True
 
     MAX_REQUEST_BODY_SIZE: int = 1048576 * 1  # MB in bytes
     MAX_CONCURRENT_INFERENCE_REQUESTS: int = 16  # > this  wait in fifo queue
@@ -45,27 +49,28 @@ class Settings(BaseSettings):
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = "medium"
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = "auto"
 
-    MODEL_IDENTITY: str = "v1"
+    MODEL_IDENTITY: str = "default"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
     # NOTE: set temperature to 0.001 and this likely happens more often?
     MAX_REASONING_LOOPS: int = 1000
 
     ENFORCE_STRICT_TOOL_NAMESPACES: bool = False
+    CLEANUP_LOW_PRECISION_PROMPT_TIMESTRINGS: bool = True
 
-    IS_PYTHON_TOOL_ENABLED: bool = True
-    IS_BROWSER_TOOL_ENABLED: bool = True
+    IS_PYTHON_TOOL_ENABLED: bool = False
+    IS_BROWSER_TOOL_ENABLED: bool = False
 
-    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
-    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
+    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = False
+    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = False
 
     PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
 
     BROWSER_TIMEOUT_FETCH: int = 3
     BROWSER_TIMEOUT_SEARCH: int = 10
-    BROWSER_LOCALE: str = "en-US"
+    BROWSER_LOCALE: str = "en-GB"
     BROWSER_LANGUAGE: str = "en"
-    BROWSER_TIMEZONE: str = "America/New_York"
+    BROWSER_TIMEZONE: str = "Europe/London"
 
     BRAVE_API_KEY: str = ""
     BRAVE_API_URL: str = "https://api.search.brave.com/res/v1/web/search"
@@ -76,6 +81,14 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
     )
+
+    # Metrics security configuration
+    # If METRICS_AUTH_TOKEN is set, the `/metrics` endpoint will require a
+    # matching Bearer token in the Authorization header.
+    METRICS_AUTH_TOKEN: str = "BURRITO_AUTH_DEV"
+    # Comma‑ or semicolon‑separated list of IPs that may scrape the metrics.
+    # Empty string disables IP filtering.
+    METRICS_IP_WHITELIST: str = ""
 
 
 settings = Settings()  # type: ignore[reportCallIssue]

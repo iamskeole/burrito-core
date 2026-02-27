@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Set
 
-if TYPE_CHECKING:
-    from burrito.handlers.state_handler import StateHandler
-    from burrito.handlers.token_handler import ConversationToken
-
-
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
-from burrito.types.enums import ConversationStateEnum
+from burrito.types.conversation_enums import ConversationState
 from burrito.types.patched_chat_completion_chunk import (
     PatchedChatCompletionChunkChoice,
     PatchedChatCompletionChunkChoiceDelta,
 )
+
+if TYPE_CHECKING:
+    from burrito.handlers.state_handler import StateHandler
+    from burrito.handlers.token_handler import ConversationToken
 
 
 class OutputTextPluginChat(BasePluginChat):
@@ -32,7 +31,7 @@ class OutputTextPluginChat(BasePluginChat):
 
     @property
     def subscribed_states(self) -> Set[str]:
-        return {ConversationStateEnum.OUTPUT_TEXT}
+        return {ConversationState.OUTPUT_TEXT}
 
     async def handle_on_enter_state(self):
         pass  # no enter event for chat/completions

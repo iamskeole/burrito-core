@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import List, Optional
 
@@ -29,16 +30,8 @@ from burrito.services.harmony.harmony_service_responses import (
 )
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
+from burrito.types.conversation_enums import ConversationChannel
 from burrito.types.conversation_inputs import ConversationInputs, ConversationToolParam
-from burrito.types.create_params import CreateParams
-from burrito.types.create_params_chat import CreateParamsChat
-from burrito.types.create_params_messages import (
-    CreateParamsMessages,
-    ToolParam,
-    ToolParamBrowserMessages,
-)
-from burrito.types.create_params_responses import CreateParamsResponses
-from burrito.types.enums import ConversationChannelEnum
 from burrito.types.tool_param_browser import (
     ToolParamBrowserChat,
     ToolParamBrowserResponses,
@@ -47,6 +40,14 @@ from burrito.types.tool_param_python import (
     ToolParamPythonChat,
     ToolParamPythonResponses,
 )
+from burrito.types.wire_api_params import WireApiParams
+from burrito.types.wire_api_params_chat import WireApiParamsChat
+from burrito.types.wire_api_params_messages import (
+    ToolParam,
+    ToolParamBrowserMessages,
+    WireApiParamsMessages,
+)
+from burrito.types.wire_api_params_responses import WireApiParamsResponses
 
 REASONING = {
     "high": ReasoningEffort.HIGH,
@@ -57,6 +58,20 @@ REASONING = {
 ENCODING = load_harmony_encoding(HarmonyEncodingName.HARMONY_GPT_OSS)
 STOP_TOKENS = ENCODING.stop_tokens_for_assistant_actions()
 STOP_WORDS = [ENCODING.decode([i]) for i in STOP_TOKENS]
+
+TIME_DETECT_RE = re.compile(
+    r"""
+       (?P<hour>\d{1,2})                # <hour>            (keep)
+       :\d{2}                           # :<minute>         (ignore)
+       :\d{2}                           # :<second>         (ignore)
+       (?:\.\d+)?                       # optional .<ms>    (ignore)
+       (?P<ampm>\s*(?:AM|PM|am|pm))?    # optional AM/PM    (keep)
+       """,
+    re.VERBOSE,
+)
+
+# Replacement:  <hour>:00:00  +  the captured AM/PM (if any)
+TIME_REPLACE_RE = r"\g<hour>:00:00\g<ampm>"
 
 
 class SPECIAL_TOKENS(Enum):
@@ -80,9 +95,9 @@ def build_system_message(
 ) -> Message:
     channel_config = ChannelConfig(
         valid_channels=[
-            ConversationChannelEnum.ANALYSIS.value,
-            ConversationChannelEnum.COMMENTARY.value,
-            ConversationChannelEnum.FINAL.value,
+            ConversationChannel.ANALYSIS.value,
+            ConversationChannel.COMMENTARY.value,
+            ConversationChannel.FINAL.value,
         ],
         channel_required=True,
     )
@@ -95,7 +110,8 @@ def build_system_message(
     sys_message = (
         SystemContent.new()
         .with_model_identity(identity)
-        .with_conversation_start_date(yyyymmdd())
+        # we use server timezone, mitigates daycross confusion user / model
+        .with_conversation_start_date(yyyymmdd(in_utc=False))
         .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)
     )
@@ -111,6 +127,8 @@ def build_system_message(
 
 def build_developer_message(inputs: ConversationInputs) -> Message:
     instructions = inputs.instructions or ""
+    if settings.CLEANUP_LOW_PRECISION_PROMPT_TIMESTRINGS:
+        instructions = TIME_DETECT_RE.sub(TIME_REPLACE_RE, instructions)
     dev_message = DeveloperContent.new().with_instructions(instructions)
 
     tools = []
@@ -164,8 +182,8 @@ def prune_reasoning(messages: List[Message]) -> list[Message]:
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
         is_assistant = msg.author.role == Role.ASSISTANT
-        is_reasoning = msg.channel == ConversationChannelEnum.ANALYSIS.value
-        is_final = msg.channel == ConversationChannelEnum.FINAL.value
+        is_reasoning = msg.channel == ConversationChannel.ANALYSIS.value
+        is_final = msg.channel == ConversationChannel.FINAL.value
         has_recipient = msg.recipient is not None
 
         # is_reasoning and has_recipient a bit defensive, but probabilistic sampling!
@@ -178,7 +196,7 @@ def prune_reasoning(messages: List[Message]) -> list[Message]:
     for ix, message in enumerate(messages):
         is_reasoning = (
             message.author.role == Role.ASSISTANT
-            and message.channel == ConversationChannelEnum.ANALYSIS.value
+            and message.channel == ConversationChannel.ANALYSIS.value
         )
 
         # keep reasoning items relevant to a tool call loop in progress
@@ -231,7 +249,7 @@ def build_conversation_history(
     return conversation
 
 
-def resolve_python_tool(params: CreateParams) -> Optional[BurritoPython]:
+def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
     has_default = settings.IS_PYTHON_TOOL_ENABLED
     backend = settings.PYTHON_BACKEND
     should_enable = False
@@ -264,7 +282,7 @@ def resolve_python_tool(params: CreateParams) -> Optional[BurritoPython]:
     return tool
 
 
-def resolve_browser_tool(params: CreateParams) -> Optional[BurritoBrowser]:
+def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
     has_default = settings.IS_BROWSER_TOOL_ENABLED
     should_enable = False
 
@@ -310,7 +328,7 @@ def resolve_browser_tool(params: CreateParams) -> Optional[BurritoBrowser]:
 
 
 def build_conversation_from_params(
-    params: CreateParams, extra_messages: Optional[List[Message]]
+    params: WireApiParams, extra_messages: Optional[List[Message]]
 ) -> tuple[
     Conversation,
     ConversationInputs,
@@ -320,17 +338,17 @@ def build_conversation_from_params(
     assert isinstance(
         params,
         (
-            CreateParamsChat,
-            CreateParamsResponses,
-            CreateParamsMessages,
+            WireApiParamsChat,
+            WireApiParamsResponses,
+            WireApiParamsMessages,
         ),
     ), f"Unsupported params type: {type(params)}."
     match params:
-        case CreateParamsResponses():
+        case WireApiParamsResponses():
             inputs = build_message_list_responses(params)
-        case CreateParamsChat():
+        case WireApiParamsChat():
             inputs = build_message_list_chat(params)
-        case CreateParamsMessages():
+        case WireApiParamsMessages():
             inputs = build_message_list_messages(params)
 
     tools: List[ConversationToolParam] = []
