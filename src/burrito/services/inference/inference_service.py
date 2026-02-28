@@ -46,7 +46,7 @@ def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
     #     'tokens': ['token_id:200005'],
     #     'top_logprobs': [{'token_id:200005': 0.0, 'token_id:220': -23.375, ...}]
     # }
-    # NOTE: vllm also has some way of returning raw tokens but it does so in a
+    # vllm also has some way of returning raw tokens but it does so in a
     # way that's not compatible with the OpenAI type, so we're taking a small
     # hit in splitting token_id:xx strings to keep in line with official spec
     if logprobs and logprobs.get("tokens", []):
@@ -80,7 +80,10 @@ def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
 def build_payload(
     prompt_token_ids: list[int], params: WireApiParams
 ) -> CompletionCreateParamsBase:
-    default_keys = CompletionCreateParamsBase.__annotations__.keys()
+    sampling_keys = ["temperature", "top_p", "min_p", "top_k"]
+    default_keys = (
+        list(CompletionCreateParamsBase.__annotations__.keys()) + sampling_keys
+    )
     payload_default = CompletionCreateParamsBase(
         model=params.model,
         prompt=prompt_token_ids,
@@ -90,7 +93,7 @@ def build_payload(
     params_dumped = params.model_dump()
 
     for k, v in params_dumped.items():
-        if v and k in default_keys:
+        if v is not None and k in default_keys:
             payload_default[k] = v
 
     ctx_len = settings.DEFAULT_MODEL_CTX_LEN
@@ -111,10 +114,8 @@ def build_payload(
 
     payload = CompletionCreateParamsStreaming(**payload_default, stream=True)
 
-    # TODO: figure out hitting max model length here + errors (it WILL crash)
-
     # default to logprobs for both vLLM and llama.cpp
-    # WARNING: llama.cpp inference speed drops 3x as of 9.29.25 when logprobs >0
+    # WARNING: llama.cpp inference speed drops 3x as of 2.28.26 when logprobs >0
     # vLLM is less sensitive, seems to be unaffected by None, 0 or 20 logprobs
     payload["logprobs"] = None  # 20
 
@@ -164,45 +165,29 @@ async def infer_next_token(
                                 # accumulated a full, correct, data dict yet
                                 pass
                             try:
-                                # TODO: here, there will be no "choices" key
-                                # on request exceeding context size; leave it to
-                                # throw an error for now, but figure out how to handle
-                                # ideally i think we need to catch before calling
-                                # backend and throw a nice error to the caller
-                                # that their prompt exceeds model capacity
-                                # BUT it will probably happen in generation as well?
-                                # so we need to make sure payload max tokens is
-                                # computed correctly based on len(prompt_tokens)
-                                # and model capacity
-                                # TODO: model capacity - get from backend instead
-                                # of using a config var? logic here being the user
-                                # of the harness may decide they wish to serve
-                                # lower context length for various reasons (eg higher
-                                # concurrency at lower ctx), so check to see if
-                                # backend exposes that in /v1/models call
-                                # should we just surface the error and throw so
-                                # generator stops and caller gets backend error verbatim?
-                                # TODO: see how both vllm and llamacpp handle this
-                                # NOTE: llamacpp: "data: {'error': {
-                                # 'code': 400,
-                                # 'message': 'the request exceeds the available context size.
-                                # try increasing the context size or enable context shift',
-                                # 'type': 'exceed_context_size_error',
-                                # 'n_prompt_tokens': 132298,
-                                # 'n_ctx': 131072}}
-                                # \ntext_offset: 0"
+                                # usually happens when exceding context length in backend
+                                # throwing an error since we rely on config var to determine
+                                # model context length; we COULD query backend before generation
+                                # but that adds latency - so leaving it to the user to configure
+                                # the burrito <-> backend params properly
+                                error = data.get("error")
+                                assert error is None, f"Backend error: {repr(error)}"
+
                                 if not data["choices"]:
                                     yield "[DONE]"
                                     break  # vllm sending usage on last message with no choices
+
                                 completion = map_completion_data(data, text_offset)
                                 # typically to catch llama.cpp NOT sending
                                 # finish_reason on last completion, but adding a
                                 # new completion without an actual token attached
                                 assert completion is not None, (
-                                    f"Failed to build completion: {data}"
+                                    f"completion is None: {data}"
                                 )
+
+                                # should not happen with the error guard above, but defend anyway
                                 assert len(completion.choices) > 0, (
-                                    f"Completion missing choices: {data}"
+                                    f"completion.choices == 0: {data}"
                                 )
                                 # we only reset buffer for next message only after
                                 # completion mapped successfully; until that happens,
@@ -215,8 +200,10 @@ async def infer_next_token(
                                 # raise here to break the main processing loop
                                 # and return an exception to the caller
                                 msg = (
-                                    f"map_completion_data: {repr(e)}",
-                                    f"data: {data}\ntext_offset: {text_offset}",
+                                    f"map_completion_data: {repr(e)}\n"
+                                    f"data: {data}\n"
+                                    f"text_offset: {text_offset}"
+                                    f"exception: {repr(e)}"
                                 )
                                 raise Exception(msg)
 

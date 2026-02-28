@@ -205,7 +205,7 @@ class StateHandler:
             conversation = build_conversation_from_messages(messages)
             prompt_tokens = render_conversation_for_completion(conversation)
             prompt_text = ENCODING.decode(prompt_tokens)
-            session_id = session_handler.hash_text(prompt_text)
+            session_id = session_handler.hash_prompt(prompt_text)
 
         self.log_id = session_id
         session_handler.set_python_tool(self.log_id, python_tool)
@@ -366,7 +366,7 @@ class StateHandler:
         if not token or token.id == -1:
             return
 
-        # NOTE: weird special case where assistant emitting same
+        # weird special case where assistant emitting same
         # special token (<|message|>  or <|channel|> ?) twice?
         # if so, we skip that token since we already added it?
         # also, sometimes happens when assistant regresses into reasoning,
@@ -397,7 +397,7 @@ class StateHandler:
             self._add_recovery_message(msg)
             return self._recover_state()
 
-        # NOTE: moved AFTER parser.process so we only store valid tokens
+        # store AFTER parser.process so we only store valid tokens
         # in case this needs to be fed into reports / stats later
         # eg if we recover state, we don't count the "bad" tokens
         self.completions.append(completion)

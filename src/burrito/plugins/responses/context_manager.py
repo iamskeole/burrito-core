@@ -59,19 +59,24 @@ class ContextManagerPluginResponses(BasePluginResponses):
         )
         self.manager.output_object.status = "completed"
 
-        counts = self.get_token_counts()
+        token_counts = self.get_token_counts()
 
         self.manager.output_object.usage = ResponseUsage(
-            input_tokens=counts.n_input,
-            # TODO figure out if possible to get cached counts from backend(s)?
-            input_tokens_details=InputTokensDetails(cached_tokens=0),
-            output_tokens=counts.n_completion,
+            input_tokens=token_counts.n_input,
+            input_tokens_details=InputTokensDetails(
+                cached_tokens=token_counts.n_cached
+            ),
+            output_tokens=token_counts.n_completion,
             output_tokens_details=OutputTokensDetails(
                 reasoning_tokens=sum(
-                    [counts.n_reasoning, counts.n_preamble, counts.n_native_tool_input]
+                    [
+                        token_counts.n_reasoning,
+                        token_counts.n_preamble,
+                        token_counts.n_native_tool_input,
+                    ]
                 )
             ),
-            total_tokens=counts.n_total,
+            total_tokens=token_counts.n_total,
         )
         for output_item in self.manager.output_object.output:
             if hasattr(output_item, "status"):

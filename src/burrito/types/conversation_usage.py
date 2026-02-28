@@ -10,3 +10,4 @@ class ConversationUsage(BaseModel):
     n_output_text: int
     n_completion: int
     n_total: int
+    n_cached: int

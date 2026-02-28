@@ -161,7 +161,6 @@ def parse_instructions(params: WireApiParamsChat) -> str:
     return instructions
 
 
-# TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(
     params: WireApiParamsChat,
 ) -> List[ConversationToolParam]:
@@ -208,7 +207,7 @@ def parse_tools(
 def build_message_list_chat(params: WireApiParamsChat) -> ConversationInputs:
     instructions = parse_instructions(params)
     messages = parse_messages(params)
-    tools = [] #parse_tools(params)
+    tools = parse_tools(params)
     reasoning = ConversationReasoningParam(effort=params.reasoning_effort)
 
     conversation_inputs = ConversationInputs(

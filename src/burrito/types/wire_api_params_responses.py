@@ -10,14 +10,6 @@ from burrito.types.tool_param_browser import ToolParamBrowserResponses
 from burrito.types.tool_param_function import ToolParamFunctionResponses
 from burrito.types.tool_param_python import ToolParamPythonResponses
 
-# TODO: investiagate whether we can support custom tools
-# harmony only seems to support defining regular function tools
-# with name, description, params; no special formatting instructions
-# for custom tools, so even if we implemented schemas and code, model
-# may not be trained to use them?
-# so we disable that option as an input to force schema validation failure
-# valid for all wire apis (chat, anthropic too)
-
 
 class InputTextParamResponses(BaseModel):
     type: Literal["input_text"]
@@ -162,8 +154,10 @@ class WireApiParamsResponses(BaseModel):
 
     reasoning: Optional[ConversationReasoningParam] = None
 
-    temperature: Optional[Annotated[float, Field(ge=0.0, le=2.0)]] = 1.0
+    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
+    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 0.0
+    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 0
 
     max_output_tokens: Optional[int] = None
     prompt_cache_key: Optional[str] = None
@@ -174,7 +168,10 @@ class WireApiParamsResponses(BaseModel):
                 ToolParamBrowserResponses,
                 ToolParamPythonResponses,
                 ToolParamFunctionResponses,
-                # ToolParamCustomResponses, # see todo note above
+                # we disable custom tools as an input option
+                # to force schema validation failure
+                # see note in harmony_service for more details
+                # ToolParamCustomResponses,
             ]
         ]
     ] = None

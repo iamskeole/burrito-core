@@ -3,6 +3,7 @@ import json
 import random
 import textwrap
 from datetime import date
+from functools import lru_cache
 from typing import Optional
 
 import trafilatura
@@ -254,8 +255,10 @@ class BurritoBrowserEngine:
         except Exception as e:
             return f"<html>{repr(e)}</html>"
 
-    # TODO: cache, ie anthropic docs site kills me on first processing
     @classmethod
+    # cache content processing, some kill cpu;
+    # the open action itself is cached in browser tool that sticks by session
+    @lru_cache(maxsize=2056)
     def preprocess_html(
         cls, html_content: Optional[str], is_docs_website: bool, base_url: str
     ) -> str:

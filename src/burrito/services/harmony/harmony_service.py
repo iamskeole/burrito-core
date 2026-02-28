@@ -172,7 +172,7 @@ def prune_reasoning(messages: List[Message]) -> list[Message]:
         return messages
 
     pruned: List[Message] = []
-    # NOTE: harmony doesn't seem to handle pruning corretly at least some of the
+    # FIXME: harmony doesn't seem to handle pruning corretly at least some of the
     # time, not sure when / why, so we roll our own implementation defensively
 
     # find the index of the last assistant message on the "final" channel, which
@@ -327,6 +327,13 @@ def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
     return tool
 
 
+# TODO: figure out if / how we can support structured outputs (eg grammar, json)
+# TODO: handle tool_choice from params, eg auto, specific etc; also, parallel?
+# TODO: investiagate whether we can support custom tools
+# harmony only seems to support defining regular function tools
+# with name, description, params; no special formatting instructions
+# for custom tools, so even if we implemented schemas and code, model
+# may not be trained to use them?
 def build_conversation_from_params(
     params: WireApiParams, extra_messages: Optional[List[Message]]
 ) -> tuple[
@@ -380,13 +387,9 @@ def build_conversation_from_params(
     return (conversation, inputs, python_tool, browser_tool)
 
 
-# TODO: figure out if / how we can support structured outputs (eg grammar, json)
 def render_conversation_for_completion(
     conversation: Conversation, is_on_init: bool = False
 ) -> list[int]:
-    # NOTE: render_conversation_for_completion doesn't always handle pruning
-    # of reasoning correctly, so conversation.messages coming into it are always
-    # manually pruned inside build_conversation_history => *prune_reasoning(...)
     tokens_for_completion = ENCODING.render_conversation_for_completion(
         conversation=conversation, next_turn_role=Role.ASSISTANT
     )

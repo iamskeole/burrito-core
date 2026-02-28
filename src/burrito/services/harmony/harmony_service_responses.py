@@ -164,18 +164,8 @@ def parse_messages(inputs: Union[str, List[InputItemParamResponses]]) -> List[Me
         match i:
             case UserInputMessageParamResponses():
                 messages.append(user_message_from_list_input(i))
-
             case AssistantMessageParamResponses() | AssistantReasoningParamResponses():
                 messages.append(assistant_message(i))
-
-            # NOTE: browser, python, other "native" tools
-            # native can mean two things:
-            # (1) browser and python, that the model has been trained with
-            # (2) augment functions we init in designated sys prompt namespace
-            # in either case, burrito will handle tool call _instead_ of caller
-            # so we "pause" generation, call tool, feed to model, resume
-            # and only once model processes native tool call, send back to caller
-            # hence all will have to be in the analysis channel, NOT commentary
             case FunctionToolInputParamResponses() | CustomToolInputParamResponses():
                 messages.append(tool_call_input_message(i))
             case ToolCallOutputParamResponses():
@@ -187,7 +177,6 @@ def parse_messages(inputs: Union[str, List[InputItemParamResponses]]) -> List[Me
     return messages
 
 
-# TODO: handle tool_choice from params, eg auto, specific etc
 def parse_tools(params: WireApiParamsResponses) -> List[ConversationToolParam]:
     tools: List[ConversationToolParam] = []
     for tool in params.tools or []:

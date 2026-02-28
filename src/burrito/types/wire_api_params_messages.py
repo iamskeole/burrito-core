@@ -96,7 +96,7 @@ class ReasoningParam(BaseModel):
     budget_tokens: Optional[int] = 32000
     type: Optional[Literal["enabled"]] = "enabled"
 
-# TODO: check defaults for thinking and ints / floats
+
 class WireApiParamsMessages(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     messages: List[ContentParam]
@@ -107,9 +107,10 @@ class WireApiParamsMessages(BaseModel):
     stop_sequences: Optional[List[str]] = None
     stream: Optional[bool] = True
     prompt_cache_key: Optional[str] = None
-    temperature: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
+    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
-    top_k: Optional[int] = None
+    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 0.0
+    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 0
     tools: Optional[List[ToolInputParam]] = None
     tool_choice: Optional[ToolChoice] = None
     thinking: Optional[ReasoningParam] = None

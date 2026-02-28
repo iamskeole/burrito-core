@@ -157,7 +157,7 @@ class ToolInputPluginResponses(BasePluginResponses):
         try:
             output_item = self.manager.output_object.output[self.manager.output_index]
         except IndexError:
-            raise  # TODO: investigate, why sometimes out of range?
+            raise  # FIXME: investigate, why sometimes out of range?
         if not output_item:
             return
 

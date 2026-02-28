@@ -18,15 +18,14 @@ class BasePluginMessages(BasePlugin):
 
     def init_response_object(self) -> Message:
         params = self.manager.manager.params.model_dump()
+        token_counts = self.get_token_counts()
         message = Message(
             id=f"msg_{random_uuid()}",
             content=[],
             model=params["model"],
             role="assistant",
             type="message",
-            usage=AnthropicUsage(
-                input_tokens=self.get_token_counts().n_input, output_tokens=0
-            ),
+            usage=AnthropicUsage(input_tokens=token_counts.n_input, output_tokens=0),
         )
         self.manager.output_object = message
         return message

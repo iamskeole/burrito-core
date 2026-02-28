@@ -3,7 +3,6 @@ from typing import Any, Dict, Literal, Optional, Union
 from pydantic import BaseModel
 
 
-# TODO: no anthropic?
 class FunctionToolDefinitionChat(BaseModel):
     name: str
     description: Optional[str] = None

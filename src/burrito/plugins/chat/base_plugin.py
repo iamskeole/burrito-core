@@ -44,20 +44,20 @@ class BasePluginChat(BasePlugin):
         self.log_extra = {"log_id": f"apr_{self.log_id}"}
 
     def get_usage_details(self) -> CompletionUsage:
-        counts = self.get_token_counts()
+        token_counts = self.get_token_counts()
 
         usage = CompletionUsage(
-            prompt_tokens=counts.n_input,
-            completion_tokens=counts.n_completion,
-            total_tokens=counts.n_total,
+            prompt_tokens=token_counts.n_input,
+            completion_tokens=token_counts.n_completion,
+            total_tokens=token_counts.n_total,
             completion_tokens_details=CompletionTokensDetails(
-                accepted_prediction_tokens=counts.n_completion,
+                accepted_prediction_tokens=token_counts.n_completion,
                 rejected_prediction_tokens=0,
                 reasoning_tokens=sum(
                     [
-                        counts.n_reasoning,
-                        counts.n_preamble,
-                        counts.n_native_tool_input,
+                        token_counts.n_reasoning,
+                        token_counts.n_preamble,
+                        token_counts.n_native_tool_input,
                     ]
                 ),
             ),
@@ -194,7 +194,7 @@ class BasePluginChat(BasePlugin):
         message = PatchedChatCompletionChoiceMessage(
             content=content,
             reasoning_content=reasoning_content,
-            reasoning_summary=None,  # TODO implement reasoning_text_summary plugin?
+            reasoning_summary=None,
             tool_calls=tool_calls,
             role="assistant",
         )

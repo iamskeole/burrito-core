@@ -22,7 +22,7 @@ class ReasoningTextPluginChat(BasePluginChat):
     @property
     def subscribed_states(self) -> Set[str]:
         return {
-            # NOTE: if we comment out .REASONING, only shows preamble to users
+            # commenting out .REASONING would only show preamble to users
             # this is the official guideline for gpt-oss, but since we're
             # running locally, responsibility should be client's, we expose
             # everything here so caller can decide ui stuff

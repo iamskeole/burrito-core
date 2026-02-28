@@ -3,7 +3,6 @@ from typing import Literal, Optional, Union
 from pydantic import BaseModel
 
 
-# TODO: anthropic?
 class ToolParamPythonChat(BaseModel):
     type: Literal["python", "code_interpreter"]
     backend: Optional[Literal["docker", "dangerously_use_local_jupyter"]] = "docker"

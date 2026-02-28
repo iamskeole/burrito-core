@@ -218,7 +218,7 @@ class TransitionHandler:
             return True
 
         # 2. tool call without prior input
-        # NOTE: monitor, does it still happen or fixed with tool recovery msg?
+        # FIXME: monitor, does it still happen or fixed with tool recovery msg?
         if new_state == state_tool_call and channel != channel_commentary:
             if tool_handler.is_valid(last_recipient, new_state):
                 return True
@@ -230,7 +230,7 @@ class TransitionHandler:
             return True  # it's ok to send on any channel since we flag it?
 
         # 3. preamble, unclear what to do with it so we just log for now
-        # NOTE: see harmony docs, sometime assistant may decide to issue
+        # FIXME: see harmony docs, sometime assistant may decide to issue
         # a summary of what it will do next inside the analysis channel, which,
         # according to docs, SHOULD be shown to users
         if new_state == state_preamble:

@@ -60,31 +60,32 @@ class NativeToolsPluginResponses(BasePluginResponses):
         try:
             args = tool.process_arguments(last_message)
         except Exception as e:
-            return  # TODO: why does this sometime break?
+            return  # FIXME: why does this sometime break?
 
         _, function_name = recipient.split(".")
         if function_name not in ["search", "open", "find"]:
             return
 
         if function_name == "search":
-            # TODO: figure out what's happening here, why a valid tool call but no query
+            # FIXME: figure out what's happening here,
+            # sometimes a valid tool call but no query
             # for now, we defend since this is internal only
             query = args.get("query")
             if not query:
                 return
             action = ActionSearch(query=query, type="search")
         elif function_name == "open":
-            # TODO: same as for query
+            # FIXME: same as for query
             url = args.get("url")
             if not url:
                 return
             action = ActionOpenPage(type="open_page", url=url)
         elif function_name == "find":
-            # TODO: same as for query
+            # FIXME: same as for query
             pattern = args.get("pattern")
             if not pattern:
                 return
-            # TODO: should we return if no url too? maybe cursor is valid?
+            # FIXME: should we return if no url? maybe cursor is valid?
             url = args.get("url", "unknown")
             action = ActionFind(
                 type="find",

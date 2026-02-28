@@ -7,25 +7,29 @@ import subprocess
 import sys
 import time
 import uuid
+from collections import OrderedDict
 from datetime import datetime, timezone
 from functools import lru_cache
 from textwrap import dedent
+from typing import Generic, Iterator, Optional, TypeVar
 
 from fastapi import Request
 
 from burrito import __version__
 from burrito.common.config import settings
+from burrito.types.wire_api_params import WireApiParams
+from burrito.types.wire_api_params_chat import WireApiParamsChat
+from burrito.types.wire_api_params_messages import WireApiParamsMessages
+from burrito.types.wire_api_params_responses import WireApiParamsResponses
+
+K = TypeVar("K")
+V = TypeVar("V")
 
 ANSI_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 PROMPT_DIR = pathlib.Path(__file__).parent.parent / "prompts"
 
 
-from burrito.types.wire_api_params import WireApiParams
-from burrito.types.wire_api_params_chat import WireApiParamsChat
-from burrito.types.wire_api_params_responses import WireApiParamsResponses
-from burrito.types.wire_api_params_messages import WireApiParamsMessages
-
-def wire_api_label_from_params(params: WireApiParams) -> str
+def wire_api_label_from_params(params: WireApiParams) -> str:
     match params:
         case WireApiParamsChat():
             w = "oai:chat"
@@ -37,7 +41,8 @@ def wire_api_label_from_params(params: WireApiParams) -> str
             w = "unknown"
     return w
 
-@lru_cache(maxsize=None)
+
+@lru_cache(maxsize=128)
 def _read_file(path: pathlib.Path) -> str:
     return dedent(path.read_text(encoding="utf-8"))
 
@@ -136,7 +141,6 @@ def simple_markdown_renderer(markdown_text):
         A string with basic terminal formatting.
     """
     # Define ANSI escape codes for basic styling
-    # Note: These may not work in all terminals.
     styles = {
         "bold": "\033[1m",
         "underline": "\033[4m",
@@ -204,3 +208,71 @@ def simple_markdown_renderer(markdown_text):
         rendered_lines.append(line)
 
     return "\n".join(rendered_lines)
+
+
+class LruDict(Generic[K, V]):
+    """A size‑limited LRU dictionary.
+
+    Parameters
+    ----------
+    maxsize:
+        The maximum number of items that the dictionary can hold.
+        When this limit is reached, inserting a new item removes the
+        least recently used (oldest) entry.
+    """
+
+    def __init__(self, maxsize: int):
+        self.maxsize = maxsize
+        self._data: OrderedDict[K, V] = OrderedDict()
+        self._disabled = maxsize <= 0
+
+    # ---------------------------------------------------------------------
+    # Mapping interface
+    # ---------------------------------------------------------------------
+    def __setitem__(self, key: K, value: V) -> None:
+        if self._disabled:
+            return
+        if key in self._data:
+            # Existing key: update and mark as most recent.
+            self._data.move_to_end(key)
+        else:
+            # New key: ensure capacity.
+            if len(self._data) >= self.maxsize:
+                # Evict least‑recently used item.
+                self._data.popitem(last=False)
+        self._data[key] = value
+
+    def __getitem__(self, key: K) -> V:
+        value = self._data[key]  # raises KeyError if missing
+        self._data.move_to_end(key)
+        return value
+
+    def get(self, key: K, default: Optional[V] = None) -> Optional[V]:
+        if key in self._data:
+            self._data.move_to_end(key)
+            return self._data[key]
+        return default
+
+    def __contains__(self, key: K) -> bool:
+        return key in self._data
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    def keys(self):
+        return self._data.keys()
+
+    def items(self):
+        return self._data.items()
+
+    def values(self):
+        return self._data.values()
+
+    def __iter__(self) -> Iterator[K]:
+        return iter(self._data)
+
+    def __repr__(self) -> str:
+        return f"LruDict(maxsize={self.maxsize}, data={dict(self._data)})"

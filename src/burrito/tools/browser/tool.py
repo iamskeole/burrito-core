@@ -259,7 +259,7 @@ class BurritoBrowser(SimpleBrowserTool):
 
         yield await self.show_page_safely(loc=loc, num_lines=num_lines)
 
-    # TODO: figure out why line split fails (very infrequently, but it does) and fix it.. somehow
+    # FIXME: figure out why line split fails (very infrequently, but it does) and fix it.. somehow
     def augment_annotation(self, annotation: dict[str, Any]) -> dict[str, Any]:
         url = annotation["url"]
         page = self.tool_state.get_page_by_url(url)

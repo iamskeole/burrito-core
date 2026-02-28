@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG_TOOL_INPUTS: bool = False
     DEBUG_TOOL_OUTPUTS: bool = False
     DEBUG_COMPLETIONS: bool = False
-    DEBUG_PROMPT: bool = True
+    DEBUG_PROMPT: bool = False
     DEBUG_OUTGOING_EVENTS: bool = False
     DEBUG_RESPONSE_BUFFER: bool = False
     DEBUG_STATE_CHANGE: bool = False
@@ -52,17 +52,16 @@ class Settings(BaseSettings):
     MODEL_IDENTITY: str = "default"
 
     MAX_RECOVER_STATE_ATTEMPTS: int = 100
-    # NOTE: set temperature to 0.001 and this likely happens more often?
     MAX_REASONING_LOOPS: int = 1000
 
     ENFORCE_STRICT_TOOL_NAMESPACES: bool = False
     CLEANUP_LOW_PRECISION_PROMPT_TIMESTRINGS: bool = True
 
-    IS_PYTHON_TOOL_ENABLED: bool = False
-    IS_BROWSER_TOOL_ENABLED: bool = False
+    IS_PYTHON_TOOL_ENABLED: bool = True
+    IS_BROWSER_TOOL_ENABLED: bool = True
 
-    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = False
-    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = False
+    IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = True
+    IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = True
 
     PYTHON_BACKEND: Literal["docker", "dangerously_use_local_jupyter"] = "docker"
 
@@ -71,6 +70,7 @@ class Settings(BaseSettings):
     BROWSER_LOCALE: str = "en-GB"
     BROWSER_LANGUAGE: str = "en"
     BROWSER_TIMEZONE: str = "Europe/London"
+    BROWSER_SESSION_CACHE_SIZE: int = 1024
 
     BRAVE_API_KEY: str = ""
     BRAVE_API_URL: str = "https://api.search.brave.com/res/v1/web/search"

@@ -44,6 +44,20 @@ class BasePlugin(ABC):
         n_native_tool_input = len(self.manager.native_tool_input_tokens)
         n_caller_tool_input = len(self.manager.caller_tool_input_tokens)
 
+        # best effort estimate, doesn't seem we can get actual counts from backend
+        # may disable eventually, adds sme overhead on each token, not
+        # sure whether actually brings any value?
+        n_cached = 0
+        if n_completion:
+            tft = self.manager.response_tokens[0].created_at
+            tlt = self.manager.response_tokens[-1].created_at
+            ttft = (tft - self.manager.created_at) / 1000
+            t_completion = (tlt - tft) / 1000 + 1e-9
+            tps_prompt = n_input / ttft
+            tps_eval = n_completion / t_completion
+            if tps_prompt / tps_eval > 20:
+                n_cached = n_input
+
         return ConversationUsage(
             n_input=n_input,
             n_reasoning=n_reasoning,
@@ -53,6 +67,7 @@ class BasePlugin(ABC):
             n_output_text=n_output_text,
             n_completion=n_completion,
             n_total=n_total,
+            n_cached=n_cached,
         )
 
     async def send_close_marker(self):
