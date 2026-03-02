@@ -16,7 +16,7 @@ from typing import Generic, Iterator, Optional, TypeVar
 from fastapi import Request
 
 from burrito import __version__
-from burrito.common.config import settings
+from burrito.common.config import list_from_cfg, settings
 from burrito.types.wire_api_params import WireApiParams
 from burrito.types.wire_api_params_chat import WireApiParamsChat
 from burrito.types.wire_api_params_messages import WireApiParamsMessages
@@ -55,15 +55,11 @@ def get_prompt(filename: str, extension: str = "md") -> str:
 
 
 def get_headers_to_forward(request: Request):
-    split_comma = settings.BACKEND_FORWARD_HEADERS.split(",")
-    split_colon = settings.BACKEND_FORWARD_HEADERS.split(";")
-    headers_to_forward = [i.strip() for i in split_comma] + [
-        i.strip() for i in split_colon
-    ]
+    headers_to_forward = list_from_cfg(settings.BACKEND_FORWARD_HEADERS, "")
     return {
         k: v
         for k, v in request.headers.items()
-        if k.title() in [h.title() for h in headers_to_forward]
+        if k.title() in [h.title() for h in headers_to_forward or []]
     }
 
 

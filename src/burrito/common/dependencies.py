@@ -4,7 +4,7 @@ from typing import List, Optional
 import httpx
 from fastapi import Header, HTTPException, Request
 
-from burrito.common.config import settings
+from burrito.common.config import list_from_cfg, settings
 from burrito.handlers.generation_handler import GenerationHandler
 from burrito.handlers.session_handler import SessionHandler
 
@@ -82,7 +82,7 @@ def allow_metrics_ip(request: Request):
     whitelist = settings.METRICS_IP_WHITELIST
     if not whitelist:
         return None
-    hosts = {h.strip() for h in whitelist.replace(";", ",").split(",") if h.strip()}
+    hosts = list_from_cfg(whitelist, "")
     if not request.client or request.client.host not in hosts:
         raise HTTPException(status_code=403, detail="Forbidden IP")
     return None

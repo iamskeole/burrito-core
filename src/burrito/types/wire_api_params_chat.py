@@ -96,7 +96,7 @@ class WireApiParamsChat(BaseModel):
     temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = 1.0
     top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
     min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 0.0
-    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 100
+    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 0
     stop: Optional[Union[str, List[str]]] = None
     max_tokens: Optional[int] = None
     max_completion_tokens: Optional[int] = None

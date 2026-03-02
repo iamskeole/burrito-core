@@ -146,10 +146,11 @@ class BurritoBrowserBackend(Backend):
         time_range: str = "alltime",
         source: str = "general",
     ) -> PageContents:
-        if not settings.BRAVE_API_KEY and not settings.SEARXNG_API_URL:
+        has_brave = bool(settings.BRAVE_API_KEY)
+        if not has_brave and not settings.SEARXNG_API_URL:
             logger.warning(
                 (
-                    "Missing both `BRAVE_API_KEI` and `SEARXNG_API_URL`, "
+                    "Missing both `BRAVE_API_KEY` and `SEARXNG_API_URL`, "
                     "Disabling `browser.search` and instructing agent to "
                     "fall back on `browser.open` only."
                 )
@@ -162,7 +163,7 @@ class BurritoBrowserBackend(Backend):
         titles_and_urls = []
 
         # try brave if an api key is set
-        if settings.BRAVE_API_KEY:
+        if has_brave:
             try:
                 titles_and_urls = await self._search_brave(
                     query, topn, session, locale, language, time_range, source

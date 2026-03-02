@@ -193,8 +193,10 @@ def parse_instructions(params: WireApiParamsMessages) -> str:
 
     # x-anthropic-billing-header: cc_version=2.1.37.0d9; cc_entrypoint=cli; cch=d0108;
     # header that changes the VERY first message in any conversation, eg
-    # cch=d018 changes with every subsequent message, which means that
-    # caching goes bye bye.. fuckme anthropic wtf!!
+    # cch=d018 changes with every subsequent message, which means prompt caching
+    # cannot work; possible to disable by setting CLAUDE_CODE_ATTRIBUTION_HEADER=0
+    # in .claude/settings.json, but keeping defensive validation in place just in case
+    # CC decides to always include that since overhead is low
     instructions = "\n".join(
         [i.text for i in params.system if "x-anthropic-billing-header" not in i.text]
     )
