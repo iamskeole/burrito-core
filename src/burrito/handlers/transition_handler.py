@@ -97,6 +97,7 @@ class TransitionHandler:
         self.manager = manager
 
         self.reasoning_loops = 0
+        self.preamble_loops = 0
 
         self.log_id = manager.log_id
         self.logger = FastAPILogger.get_logger(__name__)
@@ -153,16 +154,8 @@ class TransitionHandler:
         if new_state == ConversationState.REASONING:
             self.reasoning_loops += 1
 
-        if self.reasoning_loops >= settings.MAX_REASONING_LOOPS:
-            self.reasoning_loops = 0
-            msg = get_prompt("sentinel_reasoning_loop")
-            self.manager._add_recovery_message(msg)
-            if settings.DEBUG_STATE_ERRORS:
-                self.logger.warning(
-                    "Invalid output: max reasoning loops.",
-                    extra=self.log_extra,
-                )
-            return False
+        if new_state == ConversationState.PREAMBLE:
+            self.preamble_loops += 1
 
         if new_state == ConversationState.NATIVE_TOOL_DONE:
             return True
@@ -287,7 +280,7 @@ class TransitionHandler:
         if new_state != old_state:
             if settings.DEBUG_STATE_CHANGE:
                 self.logger.debug(
-                    f"state change: {old_state.value:<18} -> {new_state.value}",
+                    f"state change: {old_state.value:<24} -> {new_state.value}",
                     extra=self.log_extra,
                 )
 

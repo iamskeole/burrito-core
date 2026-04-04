@@ -3,5 +3,8 @@
         "tests"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "chat.customizations.harnessSelector.enabled": false,
+    "telemetry.feedback.enabled": false,
+    "telemetry.editStats.enabled": false
 }

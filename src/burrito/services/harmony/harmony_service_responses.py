@@ -182,14 +182,14 @@ def parse_tools(params: WireApiParamsResponses) -> List[ConversationToolParam]:
     for tool in params.tools or []:
         match tool:
             case ToolParamFunctionResponses():
-                tool = ConversationToolParam(
+                t = ConversationToolParam(
                     name=tool.name,
                     parameters=tool.parameters,
                     strict=tool.strict,
                     type=tool.type,
                     description=tool.description or "",
                 )
-                tools.append(tool)
+                tools.append(t)
 
             case ToolParamCustomResponses():
                 fmt = None
@@ -203,13 +203,13 @@ def parse_tools(params: WireApiParamsResponses) -> List[ConversationToolParam]:
                     else:
                         fmt = CustomToolInputFormatText(type=tool.format.type or "text")
 
-                tool = ConversationToolParam(
+                t = ConversationToolParam(
                     name=tool.name,
                     type=tool.type,
                     description=tool.description or "",
                     format=fmt,
                 )
-                tools.append(tool)
+                tools.append(t)
 
             case ToolParamBrowserResponses():
                 continue  # we handle web search natively
@@ -226,9 +226,17 @@ def parse_instructions(params: WireApiParamsResponses) -> str:
     for message in messages:
         match message:
             case SystemInputMessageParamResponses():
-                instructions += f"\n{message.content}"
+                if isinstance(message.content, str):
+                    instructions += f"\n{message.content}"
+                if isinstance(message.content, list):
+                    for content in message.content:
+                        instructions += f"\n{content.text}"
             case DeveloperInputMessageParamResponses():
-                instructions += f"\n{message.content}"
+                if isinstance(message.content, str):
+                    instructions += f"\n{message.content}"
+                if isinstance(message.content, list):
+                    for content in message.content:
+                        instructions += f"\n{content.text}"
     return instructions.strip()
 
 

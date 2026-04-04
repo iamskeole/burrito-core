@@ -1,0 +1,1 @@
+**Invalid output**: you are stuck in a reasoning loop inside the '{channel}' channel. Take a deep breath, then try again.

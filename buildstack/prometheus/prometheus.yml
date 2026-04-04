@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'burrito'
+    static_configs:
+      - targets: ['burrito:80']
+
+  - job_name: 'searxng'
+    static_configs:
+      - targets: ['searxng:8080']

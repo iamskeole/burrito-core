@@ -31,6 +31,7 @@ class ConversationHandler:
     ):
         self.request = request
         self.params = params
+        self.grammar = ""
         self.created_at = unix_timestamp_in_ms()
         self.stream_to_caller = params.stream or False
 
@@ -70,7 +71,7 @@ class ConversationHandler:
         w = wire_api_label_from_params(self.params)
         generation_requests_total.labels(wire_api=w, model=m).inc()
 
-    def _init_stream(self):
+    def _init_stream(self, grammar: str = ""):
         self._is_stopped = False
         self.generator.can_stream = True
         self.generator.log_id = self.log_id
@@ -78,6 +79,7 @@ class ConversationHandler:
             prompt_token_ids=self.state_handler.prompt_tokens,
             params=self.params,
             headers=self.forwarded_headers,
+            grammar=grammar,
         )
 
     def _stop_stream(self, msg: Optional[str] = None):
@@ -106,6 +108,10 @@ class ConversationHandler:
     async def _stream_completions(self):
         sm = self.state_handler
         timeout = settings.BACKEND_INTER_TOKEN_TIMEOUT
+        if settings.DEBUG_REASONING_EFFORT:
+            inputs = self.state_handler.conversation_inputs
+            msg = f"reasoning effort: {inputs.reasoning.effort}"
+            self.logger.debug(msg, extra=self.log_extra)
         try:
             while 1:
                 completion = None

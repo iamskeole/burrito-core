@@ -1,3 +1,4 @@
+import re
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from openai_harmony import Message
@@ -8,6 +9,7 @@ from burrito.common.utils import get_prompt, random_uuid
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
 from burrito.types.conversation_enums import (
+    ConversationChannel,
     ConversationState,
     ConversationToolNamespace,
 )
@@ -15,6 +17,7 @@ from burrito.types.conversation_inputs import ConversationToolParam
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
+from burrito.common.utils import bootstrap_pip
 
 
 class ToolHandler:
@@ -93,7 +96,7 @@ class ToolHandler:
 
         # dirty hack for downstream events that look for strict tool name
         # in tool.process_arguments(last_message)
-        messages[-1].recipient = tool_name.replace("functions.", "")
+        messages[-1].recipient = tool_name.replace("functions", "")
         return
 
     def get_tool_model_is_trying_to_call(
@@ -107,25 +110,18 @@ class ToolHandler:
         recipient = current_recipient or prev_recipient
         if not recipient:
             return
-
-        tool_name = recipient
-
+        tool_name = re.sub(r"^functions\.|<\|channel\|>.*$", "", recipient)
         if self._is_python(tool_name):
             return self.python_tool
         elif self._is_browser(tool_name):
             return self.browser_tool
         else:
-            # see if we have a tool with a namespace prefix
-            try_split = recipient.split(".")
-            # if no prefix, just return tool name
-            if try_split and len(try_split) > 1:
-                tool_name = try_split[1]
-
-        return self.tools.get(tool_name)
+            return self.tools.get(tool_name)
 
     def register_tool_call(self) -> Dict[str, Any]:
         tool = self.get_tool_model_is_trying_to_call()
-        assert tool is not None, "Expected a ConversationToolParam, but got `None`"
+        if tool is None:
+            raise ValueError("Expected a ConversationToolParam, but got `None`")
         call_id = f"call_{random_uuid()}"
         self.tool_calls.append(
             {
@@ -140,8 +136,11 @@ class ToolHandler:
         self, recipient: str, treat_functions_python_as_builtin: bool = True
     ) -> bool:
         _name = ConversationToolNamespace.PYTHON.value
+        _is_enabled = (
+            settings.IS_PYTHON_TOOL_ENABLED or settings.IS_PYTHON_TOOL_ALWAYS_ENABLED
+        )
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
-            return _name in recipient
+            return _name in recipient and _is_enabled
         return (
             len(recipient) > 0
             and _name in self.tools
@@ -152,14 +151,18 @@ class ToolHandler:
                     and recipient == f"functions.{_name}"
                 )
             )
+            and _is_enabled
         )
 
     def _is_browser(
         self, recipient: str, treat_functions_browser_as_builtin: bool = True
     ) -> bool:
         _name = ConversationToolNamespace.BROWSER.value
+        _is_enabled = (
+            settings.IS_BROWSER_TOOL_ENABLED or settings.IS_BROWSER_TOOL_ALWAYS_ENABLED
+        )
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
-            return _name in recipient
+            return _name in recipient and _is_enabled
         return (
             len(recipient) > 0
             and _name in self.tools
@@ -170,18 +173,21 @@ class ToolHandler:
                     and recipient.startswith(f"functions.{_name}")
                 )
             )
+            and _is_enabled
         )
 
     def _is_native_tool(self, recipient: str) -> bool:
         return self._is_python(recipient) or self._is_browser(recipient)
 
-    def _is_valid_namespace(self, recipient: str, state: Optional[str] = None) -> bool:
+    def _is_valid_tool_namespace(
+        self, recipient: str, state: Optional[str] = None
+    ) -> bool:
         namespace = [i for i in self.namespaces if recipient.startswith(i)]
         if not namespace:
             if state is not None:
                 return False
 
-            if settings.DEBUG_TOOL_CALLS:
+            if settings.DEBUG_TOOL_CALLS or settings.DEBUG_STATE_ERRORS:
                 self.logger.warning(
                     f"invalid tool call: bad namespace: `{recipient}`.",
                     extra=self.log_extra,
@@ -195,18 +201,38 @@ class ToolHandler:
             return False
         return True
 
-    def _is_valid_tool(self, recipient: str, state: Optional[str] = None) -> bool:
+    def _is_valid_tool_name(self, recipient: str, state: Optional[str] = None) -> bool:
+        if recipient and not self.tools:
+            if state is not None:
+                return False
+            if settings.DEBUG_TOOL_CALLS or settings.DEBUG_STATE_ERRORS:
+                self.logger.warning(
+                    f"invalid tool call: bad tool name `{recipient}` [no tools]",
+                    extra=self.log_extra,
+                )
+            msg = get_prompt("sentinel_bad_tool_inline_tools").format(
+                recipient=recipient,
+                valid_namespaces=self.msg_namespaces,
+                valid_tools=self.msg_tools,
+            )
+            self.manager._add_recovery_message(msg)
+            return False
+
         if self._is_native_tool(recipient):
             return True
 
+        # we don't use self.get_tool_model_is_trying_to_call since we need a raw
+        # check that can be fed to the model in case of no tool or bad format
         tool_name = recipient.split("functions.")[-1]
+        tool_name = re.sub(r"<\|channel\|>.*$", "", tool_name)
         tool = self.tools.get(tool_name)
+
         if not tool:
             if state is not None:
                 return False
-            if settings.DEBUG_TOOL_CALLS:
+            if settings.DEBUG_TOOL_CALLS or settings.DEBUG_STATE_ERRORS:
                 self.logger.warning(
-                    f"invalid tool call: bad tool `{recipient}`",
+                    f"invalid tool call: bad tool `(functions.){tool_name}`",
                     extra=self.log_extra,
                 )
             msg = get_prompt("sentinel_bad_tool_name").format(
@@ -223,7 +249,7 @@ class ToolHandler:
             # skip logs and messages, it's a defensive check from other state
             if state is not None:
                 return False
-            if settings.DEBUG_TOOL_CALLS:
+            if settings.DEBUG_TOOL_CALLS or settings.DEBUG_STATE_ERRORS:
                 self.logger.warning(
                     "invalid tool call: missing recipient", extra=self.log_extra
                 )
@@ -236,15 +262,14 @@ class ToolHandler:
             return False
 
         tool = self.get_tool_model_is_trying_to_call()
-        if tool is not None and not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
+        strict = settings.ENFORCE_STRICT_TOOL_NAMESPACES
+        if tool is not None and not strict:
             return True
 
-        if not self._is_valid_tool(recipient, state):
+        if strict and not self._is_valid_tool_name(recipient, state):
             return False
 
-        if settings.ENFORCE_STRICT_TOOL_NAMESPACES and not self._is_valid_namespace(
-            recipient, state
-        ):
+        if strict and not self._is_valid_tool_namespace(recipient, state):
             return False
 
         return True
@@ -255,6 +280,9 @@ class ToolHandler:
     ) -> List[Message]:
         results = []
         async for msg in tool.process(message):
+            # sometimes assistant issues tool calls on analysis, but probably
+            # trained to receive them on commentary; so we default here to guard
+            msg.channel = ConversationChannel.COMMENTARY.value
             results.append(msg)
         return results
 
@@ -285,7 +313,7 @@ class ToolHandler:
                     extra=self.log_extra,
                 )
         except Exception as e:
-            if settings.DEBUG_TOOL_CALLS:
+            if settings.DEBUG_TOOL_CALLS or settings.DEBUG_STATE_ERRORS:
                 log = f"**Error calling tool `{t_name}`**:{repr(e)}"
                 self.logger.error(log, extra=self.log_extra)
 
@@ -299,7 +327,7 @@ class ToolHandler:
         await self.manager.transition_handler.transition(
             token=None, state=ConversationState.NATIVE_TOOL_DONE
         )
-        self.manager._update_state_with_tool_result(tool_result)
+        self.manager.update_state_with_tool_result(tool_result)
 
     async def maybe_call_native_tool(self):
         if self.manager.parser_state != ConversationState.NATIVE_TOOL_CALL:
@@ -318,6 +346,11 @@ class ToolHandler:
         tool = None
         if self._is_python(recipient):
             tool = self.python_tool
+            # dirty hack to ensure pip installs work
+            message_text = last_message.content[0].text  # type: ignore
+            if "pip install" in message_text:
+                text = f"{bootstrap_pip}\n{message_text}"
+                last_message.content[0].text = text  # type: ignore
         if self._is_browser(recipient):
             tool = self.browser_tool
             self.manager.manager.browser_tool_used = True

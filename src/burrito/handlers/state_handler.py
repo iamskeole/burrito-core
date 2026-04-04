@@ -20,10 +20,12 @@ from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import (
     get_prompt,
+    lark_to_gbnf,
     render_terminal_glyph,
     unix_timestamp_in_ms,
     wire_api_label_from_params,
 )
+from burrito.handlers.repetition_handler import RepetitionHandler
 from burrito.handlers.token_handler import (
     normalize_completion_token,
 )
@@ -67,6 +69,7 @@ from burrito.routes.metrics import (
 )
 from burrito.services.harmony import (
     ENCODING,
+    SPECIAL_TOKENS,
     build_conversation_from_messages,
     build_conversation_from_params,
     build_user_message,
@@ -75,12 +78,13 @@ from burrito.services.harmony import (
 )
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
-from burrito.types.conversation_enums import ConversationState
+from burrito.types.conversation_enums import ConversationChannel, ConversationState
 from burrito.types.conversation_error import ConversationError
 from burrito.types.conversation_inputs import ConversationInputs
 from burrito.types.conversation_token import ConversationToken
 from burrito.types.patched_chat_completion import PatchedChatCompletion
 from burrito.types.patched_chat_completion_chunk import PatchedChatCompletionChunk
+from burrito.types.tool_param_custom import CustomToolInputFormatGrammar
 from burrito.types.wire_api_params_chat import WireApiParamsChat
 from burrito.types.wire_api_params_messages import WireApiParamsMessages
 from burrito.types.wire_api_params_responses import WireApiParamsResponses
@@ -103,6 +107,15 @@ class StateHandler:
         self.events: List[BaseModel] = []
         self.response_buffer: str = ""
 
+        self.reasoning_interrupted = False
+        self.last_parser_message_ix = 0
+        self.prefill_channel = (
+            ConversationChannel.ANALYSIS.value
+            if settings.MAX_REASONING_TOKENS
+            else ConversationChannel.FINAL.value
+        )
+        self.prefill_tokens: List[int] = self.get_prefill_tokens()
+
         # token stores for stats
         self.response_tokens: List[ConversationToken] = []
         self.reasoning_tokens: List[ConversationToken] = []
@@ -110,6 +123,9 @@ class StateHandler:
         self.native_tool_input_tokens: List[ConversationToken] = []
         self.caller_tool_input_tokens: List[ConversationToken] = []
         self.output_text_tokens: List[ConversationToken] = []
+
+        self.repetition_detector_reasoning: RepetitionHandler
+        self.repetition_detector_non_reasoning: RepetitionHandler
 
         self.log_id: str = ""
         self.logger: logging.Logger
@@ -142,9 +158,18 @@ class StateHandler:
 
         python_tool, browser_tool = self._init_conversation()
 
+        self.break_ts_logs = []
+
         self._init_tools(python_tool, browser_tool)
         self._init_plugins()
         self._init_logger()
+
+    def get_prefill_tokens(self) -> List[int]:
+        return [
+            SPECIAL_TOKENS.CHANNEL.id,
+            ENCODING.encode(self.prefill_channel)[0],
+            SPECIAL_TOKENS.MESSAGE.id,
+        ]
 
     def _init_logger(self):
         self.logger = FastAPILogger.get_logger(__name__)
@@ -224,12 +249,21 @@ class StateHandler:
         conversation, inputs, python_tool, browser_tool = (
             build_conversation_from_params(params, extra_messages)
         )
+        prefill_tokens = self.get_prefill_tokens()
         self.conversation = conversation
         self.conversation_inputs = inputs
         self.prompt_tokens = render_conversation_for_completion(
-            conversation=self.conversation, is_on_init=True
+            conversation=self.conversation,
+            is_on_init=True,
+            prefill_tokens=prefill_tokens,
         )
         self.parser = StreamableParser(ENCODING, Role.ASSISTANT)
+        for token in prefill_tokens:
+            self.parser.process(token)
+
+        # new detector instance so entropy checks reset, otherwise instant fail
+        self.repetition_detector_reasoning = RepetitionHandler()
+        self.repetition_detector_non_reasoning = RepetitionHandler()
         return (python_tool, browser_tool)
 
     async def put_close_marker(self):
@@ -280,7 +314,7 @@ class StateHandler:
         bfr = f"\n\n🚨🚨🚨\n\n{message.content[0].text}\n\n🚨🚨🚨\n\n"  # type: ignore
         self.response_buffer += bfr
 
-    def _update_state_with_tool_result(self, tool_result: List[Message]):
+    def update_state_with_tool_result(self, tool_result: List[Message]):
         if not tool_result:
             return
         self.manager._stop_stream()
@@ -309,6 +343,56 @@ class StateHandler:
         self.manager._init_stream()
         self.recover_state_attempts += 1
 
+    # 🐉 HIC SVNT DRACONES 🐉
+    # we assume the user knows what they're doing when writing and wanting
+    # to use a custom grammar; we convert user-specified grammar to gbnf
+    # (if lark, eg openai Codex CLI apply_patch) and restart inference;
+    # gbnf works for both llama.cpp and vLLM but probably openai uses lark
+    # this was implemented mostly to make the latest codex cli work better
+    # 🐉 HIC SVNT DRACONES 🐉
+    async def maybe_break_for_custom_tool_grammar(self):
+        if self.parser_state != ConversationState.TOOL_INPUT_START:
+            return
+
+        tool = self.tool_handler.get_tool_model_is_trying_to_call()
+        if not tool:
+            return
+
+        if isinstance(tool, BurritoBrowser) or isinstance(tool, BurritoPython):
+            return
+
+        if not isinstance(tool.format, CustomToolInputFormatGrammar):
+            return
+
+        self.manager._stop_stream()
+        prev_messages = self.parser.messages
+
+        for i in prev_messages:
+            self.extra_messages.append(i)
+
+        # TODO: check this whole thing doesn't break with prefill handled on conversation init
+
+        grammar = lark_to_gbnf(tool.format.definition)
+        self.prefill_channel = ConversationChannel.COMMENTARY.value
+        self._init_conversation(extra_messages=self.extra_messages)
+
+        _message_token = SPECIAL_TOKENS.MESSAGE.text
+        prefill = f" to=functions.{tool.name}{_message_token}"
+        enc = ENCODING.encode(prefill, allowed_special="all")
+
+        for token in enc:
+            self.parser.process(token)
+            self.prompt_tokens.append(token)
+
+        tkn, state = None, ConversationState.TOOL_INPUT_START
+        await self.transition_handler.transition(tkn, state)
+        self.parser_state = state  # TODO: check this still works
+
+        self.manager._init_stream(grammar=grammar)
+        # self.parser_state = ConversationState.TOOL_INPUT
+        # dec = ENCODING.decode(self.prompt_tokens)
+        # print(dec)
+
     def _store_token(self, token: ConversationToken):
         state = self.parser_state
 
@@ -318,12 +402,10 @@ class StateHandler:
                 | ConversationState.CREATED
                 | ConversationState.IN_PROGRESS
                 | ConversationState.REASONING
+                | ConversationState.PREAMBLE
                 | ConversationState.REASONING_END
             ):
                 self.reasoning_tokens.append(token)
-
-            case ConversationState.PREAMBLE:
-                self.preamble_tokens.append(token)
 
             case (
                 ConversationState.NATIVE_TOOL_INPUT_START
@@ -347,11 +429,181 @@ class StateHandler:
         if settings.DEBUG_RESPONSE_BUFFER:
             self.response_buffer += token.text
 
+    async def maybe_transition_created_state(self):
+        # running eval on aime high reasoning, question 14, model starts
+        # without a channel and transition gets fucked, so we guard here
+        # also a reasoning tokens budget? at least with llama.cpp
+        # backend, model keeps going close to context window max, and then
+        # wants to return on non return channel, raising a state recovery
+        # which eventually goes beyond context so overflow error in inference
+        if len(self.response_tokens) > 0:
+            return
+
+        tkn, state = None, ConversationState.CREATED
+        await self.transition_handler.transition(tkn, state)
+        self.parser_state = state
+
+    async def _break_non_reasoning_loop(self):
+        channel = self.parser_channel
+        msg = get_prompt("sentinel_non_reasoning_loop").format(channel=channel)
+        self._add_recovery_message(msg)
+        return self._recover_state()
+
+    async def maybe_break_non_reasoning_loop(self, token: ConversationToken):
+        # may break some clients, eg they're probably not expecting output -> reasoning -> output
+        # so we're giving the user a choice whether to activate this
+        if not settings.BREAK_NON_REASONING_REPETITIONS:
+            return
+
+        # we handle reasoning loop breaks separately
+        if self.parser_state in [
+            ConversationState.INITIAL,
+            ConversationState.CREATED,
+            ConversationState.IN_PROGRESS,
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
+            ConversationState.REASONING_END,
+        ]:
+            return
+
+        is_repeating = self.repetition_detector_non_reasoning.process_new_token(token)
+        if not is_repeating:
+            return
+
+        self.prefill_channel = settings.NON_REASONING_REPETITION_RECOVERY_CHANNEL
+        if settings.DEBUG_STATE_ERRORS:
+            self.logger.warning(
+                "TRIGGER: maybe_break_non_reasoning_loop",
+                extra=self.log_extra,
+            )
+        return await self._break_non_reasoning_loop()
+
+    # NOTE: a bit hacky, may mess up tool calling, but shouldn't spend tens of thousands
+    # of tokens for tools?
+    # also, tradeoff / drawback = forces a prefill with the entire prompt + reasoning
+
+    # TODO: figure out a way to do sentinel breaks if outside reasoing,
+    # since if we just output, we may mess up tool calls the model could recover from
+    async def _break_reasoning_loop(self):
+        if len(self.tool_handler.tools) > 0:
+            msg = get_prompt("sentinel_reasoning_loop")
+            self._add_recovery_message(msg)
+            return self._recover_state()
+
+        self.manager._stop_stream()
+        _end_token = SPECIAL_TOKENS.END.text
+        _start_token = SPECIAL_TOKENS.START.text
+        _channel_token = SPECIAL_TOKENS.CHANNEL.text
+        _message_token = SPECIAL_TOKENS.MESSAGE.text
+        _assistant_token = Role.ASSISTANT.value
+
+        reasoning_text = ENCODING.decode([i.id for i in self.reasoning_tokens])
+
+        prefill = (
+            f"{reasoning_text}"
+            f"\n{get_prompt('break_reasoning_loop')}"
+            f"{_end_token}"
+            f"{_start_token}"
+            f"{_assistant_token}"
+            f"{_channel_token}{ConversationChannel.FINAL.value}"
+            f"{_message_token}"
+        )
+        enc = ENCODING.encode(prefill, allowed_special="all")
+
+        for token in enc:
+            self.prompt_tokens.append(token)
+
+        self.parser = StreamableParser(ENCODING, Role.ASSISTANT)
+        self.prefill_channel = ConversationChannel.FINAL.value
+        prefill_tokens = self.get_prefill_tokens()
+
+        for token in prefill_tokens:
+            self.parser.process(token)
+
+        tkn, state = None, ConversationState.REASONING_END
+        await self.transition_handler.transition(tkn, state)
+        self.repetition_detector_reasoning = RepetitionHandler()
+        self.parser_state = state
+
+        self.reasoning_interrupted = True
+        self.manager._init_stream()
+
+    async def maybe_break_for_max_reasoning_tokens(self):
+        if self.parser_state not in [
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
+        ]:
+            return
+        if self.reasoning_interrupted:
+            return
+
+        num_tokens = len(self.reasoning_tokens) + len(self.preamble_tokens)
+        if num_tokens <= settings.MAX_REASONING_TOKENS:
+            return
+        if settings.DEBUG_STATE_ERRORS:
+            self.logger.warning(
+                "TRIGGER: maybe_break_for_max_reasoning_tokens",
+                extra=self.log_extra,
+            )
+        await self._break_reasoning_loop()
+
+    async def maybe_break_for_repeated_reasoning_text(self, token: ConversationToken):
+        if self.parser_state not in [
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
+        ]:
+            return
+
+        is_repeating = self.repetition_detector_reasoning.process_new_token(token)
+        if not is_repeating:
+            return
+        if settings.DEBUG_STATE_ERRORS:
+            self.logger.warning(
+                "TRIGGER: maybe_break_for_repeated_reasoning_text",
+                extra=self.log_extra,
+            )
+        await self._break_reasoning_loop()
+
+    async def maybe_break_for_repeated_reasoning_loops(self):
+        if self.transition_handler.reasoning_loops < settings.MAX_REASONING_LOOPS:
+            return
+        self.transition_handler.reasoning_loops = 0
+        if settings.DEBUG_STATE_ERRORS:
+            self.logger.warning(
+                "TRIGGER: maybe_break_for_repeated_reasoning_loops",
+                extra=self.log_extra,
+            )
+        await self._break_reasoning_loop()
+
+    async def maybe_break_for_repeated_preamble_loops(self):
+        if self.transition_handler.preamble_loops < settings.MAX_PREAMBLE_LOOPS:
+            return
+        self.transition_handler.preamble_loops = 0
+        if settings.DEBUG_STATE_ERRORS:
+            self.logger.warning(
+                "TRIGGER: maybe_break_for_repeated_preamble_loops",
+                extra=self.log_extra,
+            )
+        await self._break_reasoning_loop()
+
+    async def maybe_break_inference_loop(self, token: ConversationToken):
+        t0 = unix_timestamp_in_ms()
+        await self.maybe_break_for_custom_tool_grammar()
+        await self.maybe_break_for_repeated_reasoning_text(token)
+        await self.maybe_break_for_repeated_reasoning_loops()
+        await self.maybe_break_for_repeated_preamble_loops()
+        await self.maybe_break_for_max_reasoning_tokens()
+        await self.maybe_break_non_reasoning_loop(token)
+        td = unix_timestamp_in_ms() - t0
+        self.break_ts_logs.append(td)
+
     async def _process_completion(
         self, completion: Union[Completion, str]
     ) -> Union[ConversationToken, None]:
         if isinstance(completion, str):
             return
+
+        await self.maybe_transition_created_state()
 
         token = normalize_completion_token(
             completion=completion,
@@ -365,6 +617,14 @@ class StateHandler:
 
         if not token or token.id == -1:
             return
+
+        # edge case where model emits constrain token with no tools, on final channel
+        # which means it won't output a <|message|> token, which means parser
+        # hangs in header state, which means it doesn't register the final channel
+        # so we perform small brain surgery to convert <|constrain|> to <|message|>
+        if token.id == SPECIAL_TOKENS.CONSTRAIN.id and not self.tool_handler.tools:
+            token.id = SPECIAL_TOKENS.MESSAGE.id
+            token.text = SPECIAL_TOKENS.MESSAGE.text
 
         # weird special case where assistant emitting same
         # special token (<|message|>  or <|channel|> ?) twice?
@@ -391,9 +651,13 @@ class StateHandler:
             #   (rare, mostly cahght by validations)
             # - HarmonyError('Unknown role: assistant<|channel|>commentary')
             # - anything else?
-            msg = get_prompt("sentinel_bad_token_sequence").format(
-                model_output=f"{repr(e.args[0])}"
-            )
+            # msg = get_prompt("sentinel_bad_token_sequence").format(
+            #     model_output=f"{repr(e.args[0])}"
+            # )
+
+            # repr-ing the harmony error sometimes dumps full assistant text
+            # which is confusing so we use a generic message instead
+            msg = get_prompt("sentinel_bad_token_sequence_generic")
             self._add_recovery_message(msg)
             return self._recover_state()
 
@@ -410,11 +674,17 @@ class StateHandler:
 
         await self.transition_handler.transition(token)
         await self.tool_handler.maybe_call_native_tool()
+        await self.maybe_break_inference_loop(token)
 
     def _log_stats(self):
         p_t, r_t = self.prompt_tokens, self.response_tokens
         if not r_t:
             return
+
+        total_break_time = sum(self.break_ts_logs)
+        mean_break_time = total_break_time / len(self.break_ts_logs)
+        print(f"mean time to break logs = {mean_break_time:.8f} ms")
+        print(f"total time to break logs = {total_break_time:.4f} ms")
 
         t_p = (r_t[0].created_at - self.created_at) / 1000
         t_e = (r_t[-1].created_at - r_t[0].created_at) / 1000
@@ -484,7 +754,7 @@ class StateHandler:
         if not self.is_done:
             return
         self._log_stats()
-        return  # self.response_buffer
+        return
 
     def _debug_completion(self, completion: Union[Completion, str]):
         if not settings.DEBUG_COMPLETIONS:

@@ -20,7 +20,14 @@ from openai_harmony import (
 )
 
 from burrito.common.config import settings
-from burrito.common.utils import get_prompt, simple_markdown_renderer, yyyymmdd
+from burrito.common.utils import (
+    get_prompt,
+    minify_prompt_aggressive,
+    minify_prompt_extreme,
+    minify_prompt_safe,
+    simple_markdown_renderer,
+    yyyymmdd,
+)
 from burrito.services.harmony.harmony_service_chat import build_message_list_chat
 from burrito.services.harmony.harmony_service_messages import (
     build_message_list_messages,
@@ -93,12 +100,17 @@ def build_system_message(
     python_tool: Optional[BurritoPython],
     browser_tool: Optional[BurritoBrowser],
 ) -> Message:
-    channel_config = ChannelConfig(
-        valid_channels=[
+    channels_w_tools = [
             ConversationChannel.ANALYSIS.value,
             ConversationChannel.COMMENTARY.value,
             ConversationChannel.FINAL.value,
-        ],
+        ]
+    channels_no_tools = [
+            ConversationChannel.ANALYSIS.value,
+            ConversationChannel.FINAL.value,
+        ]
+    channel_config = ChannelConfig(
+        valid_channels=channels_w_tools if inputs.tools else channels_no_tools,
         channel_required=True,
     )
 
@@ -125,8 +137,10 @@ def build_system_message(
     return msg
 
 
-def build_developer_message(inputs: ConversationInputs) -> Message:
+def build_developer_message(inputs: ConversationInputs) -> Optional[Message]:
     instructions = inputs.instructions or ""
+    if not instructions and not inputs.tools:
+        return
     if settings.CLEANUP_LOW_PRECISION_PROMPT_TIMESTRINGS:
         instructions = TIME_DETECT_RE.sub(TIME_REPLACE_RE, instructions)
     dev_message = DeveloperContent.new().with_instructions(instructions)
@@ -141,14 +155,30 @@ def build_developer_message(inputs: ConversationInputs) -> Message:
                     )
                 )
             case "custom":
-                tools.append(
-                    ToolDescription.new(
-                        tool.name, tool.description or "", tool.parameters
-                    )
+                # TODO: do this properly, if we decide to support
+                # this is dirty and doesn't doo too much good
+                # figure out a way to ENFORCE the grammar during inference
+                # does vllm support this? i think llamacpp does on the fly, but check vllm
+                t = ToolDescription.new(
+                    tool.name, tool.description or "", tool.parameters
                 )
+                if tool.format is not None and tool.format.type == "grammar":
+                    t.description += (
+                        f"\nGRAMMAR SYNTAX: {tool.format.syntax}"
+                        f"\nGRAMMAR DEFINITION: {tool.format.definition}"
+                    )
+                tools.append(t)
     if tools:
         dev_message = dev_message.with_function_tools(tools)
     return Message.from_role_and_content(Role.DEVELOPER, dev_message)
+
+
+def build_assistant_message(text: str, channel: str) -> Message:
+    return Message(
+        author=Author(role=Role.ASSISTANT),
+        content=[TextContent(text=text)],
+        channel=channel,
+    )
 
 
 def build_user_message(text: str, name: Optional[str]) -> Message:
@@ -239,19 +269,28 @@ def build_conversation_history(
     python_tool: Optional[BurritoPython],
     browser_tool: Optional[BurritoBrowser],
 ) -> Conversation:
-    system_message = build_system_message(inputs, python_tool, browser_tool)
-    messages = [
-        system_message,
-        build_developer_message(inputs),
-        *prune_reasoning(inputs.messages),  # unpack result of prune_reasoning
-    ]
+    messages = [build_system_message(inputs, python_tool, browser_tool)]
+    dev_message = build_developer_message(inputs)
+
+    # special case where no instructions AND no tools -> None
+    if dev_message:
+        messages.append(dev_message)
+
+    messages += prune_reasoning(inputs.messages)
+
+    # messages = [
+    #     system_message,
+    #     build_developer_message(inputs),
+    #     *prune_reasoning(inputs.messages),  # unpack result of prune_reasoning
+    # ]
     conversation = build_conversation_from_messages(messages)
     return conversation
 
 
 def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
     has_default = settings.IS_PYTHON_TOOL_ENABLED
-    backend = settings.PYTHON_BACKEND
+    if not has_default:
+        return
     should_enable = False
 
     # first, we check whether caller explicitly asks for capability
@@ -260,7 +299,6 @@ def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
     for tool in params.tools or []:
         match tool:
             case ToolParamPythonChat() | ToolParamPythonResponses():
-                backend = tool.backend or settings.PYTHON_BACKEND
                 should_enable = True
                 break
             case _:
@@ -278,12 +316,14 @@ def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
     if not should_enable:
         return
 
-    tool = BurritoPython(backend)
+    tool = BurritoPython()
     return tool
 
 
 def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
     has_default = settings.IS_BROWSER_TOOL_ENABLED
+    if not has_default:
+        return
     should_enable = False
 
     # first, we check whether caller explicitly asks for capability
@@ -292,7 +332,7 @@ def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
     for tool in params.tools or []:
         match tool:
             case ToolParamBrowserChat() | ToolParamBrowserResponses():
-                should_enable = tool.web_search_enabled
+                should_enable = tool.external_acess or tool.web_search_enabled
                 break
 
             # we use tool names to enable native browser
@@ -388,15 +428,30 @@ def build_conversation_from_params(
 
 
 def render_conversation_for_completion(
-    conversation: Conversation, is_on_init: bool = False
+    conversation: Conversation,
+    is_on_init: bool = False,
+    prefill_tokens: List[int] = [],
 ) -> list[int]:
-    tokens_for_completion = ENCODING.render_conversation_for_completion(
+    prompt_tokens = ENCODING.render_conversation_for_completion(
         conversation=conversation, next_turn_role=Role.ASSISTANT
     )
+    tokens_for_completion = prompt_tokens + prefill_tokens
+
+    minify_fn = {
+        "safe": minify_prompt_safe,
+        "aggressive": minify_prompt_aggressive,
+        "extreme": minify_prompt_extreme,
+    }.get(settings.MINIFY_PROMPTS)
+
+    if minify_fn is not None:
+        raw = minify_fn(ENCODING.decode(tokens_for_completion))
+        tokens_for_completion = ENCODING.encode(raw, allowed_special=("all"))
 
     if is_on_init and settings.DEBUG_PROMPT:
         dec = ENCODING.decode(tokens_for_completion)
-        print(simple_markdown_renderer(dec))
+        print(dec)
+        simple_markdown_renderer
+        # print(simple_markdown_renderer(dec))
         print(
             "prompt length: "
             f"t={len(tokens_for_completion):,} tokens, "

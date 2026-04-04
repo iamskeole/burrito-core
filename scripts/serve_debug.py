@@ -12,7 +12,6 @@ def serve():
         host=settings.HOST,
         port=settings.PORT,
         log_level=settings.LOG_LEVEL,
-        access_log=settings.ACCESS_LOG
     )
 
 

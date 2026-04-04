@@ -207,7 +207,7 @@ def simple_markdown_renderer(markdown_text):
 
 
 class LruDict(Generic[K, V]):
-    """A size‑limited LRU dictionary.
+    """A size-limited LRU dictionary.
 
     Parameters
     ----------
@@ -272,3 +272,139 @@ class LruDict(Generic[K, V]):
 
     def __repr__(self) -> str:
         return f"LruDict(maxsize={self.maxsize}, data={dict(self._data)})"
+
+
+def grammar_is_likely_lark(grammar_str: str) -> bool:
+    """From vLLM: Check if grammar appears to use Lark syntax."""
+    if not grammar_str or not isinstance(grammar_str, str):
+        return False
+    for line in grammar_str.split("\n"):
+        line = re.sub(r"(#|//).*$", "", line).strip()
+        if not line:
+            continue
+        if "::=" in line:
+            return False
+    return True
+
+
+def lark_to_gbnf(grammar: str) -> str:
+    """Converter that handles Regex, Imports, Aliases, and Underscores."""
+
+    # Check if already valid GBNF
+    has_gbnf_root = "root ::=" in grammar
+    has_lark_rules = bool(re.search(r"^\s*[a-zA-Z0-9_]+\s*:", grammar, re.MULTILINE))
+    if has_gbnf_root and not has_lark_rules:
+        return grammar.strip()
+
+    lines = grammar.strip().splitlines()
+    gbnf_lines = ["root ::= begin-patch hunk+ end-patch"]  # Updated root rule
+
+    lark_common_imports = {
+        "common.LF": r'LF ::= "\n"',
+        "common.CR": r'CR ::= "\r"',
+        "common.WS": r"WS ::= [ \t\n\r]+",
+        "common.DIGIT": r"DIGIT ::= [0-9]",
+    }
+    imports_to_add = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("start:"):
+            continue
+
+        if stripped.startswith("%import"):
+            match = re.search(r"%import\s+([a-zA-Z0-9_.]+)", stripped)
+            if match and match.group(1) in lark_common_imports:
+                imports_to_add.append(lark_common_imports[match.group(1)])
+            continue
+
+        line = re.sub(r"\s*->\s*[a-zA-Z0-9_]+", "", line)
+        line = re.sub(r"^(\s*[a-zA-Z0-9_]+)\s*:", r"\1 ::=", line)
+        line = line.replace(r"/(.+)/", r"[^\n]+")
+        line = line.replace(r"/(.*)/", r"[^\n]*")
+        line = re.sub(r"/([^/]+)/", lambda m: m.group(1).replace(".", r"[^\n]"), line)
+
+        # Split by quotes to avoid replacing underscores inside literal strings
+        parts = re.split(r'("[^"]*")', line)
+        for i in range(0, len(parts), 2):
+            # Even indexes are outside quotes: replace underscores
+            parts[i] = parts[i].replace("_", "-")
+        line = "".join(parts)
+        # --------------------------------------------------
+
+        gbnf_lines.append(line)
+
+    if imports_to_add:
+        gbnf_lines.append("")
+        gbnf_lines.extend(list(set(imports_to_add)))
+
+    return "\n".join(gbnf_lines)
+
+
+bootstrap_pip = """
+import sys
+import subprocess
+
+def _ensure_pip():
+    try:
+        import pip  # noqa: F401
+    except ImportError:
+        try:
+            subprocess.check_call([sys.executable, "-m", "ensurepip", "--upgrade"])
+        except Exception:
+            # Fallback: try get-pip.py if ensurepip is unavailable
+            try:
+                subprocess.check_call([
+                    sys.executable, "-c",
+                    "import urllib.request; exec(urllib.request.urlopen('https://bootstrap.pypa.io/get-pip.py').read())"
+                ])
+            except Exception:
+                pass  # give up silently
+
+_ensure_pip()
+"""
+
+
+def minify_prompt_aggressive(text: str) -> str:
+    """
+    Removes ALL redundant whitespace, including newlines.
+    Converts the entire text into a single line.
+    """
+    return " ".join(text.split())
+
+
+def minify_prompt_safe(text: str) -> str:
+    """
+    Removes redundant spaces and empty lines, but preserves
+    single line breaks for readability and markdown structure.
+    """
+    # 1. Remove leading/trailing spaces and tabs on every line
+    text = re.sub(r"^[ \t]+|[ \t]+$", "", text, flags=re.MULTILINE)
+
+    # 2. Collapse multiple spaces/tabs into a single space
+    text = re.sub(r"[ \t]+", " ", text)
+
+    # 3. Collapse multiple empty lines into a single newline
+    text = re.sub(r"\n+", "\n", text)
+
+    # 4. Strip final leading/trailing whitespace from the whole string
+    return text.strip()
+
+
+def minify_prompt_extreme(text: str) -> str:
+    """
+    Aggressively minifies prompt text while avoiding common footguns.
+    Safely handles English prose, string literals, commas, and colons.
+    """
+    # 1. Collapse all whitespace, tabs, and newlines to a single space
+    text = " ".join(text.split())
+
+    # 2. Glue consecutive structural brackets/braces.
+    # Matches a space ONLY if it is flanked by brackets/braces on BOTH sides.
+    # Fixes the `] } } ]` bloat but avoids altering strings like `"Hello { name }"`
+    text = re.sub(r"(?<=[\[\]\{\}])\s+(?=[\[\]\{\}])", "", text)
+
+    # 3. Strip spaces explicitly around LLM special tokens (e.g., <|end|>, <|user|>)
+    text = re.sub(r"\s*(<\|.*?\|>)\s*", r"\1", text)
+
+    return text

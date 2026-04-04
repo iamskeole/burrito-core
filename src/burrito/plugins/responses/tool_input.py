@@ -119,7 +119,7 @@ class ToolInputPluginResponses(BasePluginResponses):
                     sequence_number=self.manager.sequence_number,
                     type="response.function_call_arguments.done",
                 )
-            case ResponseCustomToolCallInputDoneEvent():
+            case ResponseCustomToolCall():
                 return ResponseCustomToolCallInputDoneEvent(
                     input=output_item.input,
                     item_id=output_item.id,

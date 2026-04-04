@@ -3,6 +3,7 @@ from .harmony_service import (
     SPECIAL_TOKENS,
     build_conversation_from_messages,
     build_conversation_from_params,
+    build_assistant_message,
     build_tool_message,
     build_user_message,
     get_prompt_cache_messages,
@@ -12,6 +13,7 @@ from .harmony_service import (
 __all__ = [
     "ENCODING",
     "SPECIAL_TOKENS",
+    "build_assistant_message",
     "build_user_message",
     "build_tool_message",
     "build_conversation_from_params",

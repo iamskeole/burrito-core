@@ -78,7 +78,7 @@ def map_completion_data(data: Dict, text_offset: int) -> Completion | None:
 
 
 def build_payload(
-    prompt_token_ids: list[int], params: WireApiParams
+    prompt_token_ids: list[int], params: WireApiParams, grammar: str
 ) -> CompletionCreateParamsBase:
     sampling_keys = ["temperature", "top_p", "min_p", "top_k"]
     default_keys = (
@@ -129,6 +129,9 @@ def build_payload(
     # force vLLM to return token ids instead of text only
     payload["return_tokens_as_token_ids"] = True  # type: ignore
     payload["return_token_ids"] = True  # type: ignore
+
+    if grammar:
+        payload["grammar"] = grammar  # type: ignore
     return payload
 
 
@@ -136,9 +139,10 @@ async def infer_next_token(
     prompt_token_ids: list[int],
     params: WireApiParams,
     headers: Dict[str, str] = {},
+    grammar: str = "",
 ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
     url = settings.BACKEND_BASE_URL.rstrip("/") + "/v1/completions"
-    payload = build_payload(prompt_token_ids, params)
+    payload = build_payload(prompt_token_ids, params, grammar)
 
     try:
         async with httpx.AsyncClient(timeout=None) as client:

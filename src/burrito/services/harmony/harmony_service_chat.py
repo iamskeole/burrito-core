@@ -168,14 +168,14 @@ def parse_tools(
     for tool in params.tools or []:
         match tool:
             case ToolParamFunctionChat():
-                tool = ConversationToolParam(
+                t = ConversationToolParam(
                     name=tool.function.name,
                     parameters=tool.function.parameters,
                     strict=tool.function.strict,
                     type=tool.type,
                     description=tool.function.description,
                 )
-                tools.append(tool)
+                tools.append(t)
             case ToolParamCustomChat():
                 fmt = None
                 if tool.custom.format:
@@ -190,13 +190,13 @@ def parse_tools(
                             type=tool.custom.format.type or "text"
                         )
 
-                tool = ConversationToolParam(
+                t = ConversationToolParam(
                     name=tool.custom.name,
                     type=tool.type,
                     description=tool.custom.description or "",
                     format=fmt,
                 )
-                tools.append(tool)
+                tools.append(t)
             case ToolParamBrowserChat():
                 continue  # we handle native browser separately
             case _:

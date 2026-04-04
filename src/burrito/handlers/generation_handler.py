@@ -21,9 +21,12 @@ class GenerationHandler:
         prompt_token_ids: List[int],
         params: WireApiParams,
         headers: Dict[str, str] = {},
+        grammar: str = "",
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         try:
-            async for completion in infer_next_token(prompt_token_ids, params, headers):
+            async for completion in infer_next_token(
+                prompt_token_ids, params, headers, grammar
+            ):
                 if not self.can_stream:
                     if settings.DEBUG_GENERATOR_CLEANUP:
                         self.logger.debug(
@@ -40,7 +43,8 @@ class GenerationHandler:
         prompt_token_ids: List[int],
         params: WireApiParams,
         headers: Dict[str, str] = {},
+        grammar: str = "",
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
-        generator = self._generator(prompt_token_ids, params, headers)
+        generator = self._generator(prompt_token_ids, params, headers, grammar)
         async for item in generator:
             yield item

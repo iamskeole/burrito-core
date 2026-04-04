@@ -93,10 +93,21 @@ class WireApiParamsChat(BaseModel):
     reasoning_effort: Optional[str] = ConversationReasoningEffort(
         DEFAULT_REASONING_EFFORT
     )
-    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = 1.0
-    top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
-    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 0.0
-    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 0
+
+    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = (
+        settings.SAMPLING_DEFAULT_TOP_K
+    )
+    top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = (
+        settings.SAMPLING_DEFAULT_TOP_P
+    )
+    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = (
+        settings.SAMPLING_DEFAULT_MIN_P
+    )
+    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = (
+        settings.SAMPLING_DEFAULT_TEMPERATURE
+    )
+    seed: Optional[Annotated[int, Field(ge=0)]] = settings.SAMPLING_DEFAULT_SEED
+
     stop: Optional[Union[str, List[str]]] = None
     max_tokens: Optional[int] = None
     max_completion_tokens: Optional[int] = None

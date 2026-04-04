@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from burrito.common.config import settings
 from burrito.types.conversation_inputs import ConversationReasoningParam
 from burrito.types.tool_param_browser import ToolParamBrowserResponses
+from burrito.types.tool_param_custom import ToolParamCustomResponses
 from burrito.types.tool_param_function import ToolParamFunctionResponses
 from burrito.types.tool_param_python import ToolParamPythonResponses
 
@@ -154,10 +155,19 @@ class WireApiParamsResponses(BaseModel):
 
     reasoning: Optional[ConversationReasoningParam] = None
 
-    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = 1.0
-    top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
-    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 0.0
-    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 0
+    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = (
+        settings.SAMPLING_DEFAULT_TOP_K
+    )
+    top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = (
+        settings.SAMPLING_DEFAULT_TOP_P
+    )
+    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = (
+        settings.SAMPLING_DEFAULT_MIN_P
+    )
+    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = (
+        settings.SAMPLING_DEFAULT_TEMPERATURE
+    )
+    seed: Optional[Annotated[int, Field(ge=0)]] = settings.SAMPLING_DEFAULT_SEED
 
     max_output_tokens: Optional[int] = None
     prompt_cache_key: Optional[str] = None
@@ -171,7 +181,7 @@ class WireApiParamsResponses(BaseModel):
                 # we disable custom tools as an input option
                 # to force schema validation failure
                 # see note in harmony_service for more details
-                # ToolParamCustomResponses,
+                ToolParamCustomResponses,
             ]
         ]
     ] = None

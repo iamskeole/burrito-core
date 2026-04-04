@@ -6,11 +6,13 @@ from pydantic import BaseModel
 class ToolParamBrowserChat(BaseModel):
     type: Literal["web_search", "browser_search"]
     web_search_enabled: Optional[bool] = True
+    external_acess: Optional[bool] = True
 
 
 class ToolParamBrowserResponses(BaseModel):
     type: Literal["web_search", "browser_search"]
     web_search_enabled: Optional[bool] = True
+    external_acess: Optional[bool] = True
 
 
 class ToolParamBrowserMessages(BaseModel):

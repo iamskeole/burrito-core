@@ -107,10 +107,21 @@ class WireApiParamsMessages(BaseModel):
     stop_sequences: Optional[List[str]] = None
     stream: Optional[bool] = True
     prompt_cache_key: Optional[str] = None
-    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = 1.0
-    top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 1.0
-    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = 0.0
-    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = 0
+
+    top_k: Optional[Annotated[int, Field(ge=0, le=100)]] = (
+        settings.SAMPLING_DEFAULT_TOP_K
+    )
+    top_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = (
+        settings.SAMPLING_DEFAULT_TOP_P
+    )
+    min_p: Optional[Annotated[float, Field(ge=0.0, le=1.0)]] = (
+        settings.SAMPLING_DEFAULT_MIN_P
+    )
+    temperature: Optional[Annotated[float, Field(ge=-2.0, le=2.0)]] = (
+        settings.SAMPLING_DEFAULT_TEMPERATURE
+    )
+    seed: Optional[Annotated[int, Field(ge=0)]] = settings.SAMPLING_DEFAULT_SEED
+
     tools: Optional[List[ToolInputParam]] = None
     tool_choice: Optional[ToolChoice] = None
     thinking: Optional[ReasoningParam] = None

@@ -1,4 +1,4 @@
-**Invalid output**: you seem to be stuck in a reasoning loop inside the analysis channel. Try to break out of it by outputting a final message or a tool call.
+**Invalid output**: you are stuck in a reasoning loop inside the 'analysis' channel. You must output either a tool call on the 'commentary' channel, or an output message to the user on the 'final' channel.
 
 Valid channels: analysis, commentary, final.
 Channel must be included for every message.
