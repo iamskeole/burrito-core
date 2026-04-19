@@ -164,6 +164,18 @@ class BasePluginChat(BasePlugin):
                         f"got {type(part)}"
                     )
 
+        native_tool_calls = self.manager.tool_handler.tool_calls
+        native_tool_call_index = max(tools_called.keys()) if tools_called else -1
+
+        for i in native_tool_calls:
+            native_tool_call_index += 1
+            tools_called[native_tool_call_index] = {
+                "id": i["call_id"],
+                "name": i["name"],
+                "type": "function",
+                "content": i["content"]
+            }
+
         for i in tools_called.values():
             tc = None
             _id, _name, _type, _content = (
@@ -193,6 +205,7 @@ class BasePluginChat(BasePlugin):
 
         message = PatchedChatCompletionChoiceMessage(
             content=content,
+            reasoning=reasoning_content,
             reasoning_content=reasoning_content,
             reasoning_summary=None,
             tool_calls=tool_calls,

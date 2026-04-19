@@ -1,0 +1,33 @@
+services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: burrito-docker-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - CONTAINERS=1
+      - NETWORKS=1
+      - IMAGES=1
+    networks:
+      - burrito-internal
+
+  burrito:
+    build: .
+    container_name: burrito
+    ports:
+      - "8888:8000"
+    environment:
+      - DOCKER_HOST=tcp://docker-proxy:2375
+    volumes:
+      - jupyter-runtime:/tmp/jupyter-runtime
+    networks:
+      - burrito-internal
+    depends_on:
+      - docker-proxy
+
+volumes:
+  jupyter-runtime:
+
+networks:
+  burrito-internal:
+    driver: bridge

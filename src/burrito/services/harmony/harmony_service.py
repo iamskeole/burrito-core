@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from openai_harmony import (
     Author,
@@ -20,14 +20,7 @@ from openai_harmony import (
 )
 
 from burrito.common.config import settings
-from burrito.common.utils import (
-    get_prompt,
-    minify_prompt_aggressive,
-    minify_prompt_extreme,
-    minify_prompt_safe,
-    simple_markdown_renderer,
-    yyyymmdd,
-)
+from burrito.common.utils import get_prompt, is_valid_date, yyyymmdd
 from burrito.services.harmony.harmony_service_chat import build_message_list_chat
 from burrito.services.harmony.harmony_service_messages import (
     build_message_list_messages,
@@ -81,6 +74,10 @@ TIME_DETECT_RE = re.compile(
 TIME_REPLACE_RE = r"\g<hour>:00:00\g<ampm>"
 
 
+PLACEHOLDER_BROWSER = BurritoBrowser()
+PLACEHOLDER_PYTHON = BurritoPython(is_placeholder=True)
+
+
 class SPECIAL_TOKENS(Enum):
     START = 200006
     END = 200007
@@ -95,24 +92,47 @@ class SPECIAL_TOKENS(Enum):
         self.text = ENCODING.decode_utf8([self.id])
 
 
+def get_conversation_start_date() -> Optional[str]:
+    sys_date_config = settings.SYSTEM_MESSAGE_DATE_CONFIG
+    if sys_date_config == "off":
+        sys_date = None
+    elif sys_date_config == "auto":
+        # we default to server timezone to mitigate midnight crossing between user / model
+        # assuming user self-hosts model on a server in the same time zone as their client
+        sys_date = yyyymmdd(in_utc=False)
+    elif sys_date_config == "auto-utc":
+        sys_date = yyyymmdd(in_utc=True)
+
+    # 🐉 HIC SVNT DRACONES 🐉
+    # meant to keep inputs consistent across days for consistent outputs if running evals
+    # as the (natural) change in date WILL lead to different outputs;
+    # careful with mistakenly leaving this on as it will probably mess up web searches
+    elif sys_date_config != "off" and is_valid_date(sys_date_config):
+        sys_date = settings.SYSTEM_MESSAGE_DATE_CONFIG
+    else:
+        sys_date = None  # should not happen
+    return sys_date
+
+
 def build_system_message(
     inputs: ConversationInputs,
-    python_tool: Optional[BurritoPython],
-    browser_tool: Optional[BurritoBrowser],
+    python_tool: Optional[Union[BurritoPython, str]],
+    browser_tool: Optional[Union[BurritoBrowser, str]],
 ) -> Message:
     channels_w_tools = [
-            ConversationChannel.ANALYSIS.value,
-            ConversationChannel.COMMENTARY.value,
-            ConversationChannel.FINAL.value,
-        ]
+        ConversationChannel.ANALYSIS.value,
+        ConversationChannel.COMMENTARY.value,
+        ConversationChannel.FINAL.value,
+    ]
     channels_no_tools = [
-            ConversationChannel.ANALYSIS.value,
-            ConversationChannel.FINAL.value,
-        ]
+        ConversationChannel.ANALYSIS.value,
+        ConversationChannel.FINAL.value,
+    ]
     channel_config = ChannelConfig(
         valid_channels=channels_w_tools if inputs.tools else channels_no_tools,
         channel_required=True,
     )
+    conv_date = get_conversation_start_date()
 
     try:
         identity = get_prompt(f"model_identity_{settings.MODEL_IDENTITY}")
@@ -122,16 +142,16 @@ def build_system_message(
     sys_message = (
         SystemContent.new()
         .with_model_identity(identity)
-        # we use server timezone, mitigates daycross confusion user / model
-        .with_conversation_start_date(yyyymmdd(in_utc=False))
         .with_reasoning_effort(ReasoningEffort[inputs.reasoning.effort.upper()])  # type: ignore
         .with_channel_config(channel_config)
     )
 
+    if conv_date is not None:
+        sys_message = sys_message.with_conversation_start_date(conv_date)
     if python_tool is not None:
-        sys_message = sys_message.with_tools(python_tool.tool_config)
+        sys_message = sys_message.with_tools(PLACEHOLDER_PYTHON.tool_config)
     if browser_tool is not None:
-        sys_message = sys_message.with_tools(browser_tool.tool_config)
+        sys_message = sys_message.with_tools(PLACEHOLDER_BROWSER.tool_config)
 
     msg = Message.from_role_and_content(Role.SYSTEM, sys_message)
     return msg
@@ -266,8 +286,8 @@ def build_conversation_from_messages(messages: List[Message]) -> Conversation:
 
 def build_conversation_history(
     inputs: ConversationInputs,
-    python_tool: Optional[BurritoPython],
-    browser_tool: Optional[BurritoBrowser],
+    python_tool: Optional[Union[BurritoPython, str]],
+    browser_tool: Optional[Union[BurritoBrowser, str]],
 ) -> Conversation:
     messages = [build_system_message(inputs, python_tool, browser_tool)]
     dev_message = build_developer_message(inputs)
@@ -277,7 +297,6 @@ def build_conversation_history(
         messages.append(dev_message)
 
     messages += prune_reasoning(inputs.messages)
-
     # messages = [
     #     system_message,
     #     build_developer_message(inputs),
@@ -287,9 +306,9 @@ def build_conversation_history(
     return conversation
 
 
-def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
-    has_default = settings.IS_PYTHON_TOOL_ENABLED
-    if not has_default:
+def resolve_python_tool(params: WireApiParams) -> Optional[Union[BurritoPython, str]]:
+    is_available = settings.IS_PYTHON_TOOL_AVAILABLE
+    if not is_available:
         return
     should_enable = False
 
@@ -305,8 +324,8 @@ def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
                 continue
 
     # special case where caller has NO tools, we enable IF settings enable
-    if not params.tools and has_default:
-        should_enable = True
+    # if not params.tools and is_available:
+    #     should_enable = True
 
     # special case where config set up to override always enable
     if settings.IS_PYTHON_TOOL_ALWAYS_ENABLED:
@@ -316,13 +335,13 @@ def resolve_python_tool(params: WireApiParams) -> Optional[BurritoPython]:
     if not should_enable:
         return
 
-    tool = BurritoPython()
+    tool = "init-on-use"  # BurritoPython()
     return tool
 
 
-def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
-    has_default = settings.IS_BROWSER_TOOL_ENABLED
-    if not has_default:
+def resolve_browser_tool(params: WireApiParams) -> Optional[Union[BurritoBrowser, str]]:
+    is_available = settings.IS_BROWSER_TOOL_AVAILABLE
+    if not is_available:
         return
     should_enable = False
 
@@ -352,8 +371,8 @@ def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
                 continue
 
     # special case where caller has NO tools, we enable IF settings enable
-    if not params.tools and has_default:
-        should_enable = True
+    # if not params.tools and is_available:
+    #     should_enable = True
 
     # special case where config set up to override always enable
     if settings.IS_BROWSER_TOOL_ALWAYS_ENABLED:
@@ -363,12 +382,13 @@ def resolve_browser_tool(params: WireApiParams) -> Optional[BurritoBrowser]:
     if not should_enable:
         return
 
-    tool = BurritoBrowser()
+    tool = "init-on-use"  # BurritoBrowser()
     return tool
 
 
 # TODO: figure out if / how we can support structured outputs (eg grammar, json)
-# TODO: handle tool_choice from params, eg auto, specific etc; also, parallel?
+# TODO: handle tool_choice from params, eg auto, specific etc;
+# also, parallel (don't think it's possible? autoregressive)?
 # TODO: investiagate whether we can support custom tools
 # harmony only seems to support defining regular function tools
 # with name, description, params; no special formatting instructions
@@ -379,8 +399,8 @@ def build_conversation_from_params(
 ) -> tuple[
     Conversation,
     ConversationInputs,
-    Optional[BurritoPython],
-    Optional[BurritoBrowser],
+    Optional[Union[BurritoPython, str]],
+    Optional[Union[BurritoBrowser, str]],
 ]:
     assert isinstance(
         params,
@@ -403,19 +423,19 @@ def build_conversation_from_params(
     python_tool = resolve_python_tool(params)
     browser_tool = resolve_browser_tool(params)
 
-    if python_tool:
+    if python_tool is not None:
         tools.append(
             ConversationToolParam(
-                name=python_tool.tool_config.name,
-                description=python_tool.tool_config.description,
+                name=PLACEHOLDER_PYTHON.tool_config.name,
+                description=PLACEHOLDER_PYTHON.tool_config.description,
                 type="python",
             )
         )
-    if browser_tool:
+    if browser_tool is not None:
         tools.append(
             ConversationToolParam(
-                name=browser_tool.tool_config.name,
-                description=browser_tool.tool_config.description,
+                name=PLACEHOLDER_BROWSER.tool_config.name,
+                description=PLACEHOLDER_BROWSER.tool_config.description,
                 type="browser",
             )
         )
@@ -437,21 +457,9 @@ def render_conversation_for_completion(
     )
     tokens_for_completion = prompt_tokens + prefill_tokens
 
-    minify_fn = {
-        "safe": minify_prompt_safe,
-        "aggressive": minify_prompt_aggressive,
-        "extreme": minify_prompt_extreme,
-    }.get(settings.MINIFY_PROMPTS)
-
-    if minify_fn is not None:
-        raw = minify_fn(ENCODING.decode(tokens_for_completion))
-        tokens_for_completion = ENCODING.encode(raw, allowed_special=("all"))
-
     if is_on_init and settings.DEBUG_PROMPT:
         dec = ENCODING.decode(tokens_for_completion)
         print(dec)
-        simple_markdown_renderer
-        # print(simple_markdown_renderer(dec))
         print(
             "prompt length: "
             f"t={len(tokens_for_completion):,} tokens, "

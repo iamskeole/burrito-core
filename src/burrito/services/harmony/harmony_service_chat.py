@@ -17,6 +17,7 @@ from burrito.types.tool_param_custom import (
     ToolParamCustomChat,
 )
 from burrito.types.tool_param_function import ToolParamFunctionChat
+from burrito.types.tool_param_python import ToolParamPythonChat
 from burrito.types.wire_api_params_chat import (
     AssistantMessageParam,
     AssistantToolCallParam,
@@ -199,6 +200,8 @@ def parse_tools(
                 tools.append(t)
             case ToolParamBrowserChat():
                 continue  # we handle native browser separately
+            case ToolParamPythonChat():
+                continue
             case _:
                 raise NotImplementedError(f"Unsupported tool type: {type(tool)}")
     return tools

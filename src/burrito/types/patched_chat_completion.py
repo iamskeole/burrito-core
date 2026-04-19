@@ -6,6 +6,9 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 # extend so we can use in output json with reasoning + summary
 class PatchedChatCompletionChoiceMessage(ChatCompletionMessage):
+    reasoning: Optional[str] = None
+    """The contents of the chunk message."""
+
     reasoning_content: Optional[str] = None
     """The contents of the chunk message."""
 

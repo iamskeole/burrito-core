@@ -43,7 +43,7 @@ class ToolInputPluginChat(BasePluginChat):
         )
 
         if do_register:
-            entry = self.manager.tool_handler.register_tool_call()
+            entry = await self.manager.tool_handler.register_tool_call()
         else:
             entry = self.manager.tool_handler.tool_calls[-1]
 

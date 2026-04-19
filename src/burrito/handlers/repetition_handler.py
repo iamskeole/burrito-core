@@ -40,8 +40,8 @@ class RepetitionHandler:
         self.is_inside_code_block = False
         self.backtick_buffer = ""
 
-        # matches newlines OR latin punctuation + space OR CJK punctuation
-        self.split_pattern = re.compile(r"\n+|(?<=[.!?])\s+|(?<=[。！？])")
+        # matches newlines OR latin punctuation + space OR CJK and AR punctuation
+        self.split_pattern = re.compile(r"\n+|(?<=[.!?؟])\s+|(?<=[。！？])")
 
         # removes all non-alphanumeric characters (except spaces)
         self.cleanup_pattern = re.compile(r"[^\w\s]")
@@ -153,11 +153,10 @@ class RepetitionHandler:
         if n < self.min_repeated_words + 1:
             return False
 
-        for k in range(1, self.min_repeated_words // 2):
+        max_k = min(10, n // 3)
+        for k in range(1, max_k + 1):
             pattern = words[-k:]
-            match_block_one = words[-2 * k : -k]
-            match_block_two = words[-3 * k : -2 * k]
-            if match_block_one == pattern and match_block_two == pattern:
+            if words[-2*k : -k] == pattern and words[-3*k : -2*k] == pattern:
                 return True
 
         return False
@@ -167,9 +166,16 @@ class RepetitionHandler:
         Highly repetitive text compresses at unnatural ratios.
         Normal English compresses to ~45%. Loops crash below entropy_threshold (15%).
         """
-        if len(self.recent_raw_text) < self.entropy_num_chars:
+        len_recent = len(self.recent_raw_text)
+        if len_recent < self.entropy_num_chars:
             return False
-        check_text = self.recent_raw_text[-self.entropy_num_chars :]
+        check_text = self.recent_raw_text[-self.entropy_num_chars:]
+        # Replace all digits with '0'. 
+        # "101st, 102nd" becomes "0st, 0nd" -> compresses flawlessly.
+        check_text = re.sub(r'\d+', '0', check_text)
         compressed = zlib.compress(check_text.encode("utf-8"))
         compression_ratio = len(compressed) / len(check_text)
-        return compression_ratio < self.entropy_threshold
+        is_crashing = compression_ratio < self.entropy_threshold
+        if is_crashing:
+            return True # stupud but helps debug
+        return False

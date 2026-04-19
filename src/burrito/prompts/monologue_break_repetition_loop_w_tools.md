@@ -1,0 +1,1 @@
+We are stuck in a loop. We must pay attention to the problematic pattern we tried to send and avoid repeating it. We must send either a tool call or a message to the user. OK. Let's try again. We've got this!

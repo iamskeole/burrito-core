@@ -1,5 +1,5 @@
 import asyncio
-from typing import List, Optional
+from typing import List
 
 import httpx
 from fastapi import Header, HTTPException, Request
@@ -8,32 +8,20 @@ from burrito.common.config import list_from_cfg, settings
 from burrito.handlers.generation_handler import GenerationHandler
 from burrito.handlers.session_handler import SessionHandler
 
-_session_handler_singleton: Optional[SessionHandler] = None
-_generation_handler_singleton: Optional[GenerationHandler] = None
-_inference_semaphore_singleton: Optional[asyncio.Semaphore] = None
+
+async def get_session_handler(request: Request) -> SessionHandler:
+    """Retrieve the SessionHandler from app state."""
+    return request.app.state.session_handler
 
 
-def get_session_handler() -> SessionHandler:
-    global _session_handler_singleton
-    if _session_handler_singleton is None:
-        _session_handler_singleton = SessionHandler()
-    return _session_handler_singleton
+async def get_generation_handler(request: Request) -> GenerationHandler:
+    """Retrieve the GenerationHandler from app state."""
+    return request.app.state.generation_handler
 
 
-def get_generation_handler() -> GenerationHandler:
-    global _generation_handler_singleton
-    if _generation_handler_singleton is None:
-        _generation_handler_singleton = GenerationHandler()
-    return _generation_handler_singleton
-
-
-def get_inference_semaphore() -> asyncio.Semaphore:
-    global _inference_semaphore_singleton
-    if _inference_semaphore_singleton is None:
-        _inference_semaphore_singleton = asyncio.Semaphore(
-            settings.MAX_CONCURRENT_INFERENCE_REQUESTS
-        )
-    return _inference_semaphore_singleton
+async def get_inference_semaphore(request: Request) -> asyncio.Semaphore:
+    """Retrieve the Inference Semaphore from app state."""
+    return request.app.state.inference_semaphore
 
 
 async def get_backend_models() -> List[dict]:

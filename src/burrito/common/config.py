@@ -25,12 +25,14 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(
         default="debug", description="Logging level for the application."
     )
+
+    # debug prints
     DEBUG_REASONING_EFFORT: bool = Field(
-        default=True, description="Log reasoning effort."
+        default=False, description="Log reasoning effort."
     )
-    DEBUG_TOOL_CALLS: bool = Field(default=False, description="Log tool names.")
-    DEBUG_TOOL_INPUTS: bool = Field(default=False, description="Log tool inputs.")
-    DEBUG_TOOL_OUTPUTS: bool = Field(default=False, description="Log tool outputs.")
+    DEBUG_TOOL_CALLS: bool = Field(default=True, description="Log tool names.")
+    DEBUG_TOOL_INPUTS: bool = Field(default=True, description="Log tool inputs.")
+    DEBUG_TOOL_OUTPUTS: bool = Field(default=True, description="Log tool outputs.")
     DEBUG_COMPLETIONS: bool = Field(
         default=False,
         description="Log completion events received from inference backend.",
@@ -43,17 +45,17 @@ class Settings(BaseSettings):
         default=False, description="Log SSE events sent to clients."
     )
     DEBUG_RESPONSE_BUFFER: bool = Field(
-        default=True,
+        default=False,
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(
         default=True, description="Log state transition events."
     )
     DEBUG_HARMONY_ERRORS: bool = Field(
-        default=False, description="Log unhandled Harmony errors."
+        default=True, description="Log unhandled Harmony errors."
     )
     DEBUG_BROWSER_ERRORS: bool = Field(
-        default=False, description="Log browser tool errors."
+        default=True, description="Log browser tool errors."
     )
     DEBUG_STATE_ERRORS: bool = Field(
         default=True, description="Log state management errors."
@@ -63,6 +65,13 @@ class Settings(BaseSettings):
     )
     DEBUG_GENERATOR_CLEANUP: bool = Field(
         default=True, description="Log cleanup actions performed by the generator."
+    )
+    DEBUG_SESSION_CACHE: bool = Field(
+        default=True, description="Log cache operations inside SessionCache."
+    )
+    DEBUG_SESSION_SENTINEL_HEARTBEAT: bool = Field(
+        default=False,
+        description="Log tick / tock heartbeats for SessionHandler tool cleanup sentinel.",
     )
 
     CORS_ALLOWED_ORIGINS: str = Field(
@@ -105,7 +114,7 @@ class Settings(BaseSettings):
     )
 
     DEFAULT_MODEL_NAME: str = Field(
-        default="p-e-w/gpt-oss-20b-heretic-ara-v3",
+        default="openai/gpt-oss-20b",
         description="Default model identifier used for inference.",
     )
     DEFAULT_MODEL_CTX_LEN: int = Field(
@@ -114,7 +123,7 @@ class Settings(BaseSettings):
     )
 
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = Field(
-        default="medium",
+        default="low",
         description="Default reasoning effort.",
     )
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = Field(
@@ -127,7 +136,7 @@ class Settings(BaseSettings):
     )
 
     MAX_REASONING_TOKENS: int = Field(
-        default=32768,
+        default=128000,
         description="Default maximum reasoning tokens budget before brain surgery to output NOW. Setting this to 0 is experimental, it forces model to skip output on analysis channel straight to final (ie no reasoning).",
     )
     MAX_REASONING_LOOPS: int = Field(
@@ -171,7 +180,7 @@ class Settings(BaseSettings):
         ),
     )
     REPETITION_ENTROPY_NUM_CHARS: int = Field(
-        default=1024,
+        default=4096,
         description=(
             "Minimum number of (decoded) text characters to trigger entropy checks."
         ),
@@ -183,12 +192,12 @@ class Settings(BaseSettings):
     NON_REASONING_REPETITION_RECOVERY_CHANNEL: Literal[
         "analysis", "commentary", "final"
     ] = Field(
-        default="analysis",
+        default="final",
         description="What channel to prefill on model state recovery. Defaults to analysis to allow model to reason about the error it encountered.",
     )
 
     MAX_RECOVER_STATE_ATTEMPTS: int = Field(
-        default=100,
+        default=32,
         description="Maximum attempts to recover a corrupted inference state.",
     )
 
@@ -200,38 +209,38 @@ class Settings(BaseSettings):
         default=True,
         description="Remove granular timestamps (eg: 12:42:23) from prompts. These mess up prompt caching with no added benefit.",
     )
-    MINIFY_PROMPTS: Literal["off", "safe", "aggressive", "extreme"] = Field(
-        default="extreme",
-        description="Remove redundant newlines and whitespaces from prompts or minify to single line. Useful for (some) token savings or benchmarks when you need prompts to be identical, eg. some harnesses may add artifacts in prompts arcoss wire wpis.",
+    SYSTEM_MESSAGE_DATE_CONFIG: str | Literal["off", "auto", "auto-utc"] = Field(
+        default="2026-04-08",
+        description="Whether and how to include and format current date in system message.",
     )
 
     # TODO: reset to Nones when done benchmarking
     SAMPLING_DEFAULT_TOP_K: Optional[int] = Field(
-        default=1, description="Default top_k"
+        default=64, description="Default top_k to use when not set by client"
     )
     SAMPLING_DEFAULT_TOP_P: Optional[float] = Field(
-        default=1.0, description="Default top_p"
+        default=1.0, description="Default top_p to use when not set by client"
     )
     SAMPLING_DEFAULT_MIN_P: Optional[float] = Field(
-        default=0.0, description="Default min_p"
+        default=0.0, description="Default min_p to use when not set by client"
     )
     SAMPLING_DEFAULT_TEMPERATURE: Optional[float] = Field(
-        default=0.0, description="Default temperature"
+        default=1.0, description="Default temperature to use when not set by client"
     )
     SAMPLING_DEFAULT_SEED: Optional[int] = Field(
-        default=69421337, description="Default seed"
+        default=None, description="Default seed to use when not set by client"
     )
 
-    IS_PYTHON_TOOL_ENABLED: bool = Field(
-        default=False, description="Enable the native Python tool."
+    IS_PYTHON_TOOL_AVAILABLE: bool = Field(
+        default=True, description="Enable the native Python tool."
     )
     IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = Field(
-        default=False,
+        default=True,
         description="Always enable Python tool without caller tool list gymnastics.",
     )
 
-    IS_BROWSER_TOOL_ENABLED: bool = Field(
-        default=False, description="Enable the native browser tool."
+    IS_BROWSER_TOOL_AVAILABLE: bool = Field(
+        default=True, description="Enable the native browser tool."
     )
     IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = Field(
         default=False,
@@ -240,14 +249,38 @@ class Settings(BaseSettings):
     # NOTE: defaulting to jupyter since it will be inside docker anyway in prod
     # also, model seems to really like chaining commands, but wastes a lot of turns
     # figuring out it also needs to print (in docker), so jupyter seems more.. native?
-    PYTHON_BACKEND: Literal["docker", "jupyter"] = Field(
-        default="jupyter",
+    # warning.. docker also seems to hang, doesn't properly kill on timeout?
+    # use jupyter, hardened to be thread safe (and it's within docker)
+    PYTHON_BACKEND: Literal["in-process", "jeg"] = Field(
+        default="jeg",
         description="Backend used to execute Python code.",
     )
+    PYTHON_JEG_URL: str = Field(
+        default="",
+        description="Jupyter Enterprise Gateway URL.",
+    )
+    PYTHON_KERNEL_MIN_POOL_SIZE: int = Field(
+        default=8,
+        description="Minumum number of jupyter kernels to keep in the warm pool.",
+    )
 
-    PYTHON_EXECUTION_TIMEOUT_SECONDS: float = Field(
-        default=120.0,
+    SESSION_HANDLER_SENTINEL_HEARTBEAT_SECONDS: int = Field(
+        default=30,
         description="Timeout for python tool execution, in seconds.",
+    )
+
+    PYTHON_EXECUTION_TIMEOUT_SECONDS: int = Field(
+        default=120,
+        description="Timeout for python tool execution, in seconds.",
+    )
+
+    BROWSER_SESSION_IDLE_TIMEOUT: int = Field(
+        default=24 * 60 * 60,  # 24 hours
+        description="Timeout (in seconds) to keep idle browser sessions alive.",
+    )
+    PYTHON_SESSION_IDLE_TIMEOUT: int = Field(
+        default=1 * 1 * 60,  # 20 minutes
+        description="Timeout (in seconds) to keep idle python sessions alive. MUST be > than execution timeout otherwise SessionHandler sentinel can prematurely kill long working python tool threads.",
     )
 
     BROWSER_TIMEOUT_FETCH: int = Field(
@@ -273,6 +306,10 @@ class Settings(BaseSettings):
     BROWSER_SESSION_CACHE_SIZE: int = Field(
         default=32,
         description="Maximum number of browser session objects cached in the browser engine singleton LRU cache.",
+    )
+    PYTHON_SESSION_CACHE_SIZE: int = Field(
+        default=32,
+        description="Maximum number of python session objects cached in the python engine singleton LRU cache.",
     )
 
     BRAVE_API_KEY: str = Field(

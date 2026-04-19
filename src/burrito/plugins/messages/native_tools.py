@@ -166,7 +166,7 @@ class NativeToolsPluginMessages(BasePluginResponses):
 
     async def handle_on_enter_state(self, state: ConversationState):
         if state == ConversationState.NATIVE_TOOL_INPUT:
-            self.manager.tool_handler.register_tool_call()
+            await self.manager.tool_handler.register_tool_call()
             return
         await self.send_python_event(state)
         await self.send_browser_event(state)

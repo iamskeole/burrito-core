@@ -75,11 +75,22 @@ class BurritoBrowserEngine:
 
     @classmethod
     async def stop(cls):
-        if cls._browser:
-            await cls._browser.close()
+        try:
+            if cls._browser:
+                await cls._browser.close()
+        except Exception as e:
+            if settings.DEBUG_BROWSER_ERRORS:
+                cls._logger.warning(f"Browser closed forcefully during shutdown: {e}")
+        finally:
             cls._browser = None
-        if cls._playwright:
-            await cls._playwright.stop()
+
+        try:
+            if cls._playwright:
+                await cls._playwright.stop()
+        except Exception as e:
+            if settings.DEBUG_BROWSER_ERRORS:
+                cls._logger.warning(f"Playwright stopped forcefully during shutdown: {e}")
+        finally:
             cls._playwright = None
 
     @classmethod

@@ -141,7 +141,7 @@ class TransitionHandler:
         else:
             return ConversationState.TRANSITION
 
-    def _is_valid_transition(self, new_state: ConversationState) -> bool:
+    async def _is_valid_transition(self, new_state: ConversationState) -> bool:
         tool_handler = self.manager.tool_handler
         parser = self.manager.parser
         # we operate on the rust view since new messages may be building
@@ -160,9 +160,7 @@ class TransitionHandler:
         if new_state == ConversationState.NATIVE_TOOL_DONE:
             return True
 
-        state_tool_input_start = ConversationState.TOOL_INPUT_START
         state_reasoning = ConversationState.REASONING
-        state_tool_call = ConversationState.TOOL_CALL
         state_preamble = ConversationState.PREAMBLE
         state_completed = ConversationState.COMPLETED
 
@@ -170,10 +168,16 @@ class TransitionHandler:
         channel_commentary = ConversationChannel.COMMENTARY.value
         channel_final = ConversationChannel.FINAL.value
 
+        is_tool_input_start = new_state in [
+            ConversationState.NATIVE_TOOL_INPUT_START,
+            ConversationState.TOOL_INPUT_START,
+        ]
+        is_tool_call = new_state == ConversationState.TOOL_CALL
+
         # sometimes assistant will use tool name as channel, so we catch that before
         # wasting tokens to complete the full command
         # <|channel|>analysis<|message|>Check file.<|end|>
-        # <|start|>assistant<|channel|>bash to=functions.shell<|channel|>commentary<|message|>{"command":["bash","-lc","sed -n '1,200p' TODO.md"]}<|return|>
+        # <|start|>assistant<|channel|>bash to=functions.shell<|channel|>commentary<|message|>{"command":["bash","-lc","sed -n '1,200p' file.md"]}<|return|>
         if messages and channel not in [
             channel_analysis,
             channel_commentary,
@@ -188,18 +192,16 @@ class TransitionHandler:
                 )
             return False
 
-        if new_state == state_tool_call and settings.DEBUG_TOOL_CALLS:
+        if is_tool_call and settings.DEBUG_TOOL_CALLS:
             self.logger.debug(
                 (f"calling tool `{last_recipient or parser.current_recipient}`."),
                 extra=self.log_extra,
             )
 
-        if new_state == state_tool_input_start and not tool_handler.is_valid(
-            current_recipient
-        ):
+        if is_tool_input_start and not await tool_handler.is_valid(current_recipient):
             return False
 
-        if new_state == state_tool_call and not tool_handler.is_valid(last_recipient):
+        if is_tool_call and not tool_handler.is_valid(last_recipient):
             return False  # reduntant with above, <|call|> is at end of input
 
         # 1. regression into reasoning state;
@@ -212,7 +214,7 @@ class TransitionHandler:
 
         # 2. tool call without prior input
         # FIXME: monitor, does it still happen or fixed with tool recovery msg?
-        if new_state == state_tool_call and channel != channel_commentary:
+        if is_tool_call and channel != channel_commentary:
             if tool_handler.is_valid(last_recipient, new_state):
                 return True
             if settings.DEBUG_STATE_ERRORS:
@@ -255,12 +257,12 @@ class TransitionHandler:
             return False
         return True
 
-    def _update_state(self) -> ConversationState:
+    async def _update_state(self) -> ConversationState:
         old_state = self.manager.parser_state
         new_state = self.map_state()
         is_transition = new_state != old_state
 
-        if is_transition and not self._is_valid_transition(new_state):
+        if is_transition and not await self._is_valid_transition(new_state):
             return ConversationState.ERROR
 
         self.manager.parser_state = new_state
@@ -272,7 +274,7 @@ class TransitionHandler:
         state: Optional[ConversationState] = None,  # handle native tool done
     ):
         old_state = self.manager.parser_state
-        new_state = state or self._update_state()
+        new_state = state or await self._update_state()
 
         if new_state == ConversationState.ERROR:
             return self.manager._recover_state()

@@ -1,4 +1,4 @@
-**Invalid output**: you are trying to call a tool with no recipient.
+**Invalid output**: invalid or malformed namespace: `{recipient}`.
 
 Calls to these tools must go to the analysis channel: 'python', 'browser'.
 Calls to these tools must go to the commentary channel: 'functions'.
@@ -10,4 +10,4 @@ Example: <|channel|>commentary to=functions.shell <|constrain|> json<|message|>t
 - valid tools:
 {valid_tools}
 
-You tried calling: `{recipient}` without a namespace and / or tool name. You MUST include namespace and / or tool name in your `to=` call.
+You are trying to call: `{recipient}`. The namespace is not part of valid namespaces available to you. You MUST include the correct namespace and tool name syntax in your call, eg. `to=(namespace.function_name | python | browser.action_name)`.

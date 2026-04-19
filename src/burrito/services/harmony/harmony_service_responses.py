@@ -17,6 +17,7 @@ from burrito.types.tool_param_custom import (
     ToolParamCustomResponses,
 )
 from burrito.types.tool_param_function import ToolParamFunctionResponses
+from burrito.types.tool_param_python import ToolParamPythonResponses
 from burrito.types.wire_api_params_responses import (
     AssistantMessageParamResponses,
     AssistantReasoningParamResponses,
@@ -214,6 +215,9 @@ def parse_tools(params: WireApiParamsResponses) -> List[ConversationToolParam]:
             case ToolParamBrowserResponses():
                 continue  # we handle web search natively
 
+            case ToolParamPythonResponses():
+                continue
+
             case _:
                 raise NotImplementedError(f"Unsupported tool type: {type(tool)}")
     return tools
@@ -237,7 +241,7 @@ def parse_instructions(params: WireApiParamsResponses) -> str:
                 if isinstance(message.content, list):
                     for content in message.content:
                         instructions += f"\n{content.text}"
-    return instructions.strip()
+    return instructions
 
 
 def build_message_list_responses(params: WireApiParamsResponses) -> ConversationInputs:

@@ -1,4 +1,45 @@
 services:
+  # 1. Provide an isolated, rootless Docker daemon
+  dind:
+    image: docker:24-dind # CHANGE 1: Use standard dind to restore cgroups & networking
+    container_name: burrito-dind
+    restart: unless-stopped
+    privileged: true
+    command: ["dockerd", "--host=tcp://0.0.0.0:2375", "--tls=false"]
+    environment:
+      # Leaving this entirely empty disables TLS and forces unencrypted port 2375
+      - DOCKER_TLS_CERTDIR=
+    # CHANGE 2: Remove the "command:" override entirely. The image entrypoint will handle exposing 2375.
+    volumes:
+      - dind-storage:/var/lib/docker
+      # CHANGE 3: Share a volume with the burrito app so DinD can see the connection files
+      - jupyter-runtime:/tmp/jupyter-runtime
+    networks:
+      - default
+      - burrito-internal
+
+  # We add a "dummy" service just to ensure the kernel image is built during 'up --build'
+  # This image is not used as a service, but is used by the 'burrito' app to spawn containers.
+  kernel-builder:
+    image: docker:24-cli
+    container_name: burrito-kernel-builder
+    environment:
+      - DOCKER_HOST=tcp://dind:2375
+    volumes:
+      - .:/workspace:ro
+    working_dir: /workspace
+    # Wait for DinD to be ready, then build the kernel image into DinD's cache
+    entrypoint: ["/bin/sh"]
+    command: 
+      - "-c"
+      - "while ! docker info >/dev/null 2>&1; do sleep 1; done; docker build -t burrito-kernel:latest -f Dockerfile.kernel ."
+    depends_on:
+      - dind
+    networks:
+      - default
+      - burrito-internal
+
+  # 2. Update your main app
   burrito:
     build: .
     image: burrito:latest
@@ -8,9 +49,21 @@ services:
       - "8888:8000"
     environment:
       - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://host.docker.internal:8888}
-    command: uvicorn burrito.main:app --host 0.0.0.0 --port 8000 --workers 1
+      - DOCKER_HOST=tcp://dind:2375
+      # CHANGE 4: Tell Jupyter to put connection files in the shared volume
+      - JUPYTER_RUNTIME_DIR=/tmp/jupyter-runtime
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the same shared volume
+      - jupyter-runtime:/tmp/jupyter-runtime
+    networks:
+      - default
+      - burrito-internal
+    depends_on:
+      dind:
+        condition: service_started
+      # Wait for the image to be fully built inside DinD before booting the app
+      kernel-builder:
+        condition: service_completed_successfully
 
   prometheus:
     image: prom/prometheus:latest
@@ -36,9 +89,9 @@ services:
     ports:
       - "3000:3000"
 
-  redis:
-    image: redis:7-alpine
-    container_name: burrito-redis
+  valkey:
+    image: valkey/valkey:latest # Use the official Valkey image
+    container_name: burrito-valkey
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -48,12 +101,12 @@ services:
     container_name: burrito-searxng
     restart: unless-stopped
     environment:
-      - SEARXNG_SECRET=${SEARXNG_SECRET:-ultrasecretkey}
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-abc-123}
       - UWSGI_WORKERS=${UWSGI_WORKERS:-4}
       - UWSGI_THREADS=${UWSGI_THREADS:-1}
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://valkey:6379/0 
     depends_on:
-      - redis
+      - valkey
     volumes:
       - ./buildstack/searxng/settings.yml:/etc/searxng/settings.yml
     ports:
@@ -61,3 +114,9 @@ services:
 
 volumes:
   grafana-storage:
+  dind-storage:   # Caches images/containers inside the dind daemon
+  jupyter-runtime: # The new volume shared between 'burrito' and 'dind'
+
+networks:
+  burrito-internal:
+    internal: true # Creates a sandbox network with no internet access

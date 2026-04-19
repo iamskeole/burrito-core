@@ -7,11 +7,10 @@ import subprocess
 import sys
 import time
 import uuid
-from collections import OrderedDict
 from datetime import datetime, timezone
 from functools import lru_cache
 from textwrap import dedent
-from typing import Generic, Iterator, Optional, TypeVar
+from typing import TypeVar
 
 from fastapi import Request
 
@@ -67,14 +66,17 @@ def random_uuid() -> str:
     return str(uuid.uuid4().hex)
 
 
-def random_guid() -> str:
-    return str(uuid.uuid4())
-
-
 def yyyymmdd(in_utc: bool = False):
     now = datetime.now(tz=timezone.utc if in_utc else None)
-    yy, mm, dd = now.year, str(now.month).zfill(2), str(now.day).zfill(2)
-    return f"{yy}-{mm}-{dd}"
+    return datetime.strftime(now, "%Y-%m-%d")
+
+
+def is_valid_date(date_string):
+    try:
+        datetime.strptime(date_string, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
 
 
 def unix_timestamp():
@@ -206,74 +208,6 @@ def simple_markdown_renderer(markdown_text):
     return "\n".join(rendered_lines)
 
 
-class LruDict(Generic[K, V]):
-    """A size-limited LRU dictionary.
-
-    Parameters
-    ----------
-    maxsize:
-        The maximum number of items that the dictionary can hold.
-        When this limit is reached, inserting a new item removes the
-        least recently used (oldest) entry.
-    """
-
-    def __init__(self, maxsize: int):
-        self.maxsize = maxsize
-        self._data: OrderedDict[K, V] = OrderedDict()
-        self._disabled = maxsize <= 0
-
-    # ---------------------------------------------------------------------
-    # Mapping interface
-    # ---------------------------------------------------------------------
-    def __setitem__(self, key: K, value: V) -> None:
-        if self._disabled:
-            return
-        if key in self._data:
-            # Existing key: update and mark as most recent.
-            self._data.move_to_end(key)
-        else:
-            # New key: ensure capacity.
-            if len(self._data) >= self.maxsize:
-                # Evict least‑recently used item.
-                self._data.popitem(last=False)
-        self._data[key] = value
-
-    def __getitem__(self, key: K) -> V:
-        value = self._data[key]  # raises KeyError if missing
-        self._data.move_to_end(key)
-        return value
-
-    def get(self, key: K, default: Optional[V] = None) -> Optional[V]:
-        if key in self._data:
-            self._data.move_to_end(key)
-            return self._data[key]
-        return default
-
-    def __contains__(self, key: K) -> bool:
-        return key in self._data
-
-    def __len__(self) -> int:
-        return len(self._data)
-
-    # ---------------------------------------------------------------------
-    # Helpers
-    # ---------------------------------------------------------------------
-    def keys(self):
-        return self._data.keys()
-
-    def items(self):
-        return self._data.items()
-
-    def values(self):
-        return self._data.values()
-
-    def __iter__(self) -> Iterator[K]:
-        return iter(self._data)
-
-    def __repr__(self) -> str:
-        return f"LruDict(maxsize={self.maxsize}, data={dict(self._data)})"
-
-
 def grammar_is_likely_lark(grammar_str: str) -> bool:
     """From vLLM: Check if grammar appears to use Lark syntax."""
     if not grammar_str or not isinstance(grammar_str, str):
@@ -341,70 +275,18 @@ def lark_to_gbnf(grammar: str) -> str:
     return "\n".join(gbnf_lines)
 
 
-bootstrap_pip = """
-import sys
-import subprocess
+def patch_agent_pip_install(text: str) -> str:
+    # Pattern explanation:
+    # ^[ \t]*        -> Match start of line and any leading horizontal whitespace
+    # [!%]?          -> Match an optional '!' or '%' prefix
+    # \s*            -> Match any spaces between prefix and command
+    # (?:pip|uv pip) -> Match either 'pip' or 'uv pip' (non-capturing group)
+    # \s+install\b   -> Match 'install' with at least one leading space and a word boundary
 
-def _ensure_pip():
-    try:
-        import pip  # noqa: F401
-    except ImportError:
-        try:
-            subprocess.check_call([sys.executable, "-m", "ensurepip", "--upgrade"])
-        except Exception:
-            # Fallback: try get-pip.py if ensurepip is unavailable
-            try:
-                subprocess.check_call([
-                    sys.executable, "-c",
-                    "import urllib.request; exec(urllib.request.urlopen('https://bootstrap.pypa.io/get-pip.py').read())"
-                ])
-            except Exception:
-                pass  # give up silently
+    pattern = r"^[ \t]*[!%]?\s*(?:pip|uv\s+pip)\s+install\b"
 
-_ensure_pip()
-"""
+    # We replace the match with '!uv pip install'
+    # flags=re.MULTILINE ensures it works if the agent sends multiple lines of code
+    optimized_text = re.sub(pattern, "!uv pip install", text, flags=re.MULTILINE)
 
-
-def minify_prompt_aggressive(text: str) -> str:
-    """
-    Removes ALL redundant whitespace, including newlines.
-    Converts the entire text into a single line.
-    """
-    return " ".join(text.split())
-
-
-def minify_prompt_safe(text: str) -> str:
-    """
-    Removes redundant spaces and empty lines, but preserves
-    single line breaks for readability and markdown structure.
-    """
-    # 1. Remove leading/trailing spaces and tabs on every line
-    text = re.sub(r"^[ \t]+|[ \t]+$", "", text, flags=re.MULTILINE)
-
-    # 2. Collapse multiple spaces/tabs into a single space
-    text = re.sub(r"[ \t]+", " ", text)
-
-    # 3. Collapse multiple empty lines into a single newline
-    text = re.sub(r"\n+", "\n", text)
-
-    # 4. Strip final leading/trailing whitespace from the whole string
-    return text.strip()
-
-
-def minify_prompt_extreme(text: str) -> str:
-    """
-    Aggressively minifies prompt text while avoiding common footguns.
-    Safely handles English prose, string literals, commas, and colons.
-    """
-    # 1. Collapse all whitespace, tabs, and newlines to a single space
-    text = " ".join(text.split())
-
-    # 2. Glue consecutive structural brackets/braces.
-    # Matches a space ONLY if it is flanked by brackets/braces on BOTH sides.
-    # Fixes the `] } } ]` bloat but avoids altering strings like `"Hello { name }"`
-    text = re.sub(r"(?<=[\[\]\{\}])\s+(?=[\[\]\{\}])", "", text)
-
-    # 3. Strip spaces explicitly around LLM special tokens (e.g., <|end|>, <|user|>)
-    text = re.sub(r"\s*(<\|.*?\|>)\s*", r"\1", text)
-
-    return text
+    return optimized_text

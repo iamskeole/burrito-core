@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, List, Set
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 
 from burrito.plugins.chat.base_plugin import BasePluginChat
+from burrito.tools.browser.tool import BurritoBrowser
 from burrito.types.conversation_enums import ConversationState
 from burrito.types.patched_chat_completion_chunk import (
     PatchedChatCompletionChunkChoice,
@@ -48,7 +49,7 @@ class OutputTextPluginChat(BasePluginChat):
         )
 
         browser_tool = self.manager.tool_handler.browser_tool
-        if browser_tool is None:
+        if not isinstance(browser_tool, BurritoBrowser):
             return
 
         # we normalize on the full current text to get the right indices in citations

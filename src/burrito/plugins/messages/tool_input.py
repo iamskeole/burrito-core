@@ -18,8 +18,8 @@ class ToolInputPluginMessages(BasePluginMessages):
         super().__init__(manager)
         self.manager = manager
 
-    def build_output_item(self) -> ToolUseBlock:
-        entry = self.manager.tool_handler.register_tool_call()
+    async def build_output_item(self) -> ToolUseBlock:
+        entry = await self.manager.tool_handler.register_tool_call()
         tool: ConversationToolParam = entry["tool"]
         match tool.type:
             case ConversationToolType.FUNCTION.value:
@@ -43,7 +43,7 @@ class ToolInputPluginMessages(BasePluginMessages):
         assert isinstance(self.manager.output_object, Message), (
             f"Expected a Message, but got {type(output_object)}"
         )
-        content_block = self.build_output_item()
+        content_block = await self.build_output_item()
 
         self.manager.output_index += 1
         event = RawContentBlockStartEvent(

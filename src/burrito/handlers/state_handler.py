@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
@@ -70,6 +71,7 @@ from burrito.routes.metrics import (
 from burrito.services.harmony import (
     ENCODING,
     SPECIAL_TOKENS,
+    build_assistant_message,
     build_conversation_from_messages,
     build_conversation_from_params,
     build_user_message,
@@ -105,15 +107,16 @@ class StateHandler:
 
         self.completions: List[Completion] = []
         self.events: List[BaseModel] = []
+
         self.response_buffer: str = ""
+        self.reasoning_buffer: str = ""
+        self.native_tool_call_buffer: str = ""
+        self.caller_tool_call_buffer: str = ""
+        self.output_text_buffer: str = ""
 
         self.reasoning_interrupted = False
         self.last_parser_message_ix = 0
-        self.prefill_channel = (
-            ConversationChannel.ANALYSIS.value
-            if settings.MAX_REASONING_TOKENS
-            else ConversationChannel.FINAL.value
-        )
+        self.prefill_channel = ConversationChannel.ANALYSIS.value
         self.prefill_tokens: List[int] = self.get_prefill_tokens()
 
         # token stores for stats
@@ -156,10 +159,24 @@ class StateHandler:
         self.tool_handler: ToolHandler
         self.transition_handler: TransitionHandler
 
-        python_tool, browser_tool = self._init_conversation()
-
         self.break_ts_logs = []
 
+        # python_tool, browser_tool = self._init_conversation()
+        # self._init_tools(python_tool, browser_tool)
+        # self._init_plugins()
+        # self._init_logger()
+
+    @classmethod
+    # offload blocking init to a thread so requests don't block on init
+    async def create(
+        cls, manager: "ConversationHandler", stream_to_caller: bool
+    ) -> "StateHandler":
+        instance = cls(manager, stream_to_caller)
+        await asyncio.to_thread(instance._setup_full_state)
+        return instance
+
+    def _setup_full_state(self):
+        python_tool, browser_tool = self._init_conversation()
         self._init_tools(python_tool, browser_tool)
         self._init_plugins()
         self._init_logger()
@@ -167,8 +184,8 @@ class StateHandler:
     def get_prefill_tokens(self) -> List[int]:
         return [
             SPECIAL_TOKENS.CHANNEL.id,
-            ENCODING.encode(self.prefill_channel)[0],
-            SPECIAL_TOKENS.MESSAGE.id,
+            # ENCODING.encode(self.prefill_channel)[0],
+            # SPECIAL_TOKENS.MESSAGE.id,
         ]
 
     def _init_logger(self):
@@ -215,8 +232,8 @@ class StateHandler:
     # if scaled horizontally, but we'll cross that bridge later
     def _init_tools(
         self,
-        python_tool: Optional[BurritoPython],
-        browser_tool: Optional[BurritoBrowser],
+        python_tool: Optional[Union[BurritoPython, str]],
+        browser_tool: Optional[Union[BurritoBrowser, str]],
     ):
         session_handler = self.manager.session_handler
         params = self.manager.params
@@ -233,13 +250,23 @@ class StateHandler:
             session_id = session_handler.hash_prompt(prompt_text)
 
         self.log_id = session_id
-        session_handler.set_python_tool(self.log_id, python_tool)
-        session_handler.set_browser_tool(self.log_id, browser_tool)
+
+        # Use setdefault to avoid overwriting a live BurritoPython with "init-on-use".
+        # If the cache already has a tool for this session (from a concurrent or
+        # previous request), we reuse it instead of clobbering it with the sentinel.
+        if python_tool is not None:
+            python_tool = session_handler.python_tools.setdefault(
+                self.log_id, python_tool
+            )
+        if browser_tool is not None:
+            browser_tool = session_handler.browser_tools.setdefault(
+                self.log_id, browser_tool
+            )
 
         self.tool_handler = ToolHandler(
             self,
-            python_tool=session_handler.get_python_tool(session_id),
-            browser_tool=session_handler.get_browser_tool(session_id),
+            python_tool,
+            browser_tool,
         )
 
     def _init_conversation(
@@ -264,6 +291,11 @@ class StateHandler:
         # new detector instance so entropy checks reset, otherwise instant fail
         self.repetition_detector_reasoning = RepetitionHandler()
         self.repetition_detector_non_reasoning = RepetitionHandler()
+
+        self.reasoning_buffer: str = ""
+        self.native_tool_call_buffer: str = ""
+        self.caller_tool_call_buffer: str = ""
+        self.output_text_buffer: str = ""
         return (python_tool, browser_tool)
 
     async def put_close_marker(self):
@@ -305,8 +337,11 @@ class StateHandler:
         self.output_object = event
         await self.put_event(event)
 
-    def _add_recovery_message(self, text: str):
-        message = build_user_message(text, "BURRITO-HARNESS-SENTINEL")
+    def _add_recovery_message(self, text: str, is_assistant: bool = False):
+        if not is_assistant:
+            message = build_user_message(text, "BURRITO-HARNESS-SENTINEL")
+        else:
+            message = build_assistant_message(text, ConversationChannel.ANALYSIS.value)
         self.recovery_message = message
 
         if not settings.DEBUG_RESPONSE_BUFFER:
@@ -326,13 +361,22 @@ class StateHandler:
         self._init_conversation(extra_messages=self.extra_messages)
         self.manager._init_stream()
 
-    def _recover_state(self):
+    def _recover_state(self, partial_reasoning: str = ""):
         if self.recover_state_attempts >= settings.MAX_RECOVER_STATE_ATTEMPTS:
             raise RecursionError("Reached maximum state recover attempts.")
-
+        self.response_buffer
         self.manager._stop_stream()
         self.parser_state = ConversationState.ERROR
+        # TODO: check, should we default to no history since that will also lead to repetition?
         prev_messages = self.parser.messages  # we operate on rust view
+        if partial_reasoning:
+            msg_assistant = build_assistant_message(
+                text=partial_reasoning,
+                channel=self.parser.current_channel
+                or ConversationChannel.ANALYSIS.value,
+            )
+            prev_messages.append(msg_assistant)
+
         if self.recovery_message:
             prev_messages.append(self.recovery_message)
             self.recovery_message = None
@@ -342,14 +386,17 @@ class StateHandler:
         self._init_conversation(extra_messages=self.extra_messages)
         self.manager._init_stream()
         self.recover_state_attempts += 1
+        # TODO: check this, any impact on non-repeat recovery triggers?
+        # self.extra_messages = []  # clear extra messages (former recovery msgs)
 
     # 🐉 HIC SVNT DRACONES 🐉
     # we assume the user knows what they're doing when writing and wanting
     # to use a custom grammar; we convert user-specified grammar to gbnf
     # (if lark, eg openai Codex CLI apply_patch) and restart inference;
     # gbnf works for both llama.cpp and vLLM but probably openai uses lark
-    # this was implemented mostly to make the latest codex cli work better
-    # 🐉 HIC SVNT DRACONES 🐉
+    # this was done mostly to make the latest codex cli work better otherwise
+    # model spins its wheels a lot with string escaping until it figures out
+    # how to properly format apply_patch inputs
     async def maybe_break_for_custom_tool_grammar(self):
         if self.parser_state != ConversationState.TOOL_INPUT_START:
             return
@@ -406,6 +453,7 @@ class StateHandler:
                 | ConversationState.REASONING_END
             ):
                 self.reasoning_tokens.append(token)
+                self.reasoning_buffer += token.text
 
             case (
                 ConversationState.NATIVE_TOOL_INPUT_START
@@ -413,6 +461,14 @@ class StateHandler:
                 | ConversationState.NATIVE_TOOL_CALL
             ):
                 self.native_tool_input_tokens.append(token)
+                self.native_tool_call_buffer += token.text
+                self.tool_handler.current_call_buffer += token.text
+
+                if state == ConversationState.NATIVE_TOOL_CALL:
+                    active_call = self.tool_handler.tool_calls[-1]
+                    active_call["content"] = self.tool_handler.current_call_buffer
+                    self.tool_handler.current_call_buffer = ""
+                    self.tool_handler.current_call_id = ""
 
             case (
                 ConversationState.TOOL_INPUT_START
@@ -420,9 +476,11 @@ class StateHandler:
                 | ConversationState.TOOL_CALL
             ):
                 self.caller_tool_input_tokens.append(token)
+                self.caller_tool_call_buffer += token.text
 
             case ConversationState.OUTPUT_TEXT | ConversationState.COMPLETED:
                 self.output_text_tokens.append(token)
+                self.output_text_buffer += token.text
 
         self.response_tokens.append(token)
 
@@ -444,10 +502,37 @@ class StateHandler:
         self.parser_state = state
 
     async def _break_non_reasoning_loop(self):
-        channel = self.parser_channel
-        msg = get_prompt("sentinel_non_reasoning_loop").format(channel=channel)
-        self._add_recovery_message(msg)
-        return self._recover_state()
+        ctx = ""
+        ctx = get_prompt("monologue_break_non_reasoning_loop").format(
+            native_tool_call_buffer=self.native_tool_call_buffer
+            or "we did not call python or browser",
+            caller_tool_call_buffer=self.caller_tool_call_buffer
+            or "we did not call any tools",
+            output_text_buffer=self.output_text_buffer or "we did not send to user",
+        )
+        if self.tool_handler.tools:
+            msg = get_prompt("monologue_break_repetition_loop_w_tools")
+        else:
+            msg = get_prompt("monologue_break_repetition_loop_no_tools")
+        self._add_recovery_message(msg, is_assistant=True)
+        return self._recover_state(partial_reasoning=ctx)
+
+    # NOTE: a bit hacky, may mess up tool calling, but shouldn't spend tens of thousands
+    # of tokens for tools?
+    # also, tradeoff / drawback = forces a prefill with the entire prompt + reasoning
+
+    # TODO: figure out a way to do sentinel breaks if outside reasoing,
+    # since if we just output, we may mess up tool calls the model could recover from
+    async def _break_reasoning_loop(self):
+        if self.tool_handler.tools:
+            msg = get_prompt("monologue_break_repetition_loop_w_tools")
+        else:
+            msg = get_prompt("monologue_break_repetition_loop_no_tools")
+        self._add_recovery_message(msg, is_assistant=True)
+        reasoning_text = self.reasoning_buffer
+        partial_reasoning = reasoning_text
+        self.reasoning_buffer = ""
+        return self._recover_state(partial_reasoning)
 
     async def maybe_break_non_reasoning_loop(self, token: ConversationToken):
         # may break some clients, eg they're probably not expecting output -> reasoning -> output
@@ -463,13 +548,14 @@ class StateHandler:
             ConversationState.REASONING,
             ConversationState.PREAMBLE,
             ConversationState.REASONING_END,
+            ConversationState.TRANSITION,
         ]:
             return
 
         is_repeating = self.repetition_detector_non_reasoning.process_new_token(token)
         if not is_repeating:
             return
-
+        self.response_buffer
         self.prefill_channel = settings.NON_REASONING_REPETITION_RECOVERY_CHANNEL
         if settings.DEBUG_STATE_ERRORS:
             self.logger.warning(
@@ -477,56 +563,6 @@ class StateHandler:
                 extra=self.log_extra,
             )
         return await self._break_non_reasoning_loop()
-
-    # NOTE: a bit hacky, may mess up tool calling, but shouldn't spend tens of thousands
-    # of tokens for tools?
-    # also, tradeoff / drawback = forces a prefill with the entire prompt + reasoning
-
-    # TODO: figure out a way to do sentinel breaks if outside reasoing,
-    # since if we just output, we may mess up tool calls the model could recover from
-    async def _break_reasoning_loop(self):
-        if len(self.tool_handler.tools) > 0:
-            msg = get_prompt("sentinel_reasoning_loop")
-            self._add_recovery_message(msg)
-            return self._recover_state()
-
-        self.manager._stop_stream()
-        _end_token = SPECIAL_TOKENS.END.text
-        _start_token = SPECIAL_TOKENS.START.text
-        _channel_token = SPECIAL_TOKENS.CHANNEL.text
-        _message_token = SPECIAL_TOKENS.MESSAGE.text
-        _assistant_token = Role.ASSISTANT.value
-
-        reasoning_text = ENCODING.decode([i.id for i in self.reasoning_tokens])
-
-        prefill = (
-            f"{reasoning_text}"
-            f"\n{get_prompt('break_reasoning_loop')}"
-            f"{_end_token}"
-            f"{_start_token}"
-            f"{_assistant_token}"
-            f"{_channel_token}{ConversationChannel.FINAL.value}"
-            f"{_message_token}"
-        )
-        enc = ENCODING.encode(prefill, allowed_special="all")
-
-        for token in enc:
-            self.prompt_tokens.append(token)
-
-        self.parser = StreamableParser(ENCODING, Role.ASSISTANT)
-        self.prefill_channel = ConversationChannel.FINAL.value
-        prefill_tokens = self.get_prefill_tokens()
-
-        for token in prefill_tokens:
-            self.parser.process(token)
-
-        tkn, state = None, ConversationState.REASONING_END
-        await self.transition_handler.transition(tkn, state)
-        self.repetition_detector_reasoning = RepetitionHandler()
-        self.parser_state = state
-
-        self.reasoning_interrupted = True
-        self.manager._init_stream()
 
     async def maybe_break_for_max_reasoning_tokens(self):
         if self.parser_state not in [
@@ -553,7 +589,7 @@ class StateHandler:
             ConversationState.PREAMBLE,
         ]:
             return
-
+        self.response_buffer
         is_repeating = self.repetition_detector_reasoning.process_new_token(token)
         if not is_repeating:
             return
@@ -754,7 +790,7 @@ class StateHandler:
         if not self.is_done:
             return
         self._log_stats()
-        return
+        return self.response_buffer
 
     def _debug_completion(self, completion: Union[Completion, str]):
         if not settings.DEBUG_COMPLETIONS:

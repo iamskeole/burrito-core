@@ -4,13 +4,12 @@ from pydantic import BaseModel
 
 
 class ToolParamPythonChat(BaseModel):
-    type: Literal["python", "code_interpreter"]
-    backend: Optional[Literal["docker", "dangerously_use_local_jupyter"]] = "docker"
+    type: Literal["code_interpreter"]
 
 
 class ToolParamPythonResponses(BaseModel):
     type: Literal["python", "code_interpreter"]
-    backend: Optional[Literal["docker", "dangerously_use_local_jupyter"]] = "docker"
+    container: Optional["str"] = "not-implemented"
 
 
 ToolParamPython = Union[

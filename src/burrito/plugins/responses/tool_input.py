@@ -43,7 +43,7 @@ class ToolInputPluginResponses(BasePluginResponses):
     def subscribed_states(self) -> Set[str]:
         return {ConversationState.TOOL_INPUT}
 
-    def build_output_item(
+    async def build_output_item(
         self,
     ) -> Optional[
         Union[
@@ -51,7 +51,7 @@ class ToolInputPluginResponses(BasePluginResponses):
             ResponseCustomToolCall,
         ]
     ]:
-        entry = self.manager.tool_handler.register_tool_call()
+        entry = await self.manager.tool_handler.register_tool_call()
         tool: ConversationToolParam = entry["tool"]
         match tool.type:
             case ConversationToolType.FUNCTION.value:
@@ -136,7 +136,7 @@ class ToolInputPluginResponses(BasePluginResponses):
             f"Expected a Response, but got {type(output_object)}"
         )
         self.manager.output_index += 1
-        output_item = self.build_output_item()
+        output_item = await self.build_output_item()
         if not output_item:
             return
 

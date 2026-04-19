@@ -1,23 +1,26 @@
 import json
+import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 
+import pandas
 from openai import Client
 
-INPUT = "Respond with exactly 7 random words."
+INPUT = "What's the 73rd fibonacci number?"
 MODEL_NAME = "openai/gpt-oss-20b"
-N_THREADS_PER_EVAL = 1
-N_EVALS = 4
+N_THREADS_PER_EVAL = 8
+N_EVALS = 1
 TEMPERATURE = None  # 0.0001
 SEED = 69421337
-REASONING_EFFORT = "medium"
-BASE_URL = "http://apollo.local:9999/v1"  # "http://localhost:8888/v1"  #
+REASONING_EFFORT = "low"
+BASE_URL = "http://localhost:8888/v1"  # "http://apollo.local:9999/v1"  #
 
 
 def run_chat_completions(stream: bool):
     client = Client(api_key="sk-none", base_url=BASE_URL)
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[{"role": "user", "content": INPUT}],
+        messages=[{"role": "user", "content": f"Current time: {time.time()}. {INPUT}"}],
         reasoning_effort=REASONING_EFFORT,
         temperature=TEMPERATURE,
         stream=stream,
@@ -48,7 +51,7 @@ def run_responses(stream: bool):
         input=[
             {
                 "role": "user",
-                "content": INPUT,
+                "content": f"Current time: {time.time()}. {INPUT}",
             },
         ],
         reasoning={"effort": REASONING_EFFORT},
@@ -65,6 +68,7 @@ def run_responses(stream: bool):
             if event.type == "response.output_text.delta":
                 output_text += event.delta
     else:
+        return {"status": response.status, "usage": response.usage.model_dump()}
         output_object = response.output  # type-ignore
         reasoning_content = output_object[0].content[0].text
         output_text = output_object[1].content[0].text
@@ -114,5 +118,53 @@ def test_determinism():
     return results
 
 
-done = test_determinism()
-x = 1
+# done = test_determinism()
+
+
+def test_aime_sequential(wire_api: str = "responses"):
+
+    def normalize_number(s):
+        match = re.match(r"\d+", s)  # match digits from the start
+        if not match:
+            return None
+        return match.group(0)
+
+    path1 = f"https://huggingface.co/datasets/opencompass/AIME2025/raw/main/aime2025-I.jsonl"
+    df1 = pandas.read_json(path1, lines=True)
+    path2 = f"https://huggingface.co/datasets/opencompass/AIME2025/raw/main/aime2025-II.jsonl"
+    df2 = pandas.read_json(path2, lines=True)
+    examples = [row.to_dict() for _, row in df1.iterrows()] + [
+        row.to_dict() for _, row in df2.iterrows()
+    ]
+    examples = [
+        {
+            "question": row["question"],
+            "answer": normalize_number(row["answer"])
+            if isinstance(row["answer"], str)
+            else row["answer"],
+        }
+        for row in examples
+    ]
+
+    AIME_TEMPLATE = """
+    {question}
+    Please reason step by step, and put your final answer within \\boxed{{}}.
+    """
+
+    for ix, row in enumerate(examples):
+        print("============================")
+        global INPUT
+        question = row["question"]
+        INPUT = AIME_TEMPLATE.format(question=question)
+        print(f"[{ix}] {INPUT}")
+
+        if wire_api == "responses":
+            res = run_responses(stream=False)
+            print(json.dumps(res))
+        else:
+            res = run_chat_completions(stream=False)
+            print(json.dumps(res))
+
+
+# test_aime_sequential()
+test_determinism()

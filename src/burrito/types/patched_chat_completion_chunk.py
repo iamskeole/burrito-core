@@ -52,6 +52,9 @@ class PatchedChoiceDeltaToolCall(BaseModel):
 # extend so we can use in streaming chunks
 # with reasoning + citations + custom tools
 class PatchedChatCompletionChunkChoiceDelta(ChoiceDelta):
+    reasoning: Optional[str] = None
+    """The contents of the chunk message."""
+
     reasoning_content: Optional[str] = None
     """The contents of the chunk message."""
 

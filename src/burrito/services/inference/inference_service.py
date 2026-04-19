@@ -136,6 +136,7 @@ def build_payload(
 
 
 async def infer_next_token(
+    client: httpx.AsyncClient,
     prompt_token_ids: list[int],
     params: WireApiParams,
     headers: Dict[str, str] = {},
@@ -145,78 +146,75 @@ async def infer_next_token(
     payload = build_payload(prompt_token_ids, params, grammar)
 
     try:
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
-                "POST", url, json=payload, headers=headers
-            ) as response:
-                response.raise_for_status()
+        async with client.stream(
+            "POST", url, json=payload, headers=headers
+        ) as response:
+            response.raise_for_status()
 
-                message_buffer = ""
-                data = {}
-                text_offset = 0
+            message_buffer = ""
+            data = {}
+            text_offset = 0
 
-                async for line in response.aiter_lines():
-                    if not line:
-                        if message_buffer:
-                            try:
-                                if message_buffer.strip() == "[DONE]":
-                                    yield message_buffer
-                                    break
-                                data = json.loads(message_buffer)
-                            except json.JSONDecodeError:
-                                # keep incrementing buffer, invisible to caller
-                                # not yielding error message as it's just not
-                                # accumulated a full, correct, data dict yet
-                                pass
-                            try:
-                                # usually happens when exceding context length in backend
-                                # throwing an error since we rely on config var to determine
-                                # model context length; we COULD query backend before generation
-                                # but that adds latency - so leaving it to the user to configure
-                                # the burrito <-> backend params properly
-                                error = data.get("error")
-                                assert error is None, f"Backend error: {repr(error)}"
+            async for line in response.aiter_lines():
+                if not line:
+                    if message_buffer:
+                        try:
+                            if message_buffer.strip() == "[DONE]":
+                                yield message_buffer
+                                break
+                            data = json.loads(message_buffer)
+                        except json.JSONDecodeError:
+                            # keep incrementing buffer, invisible to caller
+                            # not yielding error message as it's just not
+                            # accumulated a full, correct, data dict yet
+                            pass
+                        try:
+                            # usually happens when exceding context length in backend
+                            # throwing an error since we rely on config var to determine
+                            # model context length; we COULD query backend before generation
+                            # but that adds latency - so leaving it to the user to configure
+                            # the burrito <-> backend params properly
+                            error = data.get("error")
+                            assert error is None, f"Backend error: {repr(error)}"
 
-                                if not data["choices"]:
-                                    yield "[DONE]"
-                                    break  # vllm sending usage on last message with no choices
+                            if not data["choices"]:
+                                yield "[DONE]"
+                                break  # vllm sending usage on last message with no choices
 
-                                completion = map_completion_data(data, text_offset)
-                                # typically to catch llama.cpp NOT sending
-                                # finish_reason on last completion, but adding a
-                                # new completion without an actual token attached
-                                assert completion is not None, (
-                                    f"completion is None: {data}"
-                                )
+                            completion = map_completion_data(data, text_offset)
+                            # typically to catch llama.cpp NOT sending
+                            # finish_reason on last completion, but adding a
+                            # new completion without an actual token attached
+                            assert completion is not None, f"completion is None: {data}"
 
-                                # should not happen with the error guard above, but defend anyway
-                                assert len(completion.choices) > 0, (
-                                    f"completion.choices == 0: {data}"
-                                )
-                                # we only reset buffer for next message only after
-                                # completion mapped successfully; until that happens,
-                                # it's likely we're still accumulating lines inside
-                                # the message buffer
-                                message_buffer = ""
-                                text_offset += len(completion.choices[0].text)
-                                yield completion
-                            except Exception as e:
-                                # raise here to break the main processing loop
-                                # and return an exception to the caller
-                                msg = (
-                                    f"map_completion_data: {repr(e)}\n"
-                                    f"data: {data}\n"
-                                    f"text_offset: {text_offset}"
-                                    f"exception: {repr(e)}"
-                                )
-                                raise Exception(msg)
+                            # should not happen with the error guard above, but defend anyway
+                            assert len(completion.choices) > 0, (
+                                f"completion.choices == 0: {data}"
+                            )
+                            # we only reset buffer for next message only after
+                            # completion mapped successfully; until that happens,
+                            # it's likely we're still accumulating lines inside
+                            # the message buffer
+                            message_buffer = ""
+                            text_offset += len(completion.choices[0].text)
+                            yield completion
+                        except Exception as e:
+                            # raise here to break the main processing loop
+                            # and return an exception to the caller
+                            msg = (
+                                f"map_completion_data: {repr(e)}\n"
+                                f"data: {data}\n"
+                                f"text_offset: {text_offset}"
+                                f"exception: {repr(e)}"
+                            )
+                            raise Exception(msg)
 
-                    if line.startswith("data:"):
-                        raw_data = line[len("data: ") :]
-                        if raw_data.strip() == "[DONE]":
-                            yield raw_data
-                            break
-                        message_buffer += raw_data  #
+                if line.startswith("data:"):
+                    raw_data = line[len("data: ") :]
+                    if raw_data.strip() == "[DONE]":
+                        yield raw_data
+                        break
+                    message_buffer += raw_data  #
     except asyncio.CancelledError:
         pass
     except Exception as e:

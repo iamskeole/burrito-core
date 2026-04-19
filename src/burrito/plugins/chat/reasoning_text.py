@@ -46,6 +46,7 @@ class ReasoningTextPluginChat(BasePluginChat):
             index=0,
             delta=PatchedChatCompletionChunkChoiceDelta(
                 role="assistant",
+                reasoning=token.text,
                 reasoning_content=token.text,
             ),
         )

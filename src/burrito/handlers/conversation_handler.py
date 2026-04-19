@@ -34,6 +34,7 @@ class ConversationHandler:
         self.grammar = ""
         self.created_at = unix_timestamp_in_ms()
         self.stream_to_caller = params.stream or False
+        self.client_disconnected = False
 
         self.output_queue = asyncio.Queue()
         self.is_finished = asyncio.Event()
@@ -52,9 +53,26 @@ class ConversationHandler:
 
         self._is_stopped = False
 
-        self._init_state_handler()
-        self._init_logger()
-        self._init_stream()
+        # self._init_state_handler()
+        # self._init_logger()
+        # self._init_stream()
+
+    @classmethod
+    async def create(
+        cls,
+        request: Request,
+        params: WireApiParams,
+        generator: GenerationHandler,
+        session_handler: SessionHandler,
+        forwarded_headers: Dict[str, str] = {},
+    ) -> "ConversationHandler":
+        instance = cls(request, params, generator, session_handler, forwarded_headers)
+        instance.state_handler = await StateHandler.create(
+            manager=instance, stream_to_caller=instance.stream_to_caller
+        )
+        instance._init_logger()
+        instance._init_stream()
+        return instance
 
     def _init_logger(self):
         self.log_id = self.state_handler.log_id
@@ -72,9 +90,16 @@ class ConversationHandler:
         generation_requests_total.labels(wire_api=w, model=m).inc()
 
     def _init_stream(self, grammar: str = ""):
+        # guard against client disconnecting when native tool calls issued
+        # when results come back, tool_handler calls update_state_with_tool_result
+        # which restarts generation, but there's no client there to read the result
+        if self.client_disconnected:
+            return
+
         self._is_stopped = False
         self.generator.can_stream = True
         self.generator.log_id = self.log_id
+
         self.stream = self.generator.generate(
             prompt_token_ids=self.state_handler.prompt_tokens,
             params=self.params,
@@ -98,19 +123,25 @@ class ConversationHandler:
             while True:
                 message = await self.request.receive()
                 if message.get("type") == "http.disconnect":
+                    self.client_disconnected = True
                     self._stop_stream("Client disconnected inside _watch_disconnect.")
+                    await self.state_handler.tool_handler.cleanup_tools()
                     break
         except asyncio.CancelledError:
+            self.client_disconnected = True
             pass
         except Exception as e:
+            self.client_disconnected = True
             self._stop_stream(f"_watch_disconnect exited with error: {e}")
+            await self.state_handler.tool_handler.cleanup_tools()
+            return
 
     async def _stream_completions(self):
         sm = self.state_handler
         timeout = settings.BACKEND_INTER_TOKEN_TIMEOUT
         if settings.DEBUG_REASONING_EFFORT:
             inputs = self.state_handler.conversation_inputs
-            msg = f"reasoning effort: {inputs.reasoning.effort}"
+            msg = f"reasoning effort: {inputs.reasoning.effort}"  # type: ignore
             self.logger.debug(msg, extra=self.log_extra)
         try:
             while 1:
@@ -179,6 +210,7 @@ class ConversationHandler:
         except asyncio.CancelledError:
             # this triggers automatically when a STREAMED client disconnects
             self._stop_stream("Client disconnected outside _watch_disconnect.")
+            await self.state_handler.tool_handler.cleanup_tools()
             raise  # re-raise the cancellation so fastapi cleans up
 
         except Exception as e:
@@ -189,7 +221,7 @@ class ConversationHandler:
     async def return_json(self) -> Dict:
         async for _ in self.return_stream():
             pass
-
+            self.state_handler.response_buffer
         assert self.state_handler.is_done, "Generation did not complete successfully."
 
         output_object = self.state_handler.output_object

@@ -54,3 +54,4 @@ class ConversationToolType(Enum):
     BROWSER = "browser"
     FUNCTION = "function"
     CUSTOM = "custom"
+    LAZY_LOAD = "lazy"

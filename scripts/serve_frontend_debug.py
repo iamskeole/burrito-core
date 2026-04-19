@@ -3,7 +3,7 @@ import os
 import socketserver
 import sys
 
-PORT = 8080
+PORT = 7777
 DIRECTORY = os.path.join(os.path.dirname(__file__), "frontend_debug")
 
 

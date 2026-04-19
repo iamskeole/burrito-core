@@ -65,8 +65,11 @@ def generate_highlight_url(base_url: str, lines_cited: str) -> str:
 class BurritoBrowser(SimpleBrowserTool):
     backend: BurritoBrowserBackend
 
-    def __init__(self):
+    def __init__(self, log_id: str = ""):  # compatibility with tool_handler, may change
         super().__init__(backend=BurritoBrowserBackend())
+
+    def self_destruct(self):
+        pass  # maybe eventually some cleanup? although that's the point.. have history
 
     def patch_search_tool(self, config: ToolNamespaceConfig):
         _tool = None

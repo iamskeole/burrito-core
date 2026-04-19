@@ -5,7 +5,7 @@ from openai_harmony import Message
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import get_prompt, random_uuid
+from burrito.common.utils import get_prompt, patch_agent_pip_install, random_uuid
 from burrito.tools.browser.tool import BurritoBrowser
 from burrito.tools.python.tool import BurritoPython
 from burrito.types.conversation_enums import (
@@ -17,15 +17,14 @@ from burrito.types.conversation_inputs import ConversationToolParam
 
 if TYPE_CHECKING:
     from burrito.handlers.state_handler import StateHandler
-from burrito.common.utils import bootstrap_pip
 
 
 class ToolHandler:
     def __init__(
         self,
         manager: "StateHandler",
-        python_tool: Optional[BurritoPython],
-        browser_tool: Optional[BurritoBrowser],
+        python_tool: Optional[Union[BurritoPython, str]],
+        browser_tool: Optional[Union[BurritoBrowser, str]],
     ):
         self.manager = manager
         self.namespaces: List[str] = []
@@ -44,6 +43,9 @@ class ToolHandler:
 
         self.python_tool = python_tool
         self.browser_tool = browser_tool
+
+        self.current_call_id = ""
+        self.current_call_buffer = ""
 
         self._init_namespaces()
         self._init_tools()
@@ -99,7 +101,52 @@ class ToolHandler:
         messages[-1].recipient = tool_name.replace("functions", "")
         return
 
-    def get_tool_model_is_trying_to_call(
+    async def get_python_tool(self) -> Optional[BurritoPython]:
+        state_handler = self.manager
+        session_id = state_handler.log_id
+        session_handler = state_handler.manager.session_handler
+
+        # always check the cache as tool may have been evicted by
+        # another session's LRU insertion or by idle timeout
+        cached = session_handler.get_python_tool(session_id)
+        if isinstance(cached, BurritoPython):  # != "init-on-use"
+            self.python_tool = cached
+            return self.python_tool
+
+        # cache miss or sentinel: create a new tool and register it
+        if self.python_tool is None:
+            return None
+
+        kernel_id = None
+        if session_handler.kernel_handler is not None:
+            kernel_id = await session_handler.kernel_handler.acquire_kernel()
+            conn_info = session_handler.kernel_handler.get_connection_info(kernel_id)
+        self.python_tool = BurritoPython(
+            self.log_id, kernel_id=kernel_id, conn_info=conn_info
+        )
+        session_handler.set_python_tool(session_id, self.python_tool)
+        return self.python_tool
+
+    def get_browser_tool(self) -> Optional[BurritoBrowser]:
+        state_handler = self.manager
+        session_id = state_handler.log_id
+        session_handler = state_handler.manager.session_handler
+
+        # always check the cache as tool may have been evicted by
+        # another session's LRU insertion or by idle timeout
+        cached = session_handler.get_browser_tool(session_id)
+        if isinstance(cached, BurritoBrowser):
+            self.browser_tool = cached
+            return self.browser_tool
+
+        # cache miss or sentinel: create a new tool and register it
+        if self.browser_tool is None:
+            return None
+        self.browser_tool = BurritoBrowser(self.log_id)
+        session_handler.set_browser_tool(session_id, self.browser_tool)
+        return self.browser_tool
+
+    async def get_tool_model_is_trying_to_call(
         self,
     ) -> Optional[Union[ConversationToolParam, BurritoBrowser, BurritoPython]]:
         current_recipient = self.manager.parser.current_recipient
@@ -112,24 +159,32 @@ class ToolHandler:
             return
         tool_name = re.sub(r"^functions\.|<\|channel\|>.*$", "", recipient)
         if self._is_python(tool_name):
-            return self.python_tool
+            return await self.get_python_tool()
         elif self._is_browser(tool_name):
-            return self.browser_tool
+            return self.get_browser_tool()
         else:
             return self.tools.get(tool_name)
 
-    def register_tool_call(self) -> Dict[str, Any]:
-        tool = self.get_tool_model_is_trying_to_call()
+    async def register_tool_call(self) -> Dict[str, Any]:
+        tool = await self.get_tool_model_is_trying_to_call()
         if tool is None:
             raise ValueError("Expected a ConversationToolParam, but got `None`")
         call_id = f"call_{random_uuid()}"
+
+        tool_type = {"python": "native_python", "browser": "native_browser"}.get(
+            tool.name, "function"
+        )
         self.tool_calls.append(
             {
                 "index": len(self.tool_calls),
                 "call_id": call_id,
                 "tool": tool,
+                "name": tool.name,
+                "type": tool_type,
+                "content": "",
             }
         )
+        self.current_call_id = call_id
         return self.tool_calls[-1]
 
     def _is_python(
@@ -137,7 +192,7 @@ class ToolHandler:
     ) -> bool:
         _name = ConversationToolNamespace.PYTHON.value
         _is_enabled = (
-            settings.IS_PYTHON_TOOL_ENABLED or settings.IS_PYTHON_TOOL_ALWAYS_ENABLED
+            settings.IS_PYTHON_TOOL_AVAILABLE or settings.IS_PYTHON_TOOL_ALWAYS_ENABLED
         )
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return _name in recipient and _is_enabled
@@ -159,7 +214,8 @@ class ToolHandler:
     ) -> bool:
         _name = ConversationToolNamespace.BROWSER.value
         _is_enabled = (
-            settings.IS_BROWSER_TOOL_ENABLED or settings.IS_BROWSER_TOOL_ALWAYS_ENABLED
+            settings.IS_BROWSER_TOOL_AVAILABLE
+            or settings.IS_BROWSER_TOOL_ALWAYS_ENABLED
         )
         if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return _name in recipient and _is_enabled
@@ -192,7 +248,7 @@ class ToolHandler:
                     f"invalid tool call: bad namespace: `{recipient}`.",
                     extra=self.log_extra,
                 )
-            msg = get_prompt("sentinel_bad_namespace").format(
+            msg = get_prompt("sentinel_bad_tool_namespace").format(
                 recipient=recipient,
                 valid_namespaces=self.msg_namespaces,
                 valid_tools=self.msg_tools,
@@ -244,34 +300,40 @@ class ToolHandler:
             return False
         return True
 
-    def is_valid(self, recipient: Optional[str], state: Optional[str] = None) -> bool:
-        if recipient is None:
+    async def is_valid(
+        self, recipient: Optional[str], state: Optional[str] = None
+    ) -> bool:
+        tool = await self.get_tool_model_is_trying_to_call()
+        if recipient is None or tool is None:
             # skip logs and messages, it's a defensive check from other state
             if state is not None:
                 return False
+
+            if recipient is None:
+                msg = get_prompt("sentinel_tool_missing_recipient").format(
+                    recipient=recipient,
+                    valid_namespaces=self.msg_namespaces,
+                    valid_tools=self.msg_tools,
+                )
+            else:
+                msg = get_prompt("sentinel_bad_tool_name").format(
+                    recipient=recipient,
+                    valid_namespaces=self.msg_namespaces,
+                    valid_tools=self.msg_tools,
+                )
             if settings.DEBUG_TOOL_CALLS or settings.DEBUG_STATE_ERRORS:
                 self.logger.warning(
-                    "invalid tool call: missing recipient", extra=self.log_extra
+                    "invalid tool call: missing or bad recipient", extra=self.log_extra
                 )
-            msg = get_prompt("sentinel_tool_missing_recipient").format(
-                recipient=recipient,
-                valid_namespaces=self.msg_namespaces,
-                valid_tools=self.msg_tools,
-            )
             self.manager._add_recovery_message(msg)
             return False
 
-        tool = self.get_tool_model_is_trying_to_call()
-        strict = settings.ENFORCE_STRICT_TOOL_NAMESPACES
-        if tool is not None and not strict:
+        if not settings.ENFORCE_STRICT_TOOL_NAMESPACES:
             return True
-
-        if strict and not self._is_valid_tool_name(recipient, state):
+        if not self._is_valid_tool_name(recipient, state):
             return False
-
-        if strict and not self._is_valid_tool_namespace(recipient, state):
+        if not self._is_valid_tool_namespace(recipient, state):
             return False
-
         return True
 
     @staticmethod
@@ -300,15 +362,23 @@ class ToolHandler:
                 if settings.DEBUG_TOOL_CALLS:
                     self.logger.debug(f"calling tool `{t_name}`.", extra=self.log_extra)
 
+            # self.manager.manager._stop_stream("await run_tool")
             tool_result = await self.run_tool(tool, message)
+            result_text = tool_result[0].content[0].text  # type: ignore
+
+            if isinstance(tool, BurritoPython):
+                result_text = result_text.replace(
+                    "Note: you may need to restart the kernel to use updated packages.",
+                    "",
+                )
             tool_call = self.tool_calls[-1]
             call_id = tool_call["call_id"]
-            self.tool_results[call_id] = tool_result[0].content[0].text  # type: ignore
+            self.tool_results[call_id] = result_text
             if settings.DEBUG_TOOL_OUTPUTS:
                 self.logger.debug(
                     (
                         f"Tool result for `{t_name}` tool with params `{t_params}:"
-                        f"{tool_result[0].content[0].text}"  # type: ignore
+                        f"{result_text}"
                     ),
                     extra=self.log_extra,
                 )
@@ -345,15 +415,41 @@ class ToolHandler:
 
         tool = None
         if self._is_python(recipient):
-            tool = self.python_tool
-            # dirty hack to ensure pip installs work
-            message_text = last_message.content[0].text  # type: ignore
-            if "pip install" in message_text:
-                text = f"{bootstrap_pip}\n{message_text}"
-                last_message.content[0].text = text  # type: ignore
-        if self._is_browser(recipient):
-            tool = self.browser_tool
+            tool = await self.get_python_tool()
+            if tool is None:
+                raise AssertionError("Python tool can not be None.")
+            last_message.content[0].text = patch_agent_pip_install(  # type: ignore
+                text=last_message.content[0].text  # type: ignore
+            )
+        elif self._is_browser(recipient):
+            tool = self.get_browser_tool()
+            if tool is None:
+                raise AssertionError("Browser tool can not be None.")
             self.manager.manager.browser_tool_used = True
-        if tool is None:
+        else:
             return
         await self._call_native_tool(tool, last_message)
+
+    async def _cleanup_browser(self):
+        if not isinstance(self.browser_tool, BurritoBrowser):
+            return
+
+    async def _cleanup_python(self):
+        if not isinstance(self.python_tool, BurritoPython):
+            return
+
+        tool = await self.get_python_tool()
+        if not isinstance(tool, BurritoPython):
+            return
+
+        try:
+            await tool._interrupt_jupyter_kernel()
+            msg = "Interrupted kernel for session."
+            self.logger.info(msg, extra=self.log_extra)
+        except Exception as e:
+            msg = f"Failed to interrupt kernel for session: {e}"
+            self.logger.warning(msg, extra=self.log_extra)
+
+    async def cleanup_tools(self):
+        await self._cleanup_browser()
+        await self._cleanup_python()

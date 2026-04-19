@@ -1,4 +1,23 @@
+# SearXNG Configuration
+
+use_default_settings: true
+
+server:
+  # The secret key is passed via environment variable SEARXNG_SECRET in your compose file,
+  # but the schema still expects the server block to exist.
+  secret_key: "alabalaportocala" 
+  limiter: false # Disable rate limiting for local dev, or configure it properly
+  port: 8080
+  bind_address: "0.0.0.0"
+
 search:
   formats:
     - html
     - json
+
+ui:
+  static_use_hash: true
+
+# This section is often required by newer versions to avoid the "null" error
+valkey:
+  url: redis://valkey:6379/0

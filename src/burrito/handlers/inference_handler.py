@@ -27,7 +27,7 @@ async def run_inference(
                 yield chunk
 
     try:
-        handler = ConversationHandler(
+        handler = await ConversationHandler.create(
             request=request,
             params=params,
             generator=generator,

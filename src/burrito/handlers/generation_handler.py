@@ -1,20 +1,21 @@
 from typing import AsyncGenerator, Dict, List, Union
 
+import httpx
 from openai.types.completion import Completion
 
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
-from burrito.common.utils import random_uuid
 from burrito.services.inference import infer_next_token
 from burrito.types.wire_api_params import WireApiParams
 
 
 class GenerationHandler:
-    def __init__(self):
+    def __init__(self, log_id: str, client: httpx.AsyncClient):
         self.can_stream = True
-        self.log_id = random_uuid()
+        self.log_id = log_id
         self.logger = FastAPILogger.get_logger(__name__)
         self.log_extra = {"log_id": self.log_id}
+        self.client = client
 
     async def _generator(
         self,
@@ -25,7 +26,7 @@ class GenerationHandler:
     ) -> AsyncGenerator[Union[Completion, Dict, str], None]:
         try:
             async for completion in infer_next_token(
-                prompt_token_ids, params, headers, grammar
+                self.client, prompt_token_ids, params, headers, grammar
             ):
                 if not self.can_stream:
                     if settings.DEBUG_GENERATOR_CLEANUP:
