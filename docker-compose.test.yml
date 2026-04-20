@@ -1,33 +1,13 @@
 services:
-  docker-proxy:
-    image: tecnativa/docker-socket-proxy
-    container_name: burrito-docker-proxy
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - CONTAINERS=1
-      - NETWORKS=1
-      - IMAGES=1
-    networks:
-      - burrito-internal
-
   burrito:
-    build: .
-    container_name: burrito
-    ports:
-      - "8888:8000"
-    environment:
-      - DOCKER_HOST=tcp://docker-proxy:2375
     volumes:
+      # 1. Mount the live code into the container so your breakpoints map exactly!
+      - ./:/app
       - jupyter-runtime:/tmp/jupyter-runtime
-    networks:
-      - burrito-internal
-    depends_on:
-      - docker-proxy
+    ports:
+      # 2. Expose port 5678 to your Mac so VSCode debugpy client can connect
+      - "5678:5678"
+    # 3. Dynamically install debugpy upon boot, freeze start until you hit F5 debugger, and then boot Uvicorn with auto-reload!
+    command: ["sh", "-c", "uv pip install debugpy && python -m debugpy --wait-for-client --listen 0.0.0.0:5678 -m uvicorn burrito.main:app --host 0.0.0.0 --port 8000 --reload"]
 
-volumes:
-  jupyter-runtime:
-
-networks:
-  burrito-internal:
-    driver: bridge
+# We don't redefine the proxy, volumes, or networks here; docker-compose automatically merges them from the core docker-compose.yml!

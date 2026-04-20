@@ -9,6 +9,7 @@ from burrito import __repo__, __version__
 from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import get_prompt, random_uuid
+from burrito.handlers.kernel_handler import DockerKernelManager
 from burrito.tools.python.async_jupyter_session import (
     AsyncJupyterSession,
     ContainerJupyterSession,
@@ -25,6 +26,8 @@ class BurritoPython(PythonTool):
         log_id: str = "",
         is_placeholder: bool = False,
         kernel_id: Optional[str] = None,
+        conn_info: Optional[str] = None,
+        kernel_manager: Optional[DockerKernelManager] = None,
     ):
         backend = settings.PYTHON_BACKEND
         timeout = settings.PYTHON_EXECUTION_TIMEOUT_SECONDS
@@ -33,6 +36,8 @@ class BurritoPython(PythonTool):
         self._local_jupyter_connection_file = None
         self._local_jupyter_timeout = timeout
         self.kernel_id = kernel_id  # Store the ID passed from SessionHandler
+        self.conn_info = conn_info
+        self.kernel_manager = kernel_manager
 
         self.logger = FastAPILogger.get_logger(__name__)
         self.log_id = log_id or random_uuid()
@@ -74,11 +79,12 @@ class BurritoPython(PythonTool):
     async def _resolve_jupyter_session(self) -> AsyncJupyterSession:
         if self._jupyter_session is not None:
             return self._jupyter_session
-        if settings.PYTHON_BACKEND == "jeg":
+        if settings.PYTHON_BACKEND == "docker":
             self._jupyter_session = ContainerJupyterSession(
                 log_id=self.log_id,
-                kernel_id=self.log_id,
-                jeg_url=settings.PYTHON_JEG_URL,
+                kernel_id=self.kernel_id,
+                conn_info=self.conn_info,
+                kernel_manager=self.kernel_manager,
                 timeout=self._local_jupyter_timeout,
             )
         else:

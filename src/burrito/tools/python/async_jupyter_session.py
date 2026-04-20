@@ -2,12 +2,13 @@ import asyncio
 import contextlib
 from typing import Optional
 
-import httpx
+import docker
 from jupyter_client.asynchronous.client import AsyncKernelClient
 from jupyter_client.manager import KernelManager
 
 from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid
+from burrito.handlers.kernel_handler import DockerKernelManager
 
 
 class AsyncJupyterSession:
@@ -140,35 +141,63 @@ class InProcessJupyterSession(AsyncJupyterSession):
 
 class ContainerJupyterSession(AsyncJupyterSession):
     def __init__(
-        self, log_id: str, kernel_id: str, jeg_url: str, timeout: float = 120.0
+        self,
+        log_id: str,
+        kernel_id: str,
+        conn_info: str,
+        kernel_manager: Optional[DockerKernelManager] = None,
+        timeout: float = 120.0,
     ) -> None:
         super().__init__(log_id, timeout)
         self.kernel_id = kernel_id
-        self.jeg_url = jeg_url
+        self.conn_info = conn_info
+        self.kernel_manager = kernel_manager
         self._connect_to_kernel()
 
     def _connect_to_kernel(self):
-        # We use synchronous requests here because this is called during the tool's sync __init__
-        resp = httpx.get(f"{self.jeg_url}/api/kernels/{self.kernel_id}")
-        conn_info = resp.json().get("connection_info")
-        self._client.load_connection_file(conn_info)
-        self._client.ip = "jeg"
+        import json
+        import os
+        import tempfile
+
+        conn_dict = json.loads(self.conn_info)
+        conn_dict["ip"] = f"burrito-kernel-{self.kernel_id}"
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            json.dump(conn_dict, f)
+            tmp_path = f.name
+
+        self._client.load_connection_file(tmp_path)
+        os.remove(tmp_path)
 
     async def interrupt(self) -> None:
         try:
-            channel = getattr(self._client, "_shell_channel", None)
-            if channel:
-                await channel.send(
-                    {
-                        "header": {"msg_id": random_uuid(), "version": "5.3"},
-                        "parent_header": {},
-                        "metadata": {},
-                        "content": {},
-                        "msg_type": "interrupt",
-                    }
-                )
+            if self.kernel_manager is not None:
+                await self.kernel_manager.release_kernel(self.kernel_id, destroy=True)
+            else:
+                client = docker.from_env()
+                container = client.containers.get(f"burrito-kernel-{self.kernel_id}")
+                # Sends POSIX SIGINT directly to the kernel to rip it out of infinite loops
+                container.kill(signal="SIGINT")
         except Exception:
-            pass
+            try:
+                # Fallback to the Jupyter Control Channel (must bypass the locked shell channel)
+                channel = getattr(
+                    self._client,
+                    "control_channel",
+                    getattr(self._client, "_control_channel", None),
+                )
+                if channel:
+                    await channel.send(
+                        {
+                            "header": {"msg_id": random_uuid(), "version": "5.3"},
+                            "parent_header": {},
+                            "metadata": {},
+                            "content": {},
+                            "msg_type": "interrupt_request",
+                        }
+                    )
+            except Exception:
+                pass
 
     def close(self) -> None:
         self._hard_close_zmq()

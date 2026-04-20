@@ -5,4 +5,4 @@ RUN pip install --no-cache-dir sympy numpy pandas
 USER $NB_UID
 
 # This is the key: it writes the connection info to the shared volume
-CMD ["sh", "-c", "python -m ipykernel_launcher -f /tmp/jupyter-runtime/connection.json"]
+CMD ["sh", "-c", "python -m ipykernel_launcher -f /tmp/jupyter-runtime/${KERNEL_ID}.json --ip=0.0.0.0"]

@@ -1,9 +1,12 @@
+import gc
 import logging
 import os
+import random
 from typing import Dict, Optional
 
 import docker
 
+from burrito.common.config import settings
 from burrito.common.utils import random_uuid
 
 logger = logging.getLogger(__name__)
@@ -17,16 +20,37 @@ class DockerKernelManager:
         # State tracking: {kernel_id: 'idle' | 'busy'}
         self.pool_state: Dict[str, str] = {}
 
+    async def _rightsize_pool(self):
+        min_pool_size = settings.PYTHON_KERNEL_MIN_POOL_SIZE
+        current_count = len(self.pool_state)
+        num_acquired = 0
+        num_released = 0
+
+        if current_count < min_pool_size:
+            for _ in range(min_pool_size - current_count):
+                await self.spawn_one()
+                num_acquired += 1
+
+        if current_count > min_pool_size:
+            for _ in range(current_count - min_pool_size):
+                kernel_id = await self._release_one(destroy=True)
+                num_released += 1
+        logger.info(f"{num_acquired=} {num_released=}")
+        updated_count = len(self.pool_state)
+        return updated_count
+
     async def refresh_pool(self):
         """Syncs local pool_state with actual running Docker containers."""
         try:
             # List all containers that match our naming convention
-            containers = self.client.containers.list(filters={"name": "kernel-"})
+            containers = self.client.containers.list(
+                filters={"name": "burrito-kernel-"}
+            )
             active_ids = set()
 
             for c in containers:
-                # Extract kernel_id from name "kernel-uuid"
-                kid = c.name.replace("kernel-", "")
+                # Extract kernel_id from name "burrito-kernel-uuid"
+                kid = c.name.replace("burrito-kernel-", "")
                 active_ids.add(kid)
                 # If we don't know this kernel, assume it's idle
                 if kid not in self.pool_state:
@@ -38,27 +62,37 @@ class DockerKernelManager:
                 for kid, status in self.pool_state.items()
                 if kid in active_ids
             }
+            await self._rightsize_pool()
+            gc.collect()
+            # TODO: need to have extra in pool, since agent may return before idle timeout
+            # which means there's some small chance agent 1 gets kernel of agent 2
+            # so need to keep track of a stale flag somehow?
+            # so probably on session handler evict idle we need to flag them as 'stale' or used
+            # and only evict those here?
         except Exception as e:
             logger.error(f"Error refreshing pool: {e}")
+
+    async def _release_one(self, destroy: bool = False) -> Optional[str]:
+        idle_kernels = [i for i in self.pool_state if self.pool_state[i] == "idle"]
+        kernel_id = random.choice(idle_kernels)
+        await self.release_kernel(kernel_id, destroy)
+        return kernel_id
 
     async def spawn_one(self) -> Optional[str]:
         """Spawns a single kernel and marks it as idle."""
         try:
-            kernel_id = random_uuid()
-            # We map a unique file in the shared volume to the container's internal connection file
-            host_conn_path = f"{self.runtime_dir}/{kernel_id}.json"
+            kernel_id = random_uuid()[:6]
 
             out = self.client.containers.run(
                 image="burrito-kernel:latest",
-                name=f"kernel-{kernel_id}",
+                name=f"burrito-kernel-{kernel_id}",
                 detach=True,
-                volumes={
-                    host_conn_path: {"bind": "/tmp/connection.json", "mode": "rw"}
-                },
+                environment={"KERNEL_ID": kernel_id},
                 mem_limit="2g",
-                cpu_quota=50000,
                 user="1000:100",
-                network_mode="bridge",
+                network="burrito-internal",
+                stdin_open=True,
+                tty=True,
             )
 
             self.pool_state[kernel_id] = "idle"
@@ -96,12 +130,12 @@ class DockerKernelManager:
     async def kill_kernel(self, kernel_id: str):
         """Stops and removes the container and its connection file."""
         try:
-            container = self.client.containers.get(f"kernel-{kernel_id}")
+            container = self.client.containers.get(f"burrito-kernel-{kernel_id}")
             container.stop(timeout=2)
             container.remove()
 
             # Cleanup the shared volume file
-            path = f"{self.runtime_dir}/{kernel_id}.json"
+            path = f"/tmp/jupyter-runtime/{kernel_id}.json"
             if os.path.exists(path):
                 os.remove(path)
 
@@ -109,14 +143,36 @@ class DockerKernelManager:
         except Exception as e:
             logger.debug(f"Cleanup failed for {kernel_id}: {e}")
 
-    def get_connection_info(self, kernel_id: str) -> str:
-        """Reads the connection JSON written by the kernel container."""
-        path = f"{self.runtime_dir}/{kernel_id}.json"
-        # We might need a small retry loop here if called immediately after spawn
-        try:
-            with open(path, "r") as f:
-                return f.read()
-        except FileNotFoundError:
-            raise FileNotFoundError(
-                f"Kernel {kernel_id} has not written its connection file yet."
-            )
+    async def get_connection_info(self, kernel_id: str) -> str:
+        """Reads the connection JSON written by the kernel container via Docker API."""
+        import asyncio
+        import io
+        import tarfile
+
+        container = self.client.containers.get(f"burrito-kernel-{kernel_id}")
+
+        for _ in range(50):
+            try:
+                bits, stat = container.get_archive(
+                    f"/tmp/jupyter-runtime/{kernel_id}.json"
+                )
+                file_content = b"".join(bits)
+
+                with tarfile.open(fileobj=io.BytesIO(file_content)) as tar:
+                    member = tar.next()
+                    if member:
+                        f = tar.extractfile(member)
+                        if f:
+                            content = f.read().decode("utf-8")
+                            if content:
+                                return content
+            except docker.errors.NotFound:
+                pass
+            except Exception as e:
+                pass
+
+            await asyncio.sleep(0.1)
+
+        raise FileNotFoundError(
+            f"Kernel {kernel_id} has not written its connection file yet."
+        )

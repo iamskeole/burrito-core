@@ -276,7 +276,7 @@ class SessionHandler:
 
         self._maintenance_task: Optional[asyncio.Task] = None
 
-        if settings.PYTHON_BACKEND == "jeg":
+        if settings.PYTHON_BACKEND == "docker":
             self.kernel_handler = DockerKernelManager()
 
     async def start_maintenance(self):
@@ -284,19 +284,10 @@ class SessionHandler:
 
     async def _manage_kernels(self):
         if self.kernel_handler is None:
-            return
+            return 0
 
-        await self.kernel_handler.refresh_pool()
-        min_pool_size = settings.PYTHON_KERNEL_MIN_POOL_SIZE
-        current_count = len(self.kernel_handler.pool_state)
-        num_acquired = 0
-
-        if current_count < min_pool_size:
-            for _ in range(min_pool_size - current_count):
-                await self.kernel_handler.spawn_one()
-                num_acquired += 1
-
-        return num_acquired
+        num_kernels = await self.kernel_handler.refresh_pool()
+        return num_kernels
 
     async def _maintenance_loop(self) -> None:
         check_interval = settings.SESSION_HANDLER_SENTINEL_HEARTBEAT_SECONDS
@@ -315,7 +306,7 @@ class SessionHandler:
                         f"Cleaned up "
                         f"{py_evicted} python and "
                         f"{br_evicted} browser sessions. "
-                        f"Acquired {num_kernels} new kernels for Python."
+                        f"{num_kernels} kernels for Python are active."
                     )
                     self.logger.debug(msg, extra=self.log_extra)
 

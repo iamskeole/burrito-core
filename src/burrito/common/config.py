@@ -251,16 +251,12 @@ class Settings(BaseSettings):
     # figuring out it also needs to print (in docker), so jupyter seems more.. native?
     # warning.. docker also seems to hang, doesn't properly kill on timeout?
     # use jupyter, hardened to be thread safe (and it's within docker)
-    PYTHON_BACKEND: Literal["in-process", "jeg"] = Field(
-        default="jeg",
+    PYTHON_BACKEND: Literal["in-process", "docker"] = Field(
+        default="docker",
         description="Backend used to execute Python code.",
     )
-    PYTHON_JEG_URL: str = Field(
-        default="",
-        description="Jupyter Enterprise Gateway URL.",
-    )
     PYTHON_KERNEL_MIN_POOL_SIZE: int = Field(
-        default=8,
+        default=2,
         description="Minumum number of jupyter kernels to keep in the warm pool.",
     )
 

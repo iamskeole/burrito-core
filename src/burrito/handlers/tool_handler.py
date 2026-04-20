@@ -105,6 +105,7 @@ class ToolHandler:
         state_handler = self.manager
         session_id = state_handler.log_id
         session_handler = state_handler.manager.session_handler
+        kernel_manager = session_handler.kernel_handler
 
         # always check the cache as tool may have been evicted by
         # another session's LRU insertion or by idle timeout
@@ -118,11 +119,15 @@ class ToolHandler:
             return None
 
         kernel_id = None
-        if session_handler.kernel_handler is not None:
-            kernel_id = await session_handler.kernel_handler.acquire_kernel()
-            conn_info = session_handler.kernel_handler.get_connection_info(kernel_id)
+        conn_info = None
+        if kernel_manager is not None:
+            kernel_id = await kernel_manager.acquire_kernel()
+            conn_info = await kernel_manager.get_connection_info(kernel_id)
         self.python_tool = BurritoPython(
-            self.log_id, kernel_id=kernel_id, conn_info=conn_info
+            self.log_id,
+            kernel_id=kernel_id,
+            conn_info=conn_info,
+            kernel_manager=kernel_manager,
         )
         session_handler.set_python_tool(session_id, self.python_tool)
         return self.python_tool
