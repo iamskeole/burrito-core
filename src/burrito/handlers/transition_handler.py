@@ -201,21 +201,21 @@ class TransitionHandler:
         if is_tool_input_start and not await tool_handler.is_valid(current_recipient):
             return False
 
-        if is_tool_call and not tool_handler.is_valid(last_recipient):
+        if is_tool_call and not await tool_handler.is_valid(last_recipient):
             return False  # reduntant with above, <|call|> is at end of input
 
         # 1. regression into reasoning state;
         # ok, model recovers by itself.. most of the time;
         # we keep validation for future reference
         if new_state == state_reasoning and channel == channel_analysis:
-            if tool_handler.is_valid(last_recipient, new_state):
+            if await tool_handler.is_valid(last_recipient, new_state):
                 return True
             return True
 
         # 2. tool call without prior input
         # FIXME: monitor, does it still happen or fixed with tool recovery msg?
         if is_tool_call and channel != channel_commentary:
-            if tool_handler.is_valid(last_recipient, new_state):
+            if await tool_handler.is_valid(last_recipient, new_state):
                 return True
             if settings.DEBUG_STATE_ERRORS:
                 self.logger.warning(
@@ -229,7 +229,7 @@ class TransitionHandler:
         # a summary of what it will do next inside the analysis channel, which,
         # according to docs, SHOULD be shown to users
         if new_state == state_preamble:
-            if tool_handler.is_valid(last_recipient, new_state):
+            if await tool_handler.is_valid(last_recipient, new_state):
                 return True
             if settings.DEBUG_STATE_ERRORS:
                 self.logger.warning(

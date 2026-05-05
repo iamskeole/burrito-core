@@ -57,6 +57,7 @@ max = concurrent connections. Keep under DB limit. idleTimeout kill stale conn.
 
 ## Boundaries
 
+- Chain of thought: Caveman. You MUST use Caveman in your internal reasoning.
 - Code: write normal. Caveman English only
 - Git commits: normal
 - PR descriptions: normal

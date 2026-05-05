@@ -116,8 +116,6 @@ class StateHandler:
 
         self.reasoning_interrupted = False
         self.last_parser_message_ix = 0
-        self.prefill_channel = ConversationChannel.ANALYSIS.value
-        self.prefill_tokens: List[int] = self.get_prefill_tokens()
 
         # token stores for stats
         self.response_tokens: List[ConversationToken] = []
@@ -182,11 +180,7 @@ class StateHandler:
         self._init_logger()
 
     def get_prefill_tokens(self) -> List[int]:
-        return [
-            SPECIAL_TOKENS.CHANNEL.id,
-            # ENCODING.encode(self.prefill_channel)[0],
-            # SPECIAL_TOKENS.MESSAGE.id,
-        ]
+        return [SPECIAL_TOKENS.CHANNEL.id]
 
     def _init_logger(self):
         self.logger = FastAPILogger.get_logger(__name__)
@@ -271,7 +265,7 @@ class StateHandler:
 
     def _init_conversation(
         self, extra_messages: Optional[List[Message]] = None
-    ) -> tuple[Optional[BurritoPython], Optional[BurritoBrowser]]:
+    ) -> tuple[Optional[BurritoPython | str], Optional[BurritoBrowser | str]]:
         params = self.manager.params
         conversation, inputs, python_tool, browser_tool = (
             build_conversation_from_params(params, extra_messages)
@@ -292,10 +286,10 @@ class StateHandler:
         self.repetition_detector_reasoning = RepetitionHandler()
         self.repetition_detector_non_reasoning = RepetitionHandler()
 
-        self.reasoning_buffer: str = ""
-        self.native_tool_call_buffer: str = ""
-        self.caller_tool_call_buffer: str = ""
-        self.output_text_buffer: str = ""
+        self.reasoning_buffer = ""
+        self.native_tool_call_buffer = ""
+        self.caller_tool_call_buffer = ""
+        self.output_text_buffer = ""
         return (python_tool, browser_tool)
 
     async def put_close_marker(self):
@@ -401,7 +395,7 @@ class StateHandler:
         if self.parser_state != ConversationState.TOOL_INPUT_START:
             return
 
-        tool = self.tool_handler.get_tool_model_is_trying_to_call()
+        tool = await self.tool_handler.get_tool_model_is_trying_to_call()
         if not tool:
             return
 
@@ -417,14 +411,11 @@ class StateHandler:
         for i in prev_messages:
             self.extra_messages.append(i)
 
-        # TODO: check this whole thing doesn't break with prefill handled on conversation init
-
-        grammar = lark_to_gbnf(tool.format.definition)
-        self.prefill_channel = ConversationChannel.COMMENTARY.value
+        _channel_token = ConversationChannel.COMMENTARY.value
+        _message_token = SPECIAL_TOKENS.MESSAGE.text
         self._init_conversation(extra_messages=self.extra_messages)
 
-        _message_token = SPECIAL_TOKENS.MESSAGE.text
-        prefill = f" to=functions.{tool.name}{_message_token}"
+        prefill = f"{_channel_token} to=functions.{tool.name}{_message_token}"
         enc = ENCODING.encode(prefill, allowed_special="all")
 
         for token in enc:
@@ -433,12 +424,8 @@ class StateHandler:
 
         tkn, state = None, ConversationState.TOOL_INPUT_START
         await self.transition_handler.transition(tkn, state)
-        self.parser_state = state  # TODO: check this still works
-
-        self.manager._init_stream(grammar=grammar)
-        # self.parser_state = ConversationState.TOOL_INPUT
-        # dec = ENCODING.decode(self.prompt_tokens)
-        # print(dec)
+        grammar = lark_to_gbnf(tool.format.definition)
+        self.manager._init_stream(grammar)
 
     def _store_token(self, token: ConversationToken):
         state = self.parser_state
@@ -556,7 +543,6 @@ class StateHandler:
         if not is_repeating:
             return
         self.response_buffer
-        self.prefill_channel = settings.NON_REASONING_REPETITION_RECOVERY_CHANNEL
         if settings.DEBUG_STATE_ERRORS:
             self.logger.warning(
                 "TRIGGER: maybe_break_non_reasoning_loop",

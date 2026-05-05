@@ -5,6 +5,7 @@ import random
 from typing import Dict, Optional
 
 import docker
+import docker.errors as docker_errors
 
 from burrito.common.config import settings
 from burrito.common.utils import random_uuid
@@ -17,6 +18,7 @@ class DockerKernelManager:
         # Connects to the proxy automatically via DOCKER_HOST env var
         self.client = docker.from_env()
         self.runtime_dir = "/tmp/jupyter-runtime"
+        # TODO: add 'locked' to prevent using something that may be reused
         # State tracking: {kernel_id: 'idle' | 'busy'}
         self.pool_state: Dict[str, str] = {}
 
@@ -33,7 +35,7 @@ class DockerKernelManager:
 
         if current_count > min_pool_size:
             for _ in range(current_count - min_pool_size):
-                kernel_id = await self._release_one(destroy=True)
+                await self._release_one(destroy=True)
                 num_released += 1
         logger.info(f"{num_acquired=} {num_released=}")
         updated_count = len(self.pool_state)
@@ -50,9 +52,10 @@ class DockerKernelManager:
 
             for c in containers:
                 # Extract kernel_id from name "burrito-kernel-uuid"
-                kid = c.name.replace("burrito-kernel-", "")
+                kid = c.name.replace("burrito-kernel-", "") if c.name else None
+                if kid is None:
+                    continue
                 active_ids.add(kid)
-                # If we don't know this kernel, assume it's idle
                 if kid not in self.pool_state:
                     self.pool_state[kid] = "idle"
 
@@ -166,8 +169,11 @@ class DockerKernelManager:
                             content = f.read().decode("utf-8")
                             if content:
                                 return content
-            except docker.errors.NotFound:
-                pass
+            except docker_errors.NotFound as e:
+                # The container or the file does not exist; surface a clear error
+                raise FileNotFoundError(
+                    f"Container or file for kernel {kernel_id} not found"
+                ) from e
             except Exception as e:
                 pass
 

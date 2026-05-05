@@ -79,7 +79,7 @@ class BurritoPython(PythonTool):
     async def _resolve_jupyter_session(self) -> AsyncJupyterSession:
         if self._jupyter_session is not None:
             return self._jupyter_session
-        if settings.PYTHON_BACKEND == "docker":
+        if settings.PYTHON_BACKEND == "jupyter-docker-kernels":
             self._jupyter_session = ContainerJupyterSession(
                 log_id=self.log_id,
                 kernel_id=self.kernel_id,

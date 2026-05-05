@@ -1,0 +1,70 @@
+# -------------------------------------------------------
+# Build artefacts – these are regenerated on every run
+# -------------------------------------------------------
+build/
+dist/
+tmp/
+*.egg-info
+*.egg
+*.whl
+
+# -------------------------------------------------------
+# Compiled / byte‑code – Python, C, etc.
+# -------------------------------------------------------
+__pycache__/
+*.py[cod]      # .pyc, .pyo, .pyd, .pyc
+*.so           # shared libraries (Linux / macOS)
+*.pyd          # Python extensions (Windows)
+
+# -------------------------------------------------------
+# Virtual environments & dependency caches
+# -------------------------------------------------------
+.venv/          # local Python virtual env
+env/
+.env
+.envrc
+.pdm/           # PDM cache
+.npm/           # npm/yarn cache
+.yarn/          # yarn cache
+.cache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+.coverage
+.hypothesis
+
+# -------------------------------------------------------
+# IDE / editor metadata
+# -------------------------------------------------------
+.idea/          # IntelliJ/Android Studio
+.vscode/        # VS Code (removed – we want to commit these settings!)
+# (If you *do* want to keep VS Code settings in the repo, remove the line above)
+
+# -------------------------------------------------------
+# System & OS files
+# -------------------------------------------------------
+.DS_Store          # macOS Finder
+._*                 # AppleDouble resources (macOS)
+*.DS_Store
+Thumbs.db          # Windows thumbnail cache
+*.swo
+*.swp
+*.tmp
+*.bak
+~$*                # Office temp files
+*.lock             # Optional – ignore automatically generated lock files (e.g. Poetry)
+
+# -------------------------------------------------------
+# Miscellaneous
+# -------------------------------------------------------
+*.log               # Log files
+*.cache/            # General cache directories
+*.tmp/
+*.bak/
+*.swo
+*.swp
+
+# -------------------------------------------------------
+# End of file
+# -------------------------------------------------------

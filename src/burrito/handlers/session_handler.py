@@ -246,7 +246,7 @@ class SessionCache(Generic[K, V]):
 
 
 class SessionHandler:
-    kernel_handler: Optional[DockerKernelManager]
+    kernel_handler: Optional[DockerKernelManager] = None
 
     def __init__(self, log_id: str):
         self.logger = FastAPILogger.get_logger(__name__)
@@ -276,7 +276,7 @@ class SessionHandler:
 
         self._maintenance_task: Optional[asyncio.Task] = None
 
-        if settings.PYTHON_BACKEND == "docker":
+        if settings.PYTHON_BACKEND == "jupyter-docker-kernels":
             self.kernel_handler = DockerKernelManager()
 
     async def start_maintenance(self):

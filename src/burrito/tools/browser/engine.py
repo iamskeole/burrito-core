@@ -6,6 +6,7 @@ from datetime import date
 from functools import lru_cache
 from typing import Optional
 
+import httpx
 import trafilatura
 from gpt_oss.tools.simple_browser.backend import VIEW_SOURCE_PREFIX
 from lxml import html
@@ -29,8 +30,8 @@ class BurritoBrowserEngine:
     _logger = FastAPILogger.get_logger(__name__)
     _fetch_lock = asyncio.Lock()
 
-    _user_agent_search: Optional[str] = ""
-    _user_agent_browse: Optional[str] = ""
+    _user_agent_search: Optional[str] = f"burrito-browse/{__version__}; (+{__repo__})"
+    _user_agent_browse: Optional[str] = f"burrito-search/{__version__}; (+{__repo__})"
 
     _width: int = random.randint(1600, 2000)
     _height: int = random.randint(600, 1200)
@@ -39,6 +40,9 @@ class BurritoBrowserEngine:
 
     @classmethod
     async def start(cls):
+        if settings.BROWSER_BACKEND != "playwright":
+            # httpx backend does not require Playwright initialization
+            return
         if cls._playwright is not None:
             return
 
@@ -67,8 +71,8 @@ class BurritoBrowserEngine:
         ua = await temp_page.evaluate("navigator.userAgent")
         ua = ua.replace("HeadlessChrome", "Chrome")
 
-        ua_extra_browse = f"; compatible; burrito-browse/{__version__}; +{__repo__}"
-        ua_extra_search = f"; compatible; burrito-search/{__version__}; +{__repo__}"
+        ua_extra_browse = f"; compatible; burrito-browse/{__version__}; (+{__repo__})"
+        ua_extra_search = f"; compatible; burrito-search/{__version__}; (+{__repo__})"
 
         cls._user_agent_browse = ua + ua_extra_browse
         cls._user_agent_search = ua + ua_extra_search
@@ -89,26 +93,35 @@ class BurritoBrowserEngine:
                 await cls._playwright.stop()
         except Exception as e:
             if settings.DEBUG_BROWSER_ERRORS:
-                cls._logger.warning(f"Playwright stopped forcefully during shutdown: {e}")
+                cls._logger.warning(
+                    f"Playwright stopped forcefully during shutdown: {e}"
+                )
         finally:
             cls._playwright = None
 
     @classmethod
     async def fetch(cls, url: str, is_docs_website: bool, timeout: float) -> str:
-        raw_html = None
+        """Route fetch to the configured backend.
+
+        When ``settings.BROWSER_BACKEND`` is ``"playwright"`` the original
+        behaviour is preserved.  When it is ``"httpx"`` a lightweight
+        implementation that performs a plain HTTP GET is used."""
+
         is_url = (
             url.startswith("http://")
             or url.startswith("https://")
             or url.startswith(VIEW_SOURCE_PREFIX)
         )
-        # we don't recover state as it's technically a valid tool call
         if not is_url:
             raise ConnectionRefusedError(
                 "The `browser.open` tool can only be used for opening **WEB** urls."
             )
+
+        if settings.BROWSER_BACKEND == "httpx":
+            return await cls.fetch_httpx(url, is_docs_website, timeout)
+
         async with cls._fetch_lock:
             if not cls._browser:
-                # should not happen, we boot it together with app, but defend here
                 await cls.start()
             if not cls._browser:
                 raise RuntimeError("Failed to start browser")
@@ -124,7 +137,6 @@ class BurritoBrowserEngine:
                 color_scheme="light",
             )
 
-            # delete the `navigator.webdriver` property which is the #1 bot tell
             await context.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
                 window.chrome = {runtime: {}};
@@ -150,15 +162,14 @@ class BurritoBrowserEngine:
             page = await context.new_page()
             await page.route("**/*", route_handler)
 
+            raw_html = None
             try:
                 await page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-
                 title = await page.title()
                 if "Just a moment" in title or "Cloudflare" in title:
                     if settings.DEBUG_BROWSER_ERRORS:
                         cls._logger.warning(f"Hit Cloudflare wall for {url}")
                     await asyncio.sleep(3)
-
                 raw_html = await page.content()
             except TimeoutError:
                 raw_html = (
@@ -167,6 +178,20 @@ class BurritoBrowserEngine:
                 )
             finally:
                 await context.close()
+        return cls.preprocess_html(raw_html, is_docs_website, url)
+
+    @classmethod
+    async def fetch_httpx(cls, url: str, is_docs_website: bool, timeout: float) -> str:
+        raw_html = None
+        try:
+            async with httpx.AsyncClient(timeout=timeout / 1000) as client:
+                resp = await client.get(url, follow_redirects=True)
+                resp.raise_for_status()
+                raw_html = resp.text
+        except httpx.HTTPError as exc:
+            raw_html = f"<html>HTTP error while loading {url}: {exc}</html>"
+        except Exception as exc:
+            raw_html = f"<html>Unexpected error while loading {url}: {exc}</html>"
         return cls.preprocess_html(raw_html, is_docs_website, url)
 
     @staticmethod

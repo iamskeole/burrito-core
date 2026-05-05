@@ -31,14 +31,14 @@ class Settings(BaseSettings):
         default=False, description="Log reasoning effort."
     )
     DEBUG_TOOL_CALLS: bool = Field(default=True, description="Log tool names.")
-    DEBUG_TOOL_INPUTS: bool = Field(default=True, description="Log tool inputs.")
-    DEBUG_TOOL_OUTPUTS: bool = Field(default=True, description="Log tool outputs.")
+    DEBUG_TOOL_INPUTS: bool = Field(default=False, description="Log tool inputs.")
+    DEBUG_TOOL_OUTPUTS: bool = Field(default=False, description="Log tool outputs.")
     DEBUG_COMPLETIONS: bool = Field(
         default=False,
         description="Log completion events received from inference backend.",
     )
     DEBUG_PROMPT: bool = Field(
-        default=False,
+        default=True,
         description="Log the conversation prompt before Harmony tokenization.",
     )
     DEBUG_OUTGOING_EVENTS: bool = Field(
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(
-        default=True, description="Log state transition events."
+        default=False, description="Log state transition events."
     )
     DEBUG_HARMONY_ERRORS: bool = Field(
         default=True, description="Log unhandled Harmony errors."
@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     DEBUG_SESSION_SENTINEL_HEARTBEAT: bool = Field(
         default=False,
         description="Log tick / tock heartbeats for SessionHandler tool cleanup sentinel.",
+    )
+    DEBUG_KERNEL_OPERATIONS: bool = Field(
+        default=True,
+        description="Log operations performed by the KernelHandler to manage Jupyter kernels in docker.",
     )
 
     CORS_ALLOWED_ORIGINS: str = Field(
@@ -123,7 +127,7 @@ class Settings(BaseSettings):
     )
 
     DEFAULT_REASONING_EFFORT: Literal["low", "medium", "high"] = Field(
-        default="low",
+        default="medium",
         description="Default reasoning effort.",
     )
     DEFAULT_REASONING_SUMMARY: Literal["auto", "concise", "detailed"] = Field(
@@ -243,16 +247,21 @@ class Settings(BaseSettings):
         default=True, description="Enable the native browser tool."
     )
     IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = Field(
-        default=False,
+        default=True,
         description="Always enable browser tool without caller tool list gymnastics.",
+    )
+
+    BROWSER_BACKEND: Literal["playwright", "httpx"] = Field(
+        default="httpx",
+        description="Choose between playwright or httpx for browser fetch.",
     )
     # NOTE: defaulting to jupyter since it will be inside docker anyway in prod
     # also, model seems to really like chaining commands, but wastes a lot of turns
     # figuring out it also needs to print (in docker), so jupyter seems more.. native?
     # warning.. docker also seems to hang, doesn't properly kill on timeout?
     # use jupyter, hardened to be thread safe (and it's within docker)
-    PYTHON_BACKEND: Literal["in-process", "docker"] = Field(
-        default="docker",
+    PYTHON_BACKEND: Literal["jupyter-in-process", "jupyter-docker-kernels"] = Field(
+        default="jupyter-in-process",
         description="Backend used to execute Python code.",
     )
     PYTHON_KERNEL_MIN_POOL_SIZE: int = Field(

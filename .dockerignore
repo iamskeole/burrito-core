@@ -1,0 +1,68 @@
+# -------------------------------------------------------
+# All of the same patterns we ignore in Git
+# -------------------------------------------------------
+*.egg-info
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+.venv/
+env/
+.pdm/
+.npm/
+.yarn/
+.cache/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+.coverage
+.hypothesis
+.idea/
+# (no .vscode/ – we want those files inside the container)
+
+# -------------------------------------------------------
+# Docker‑specific files you never want inside the image
+# -------------------------------------------------------
+.git/
+.gitignore
+.gitlab-ci.yml
+.github/
+.gitkeep
+.dockerignore
+Dockerfile
+docker-compose.yml
+docker-compose.test.yml
+script.py
+pyproject.toml
+.env
+
+# -------------------------------------------------------
+# System / OS files
+# -------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db
+*.swo
+*.swp
+*.tmp
+*.bak
+~$*
+*.lock
+
+# -------------------------------------------------------
+# Miscellaneous
+# -------------------------------------------------------
+*.log
+tmp/
+build/
+dist/
+*.cache/
+*.tmp/
+*.bak/
+*.swo
+*.swp
+
+# -------------------------------------------------------
+# End of file
+# -------------------------------------------------------
