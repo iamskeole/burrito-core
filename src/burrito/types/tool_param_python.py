@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class ToolParamPythonChat(BaseModel):
-    type: Literal["code_interpreter"]
+    type: Literal["python", "code_interpreter"]
 
 
 class ToolParamPythonResponses(BaseModel):

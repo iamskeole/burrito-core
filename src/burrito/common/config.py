@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # debug prints
     DEBUG_REASONING_EFFORT: bool = Field(
-        default=False, description="Log reasoning effort."
+        default=True, description="Log reasoning effort."
     )
     DEBUG_TOOL_CALLS: bool = Field(default=True, description="Log tool names.")
     DEBUG_TOOL_INPUTS: bool = Field(default=False, description="Log tool inputs.")
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
         description="Log completion events received from inference backend.",
     )
     DEBUG_PROMPT: bool = Field(
-        default=True,
+        default=False,
         description="Log the conversation prompt before Harmony tokenization.",
     )
     DEBUG_OUTGOING_EVENTS: bool = Field(
@@ -105,7 +105,7 @@ class Settings(BaseSettings):
     )
 
     BACKEND_BASE_URL: str = Field(
-        default="http://127.0.0.1:8080",
+        default="http://127.0.0.1:9999",
         description="Base URL of the underlying LLM backend. Do NOT include the /v1 suffix, only host and port.",
     )
     BACKEND_INTER_TOKEN_TIMEOUT: int = Field(
@@ -239,7 +239,7 @@ class Settings(BaseSettings):
         default=True, description="Enable the native Python tool."
     )
     IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = Field(
-        default=True,
+        default=False,
         description="Always enable Python tool without caller tool list gymnastics.",
     )
 
@@ -247,7 +247,7 @@ class Settings(BaseSettings):
         default=True, description="Enable the native browser tool."
     )
     IS_BROWSER_TOOL_ALWAYS_ENABLED: bool = Field(
-        default=True,
+        default=False,
         description="Always enable browser tool without caller tool list gymnastics.",
     )
 

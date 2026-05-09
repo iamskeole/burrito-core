@@ -1,26 +1,22 @@
-import json
-import re
-import time
 from concurrent.futures import ThreadPoolExecutor
 
-import pandas
 from openai import Client
 
-INPUT = "What's the 73rd fibonacci number?"
+INPUT = "respond with exactly 7 random words"  # "What's the 73rd fibonacci number?"
 MODEL_NAME = "openai/gpt-oss-20b"
-N_THREADS_PER_EVAL = 8
-N_EVALS = 1
-TEMPERATURE = None  # 0.0001
-SEED = 69421337
+N_THREADS_PER_EVAL = 1
+N_EVALS = 4
+TEMPERATURE = 0.0  # 0.0001
+SEED = None  # 69421337
 REASONING_EFFORT = "low"
-BASE_URL = "http://localhost:8888/v1"  # "http://apollo.local:9999/v1"  #
+BASE_URL = "http://localhost:9999/v1"  # "http://apollo.local:9999/v1"  #
 
 
 def run_chat_completions(stream: bool):
     client = Client(api_key="sk-none", base_url=BASE_URL)
     response = client.chat.completions.create(
         model=MODEL_NAME,
-        messages=[{"role": "user", "content": f"Current time: {time.time()}. {INPUT}"}],
+        messages=[{"role": "user", "content": INPUT}],
         reasoning_effort=REASONING_EFFORT,
         temperature=TEMPERATURE,
         stream=stream,
@@ -39,7 +35,7 @@ def run_chat_completions(stream: bool):
                 output_text += inc_output
     else:
         output_object = response.choices[0]
-        reasoning_content = output_object.message.model_extra["reasoning_content"]
+        reasoning_content = output_object.message.reasoning
         output_text = output_object.message.content
     return {"reasoning_content": reasoning_content, "output_text": output_text}
 
@@ -48,12 +44,7 @@ def run_responses(stream: bool):
     client = Client(api_key="sk-none", base_url=BASE_URL)
     response = client.responses.create(
         model=MODEL_NAME,
-        input=[
-            {
-                "role": "user",
-                "content": f"Current time: {time.time()}. {INPUT}",
-            },
-        ],
+        input=[{"role": "user", "content": INPUT}],
         reasoning={"effort": REASONING_EFFORT},
         temperature=TEMPERATURE,
         stream=stream,
@@ -68,7 +59,6 @@ def run_responses(stream: bool):
             if event.type == "response.output_text.delta":
                 output_text += event.delta
     else:
-        return {"status": response.status, "usage": response.usage.model_dump()}
         output_object = response.output  # type-ignore
         reasoning_content = output_object[0].content[0].text
         output_text = output_object[1].content[0].text
@@ -109,62 +99,7 @@ def test_determinism():
         results.append(result)
     _all = "✅" if all_equal(results) else "❌"
     print(f"ALL: {_all}")
-    print("example reasoning: ", results[0]["stream_0"]["chat"][0]["reasoning_content"])
-    print("example output: ", results[0]["stream_0"]["chat"][0]["output_text"])
-    print("=" * 42)
-    for result in results:
-        print("-" * 42)
-        print(json.dumps(result, indent=4))
     return results
 
 
-# done = test_determinism()
-
-
-def test_aime_sequential(wire_api: str = "responses"):
-
-    def normalize_number(s):
-        match = re.match(r"\d+", s)  # match digits from the start
-        if not match:
-            return None
-        return match.group(0)
-
-    path1 = f"https://huggingface.co/datasets/opencompass/AIME2025/raw/main/aime2025-I.jsonl"
-    df1 = pandas.read_json(path1, lines=True)
-    path2 = f"https://huggingface.co/datasets/opencompass/AIME2025/raw/main/aime2025-II.jsonl"
-    df2 = pandas.read_json(path2, lines=True)
-    examples = [row.to_dict() for _, row in df1.iterrows()] + [
-        row.to_dict() for _, row in df2.iterrows()
-    ]
-    examples = [
-        {
-            "question": row["question"],
-            "answer": normalize_number(row["answer"])
-            if isinstance(row["answer"], str)
-            else row["answer"],
-        }
-        for row in examples
-    ]
-
-    AIME_TEMPLATE = """
-    {question}
-    Please reason step by step, and put your final answer within \\boxed{{}}.
-    """
-
-    for ix, row in enumerate(examples):
-        print("============================")
-        global INPUT
-        question = row["question"]
-        INPUT = AIME_TEMPLATE.format(question=question)
-        print(f"[{ix}] {INPUT}")
-
-        if wire_api == "responses":
-            res = run_responses(stream=False)
-            print(json.dumps(res))
-        else:
-            res = run_chat_completions(stream=False)
-            print(json.dumps(res))
-
-
-# test_aime_sequential()
 test_determinism()

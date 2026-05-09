@@ -14,7 +14,7 @@ class RepetitionHandler:
         min_repeated_footprint: int = settings.REPETITION_MIN_FOOTPRINT,
         min_repeated_words: int = settings.REPETITION_MIN_WORDS,
         entropy_threshold: float = settings.REPETITION_ENTROPY_THRESHOLD,
-        entropy_num_chars: float = settings.REPETITION_ENTROPY_NUM_CHARS,
+        entropy_num_chars: int = settings.REPETITION_ENTROPY_NUM_CHARS,
     ):
         """
         :param window_size: How many normalized sentences to remember in history.
@@ -156,7 +156,7 @@ class RepetitionHandler:
         max_k = min(10, n // 3)
         for k in range(1, max_k + 1):
             pattern = words[-k:]
-            if words[-2*k : -k] == pattern and words[-3*k : -2*k] == pattern:
+            if words[-2 * k : -k] == pattern and words[-3 * k : -2 * k] == pattern:
                 return True
 
         return False
@@ -169,13 +169,13 @@ class RepetitionHandler:
         len_recent = len(self.recent_raw_text)
         if len_recent < self.entropy_num_chars:
             return False
-        check_text = self.recent_raw_text[-self.entropy_num_chars:]
-        # Replace all digits with '0'. 
+        check_text = self.recent_raw_text[-self.entropy_num_chars :]
+        # Replace all digits with '0'.
         # "101st, 102nd" becomes "0st, 0nd" -> compresses flawlessly.
-        check_text = re.sub(r'\d+', '0', check_text)
+        check_text = re.sub(r"\d+", "0", check_text)
         compressed = zlib.compress(check_text.encode("utf-8"))
         compression_ratio = len(compressed) / len(check_text)
         is_crashing = compression_ratio < self.entropy_threshold
         if is_crashing:
-            return True # stupud but helps debug
+            return True  # stupud but helps debug
         return False
