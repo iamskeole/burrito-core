@@ -164,7 +164,11 @@ class BasePluginChat(BasePlugin):
                         f"got {type(part)}"
                     )
 
-        native_tool_calls = self.manager.tool_handler.tool_calls
+        native_tool_calls = [
+            i
+            for i in self.manager.tool_handler.tool_calls
+            if i["type"] in ["python", "browser"]
+        ]
         native_tool_call_index = max(tools_called.keys()) if tools_called else -1
 
         for i in native_tool_calls:
@@ -173,7 +177,7 @@ class BasePluginChat(BasePlugin):
                 "id": i["call_id"],
                 "name": i["name"],
                 "type": "function",
-                "content": i["content"]
+                "content": i["content"],
             }
 
         for i in tools_called.values():

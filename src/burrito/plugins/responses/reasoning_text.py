@@ -47,6 +47,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
         # hardcoded, not incremented, to match gpt-oss reference implementation
         # only one content item, which means somehow multiple are allowed in .content=[]?
         self.content_index = 0
+        self.delta_buffer = ""
 
     @property
     def subscribed_states(self) -> Set[str]:
@@ -110,6 +111,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             sequence_number=self.manager.sequence_number,
             type="response.reasoning_text.delta",
         )
+        self.delta_buffer += token.text
         await self.put_event(event)
 
     async def handle_on_exit_state(self):
@@ -129,15 +131,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             f"Expected Cintent but got {[type(i) for i in output_item.content]}"
         )
 
-        try:
-            text = self.manager.conversation.messages[-1].content[0].text  # type: ignore
-        except IndexError:
-            # should not happen?
-            # fixed by setting manager parser state to error on _recover_state()
-            msg = "handle_on_exit_state: missing parser messages."
-            self.logger.error(msg, extra=self.log_extra)
-            text = ""
-
+        text = self.delta_buffer
         content = Content(text=text, type="reasoning_text")
         delta = PartReasoningTextDone(text=text, type="reasoning_text")
         output_item.content = [content]
@@ -170,6 +164,7 @@ class ReasoningTextPluginResponses(BasePluginResponses):
             type="response.output_item.done",
         )
         await self.put_event(event_output_item_done)
+        self.delta_buffer = ""
 
     async def on_enter_state(self, state: str):
         await self.handle_on_enter_state()

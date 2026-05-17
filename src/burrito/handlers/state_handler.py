@@ -270,7 +270,7 @@ class StateHandler:
         conversation, inputs, python_tool, browser_tool = (
             build_conversation_from_params(params, extra_messages)
         )
-        prefill_tokens = self.get_prefill_tokens()
+        prefill_tokens = []  # self.get_prefill_tokens()
         self.conversation = conversation
         self.conversation_inputs = inputs
         self.prompt_tokens = render_conversation_for_completion(
@@ -316,7 +316,10 @@ class StateHandler:
 
     # only responses supports streamed errors
     async def put_error(self, message: str, code: str):
-        self.parser_state = ConversationState.ERROR
+        # self.parser_state = ConversationState.ERROR
+        # we do a proper transition so plugins fire on_exit for return_json()
+        tkn, state = None, ConversationState.TRANSITION
+        await self.transition_handler.transition(tkn, state)
         self.is_done = True
         if hasattr(self.manager, "is_finished"):
             self.manager.is_finished.set()
@@ -328,14 +331,33 @@ class StateHandler:
             param=None,
             sequence_number=self.sequence_number,
         )
-        self.output_object = event
+        last_completion = self.completions[-1] if self.completions else None
+        finish_reason = None
+        if last_completion and last_completion.choices:
+            finish_reason = last_completion.choices[0].finish_reason
+
+        # do not overwrite output object with error for length reasons, send whatever completed
+        if finish_reason == "length":
+            if isinstance(self.manager.params, WireApiParamsChat):
+                plugin: ContextManagerPluginChat = self.plugins[0]  # type: ignore
+                # handle manager return_json() so we return the proper output object
+                plugin.build_output_object()  # type: ignore
+                self.output_object[-1].choices[0].finish_reason = "length"  # type: ignore
+            if isinstance(self.manager.params, WireApiParamsResponses):
+                plugin: ContextManagerPluginResponses = self.plugins[0]  # type: ignore
+                await plugin.resolve_output_object(status="incomplete")
+        else:
+            self.output_object = event
         await self.put_event(event)
 
-    def _add_recovery_message(self, text: str, is_assistant: bool = False):
-        if not is_assistant:
-            message = build_user_message(text, "BURRITO-HARNESS-SENTINEL")
-        else:
-            message = build_assistant_message(text, ConversationChannel.ANALYSIS.value)
+        self.is_done = True
+        # increment generation error counter
+        m = self.manager.params.model
+        w = wire_api_label_from_params(self.manager.params)
+        generation_errors_total.labels(wire_api=w, model=m).inc()
+
+    def _add_recovery_message(self, text: str):
+        message = build_user_message(text, "BURRITO-HARNESS-SENTINEL")
         self.recovery_message = message
 
         if not settings.DEBUG_RESPONSE_BUFFER:
@@ -358,10 +380,11 @@ class StateHandler:
     def _recover_state(self, partial_reasoning: str = ""):
         if self.recover_state_attempts >= settings.MAX_RECOVER_STATE_ATTEMPTS:
             raise RecursionError("Reached maximum state recover attempts.")
-        self.response_buffer
+
         self.manager._stop_stream()
         self.parser_state = ConversationState.ERROR
-        # TODO: check, should we default to no history since that will also lead to repetition?
+
+        # TODO: better message history / sequence handling across tools and recovery messages
         prev_messages = self.parser.messages  # we operate on rust view
         if partial_reasoning:
             msg_assistant = build_assistant_message(
@@ -380,8 +403,6 @@ class StateHandler:
         self._init_conversation(extra_messages=self.extra_messages)
         self.manager._init_stream()
         self.recover_state_attempts += 1
-        # TODO: check this, any impact on non-repeat recovery triggers?
-        # self.extra_messages = []  # clear extra messages (former recovery msgs)
 
     # 🐉 HIC SVNT DRACONES 🐉
     # we assume the user knows what they're doing when writing and wanting
@@ -470,7 +491,6 @@ class StateHandler:
                 self.output_text_buffer += token.text
 
         self.response_tokens.append(token)
-
         if settings.DEBUG_RESPONSE_BUFFER:
             self.response_buffer += token.text
 
@@ -488,42 +508,24 @@ class StateHandler:
         await self.transition_handler.transition(tkn, state)
         self.parser_state = state
 
-    async def _break_non_reasoning_loop(self):
-        ctx = ""
-        ctx = get_prompt("monologue_break_non_reasoning_loop").format(
-            native_tool_call_buffer=self.native_tool_call_buffer
-            or "we did not call python or browser",
-            caller_tool_call_buffer=self.caller_tool_call_buffer
-            or "we did not call any tools",
-            output_text_buffer=self.output_text_buffer or "we did not send to user",
+    async def _break_loop(self, state: ConversationState):
+        is_reasoning = state == ConversationState.REASONING_END
+        partial_reasoning = self.parser.current_content if is_reasoning else ""
+        msg = get_prompt("sentinel_break_loop").format(
+            channel=self.parser.current_channel,
+            err_num=self.recover_state_attempts + 1,
+            err_max=settings.MAX_RECOVER_STATE_ATTEMPTS,
         )
-        if self.tool_handler.tools:
-            msg = get_prompt("monologue_break_repetition_loop_w_tools")
-        else:
-            msg = get_prompt("monologue_break_repetition_loop_no_tools")
-        self._add_recovery_message(msg, is_assistant=True)
-        return self._recover_state(partial_reasoning=ctx)
-
-    # NOTE: a bit hacky, may mess up tool calling, but shouldn't spend tens of thousands
-    # of tokens for tools?
-    # also, tradeoff / drawback = forces a prefill with the entire prompt + reasoning
-
-    # TODO: figure out a way to do sentinel breaks if outside reasoing,
-    # since if we just output, we may mess up tool calls the model could recover from
-    async def _break_reasoning_loop(self):
-        if self.tool_handler.tools:
-            msg = get_prompt("monologue_break_repetition_loop_w_tools")
-        else:
-            msg = get_prompt("monologue_break_repetition_loop_no_tools")
-        self._add_recovery_message(msg, is_assistant=True)
-        reasoning_text = self.reasoning_buffer
-        partial_reasoning = reasoning_text
-        self.reasoning_buffer = ""
+        self._add_recovery_message(msg)
+        await self.transition_handler.transition(None, state)
+        if settings.DEBUG_STATE_ERRORS:
+            self.logger.warning(f"break loop ({is_reasoning=})", extra=self.log_extra)
         return self._recover_state(partial_reasoning)
 
-    async def maybe_break_non_reasoning_loop(self, token: ConversationToken):
-        # may break some clients, eg they're probably not expecting output -> reasoning -> output
-        # so we're giving the user a choice whether to activate this
+    async def maybe_break_for_non_reasoning_loop(self, token: ConversationToken):
+        # may break some clients, eg they're probably not expecting to receive
+        # output -> reasoning -> output, so we're giving the user a choice
+        # for whether or not to enabnle breaking non-reasoning loops
         if not settings.BREAK_NON_REASONING_REPETITIONS:
             return
 
@@ -542,80 +544,24 @@ class StateHandler:
         is_repeating = self.repetition_detector_non_reasoning.process_new_token(token)
         if not is_repeating:
             return
-        self.response_buffer
-        if settings.DEBUG_STATE_ERRORS:
-            self.logger.warning(
-                "TRIGGER: maybe_break_non_reasoning_loop",
-                extra=self.log_extra,
-            )
-        return await self._break_non_reasoning_loop()
+        return await self._break_loop(ConversationState.TRANSITION)
 
-    async def maybe_break_for_max_reasoning_tokens(self):
+    async def maybe_break_for_reasoning_loop(self, token: ConversationToken):
         if self.parser_state not in [
             ConversationState.REASONING,
             ConversationState.PREAMBLE,
         ]:
             return
-        if self.reasoning_interrupted:
-            return
-
-        num_tokens = len(self.reasoning_tokens) + len(self.preamble_tokens)
-        if num_tokens <= settings.MAX_REASONING_TOKENS:
-            return
-        if settings.DEBUG_STATE_ERRORS:
-            self.logger.warning(
-                "TRIGGER: maybe_break_for_max_reasoning_tokens",
-                extra=self.log_extra,
-            )
-        await self._break_reasoning_loop()
-
-    async def maybe_break_for_repeated_reasoning_text(self, token: ConversationToken):
-        if self.parser_state not in [
-            ConversationState.REASONING,
-            ConversationState.PREAMBLE,
-        ]:
-            return
-        self.response_buffer
         is_repeating = self.repetition_detector_reasoning.process_new_token(token)
         if not is_repeating:
             return
-        if settings.DEBUG_STATE_ERRORS:
-            self.logger.warning(
-                "TRIGGER: maybe_break_for_repeated_reasoning_text",
-                extra=self.log_extra,
-            )
-        await self._break_reasoning_loop()
-
-    async def maybe_break_for_repeated_reasoning_loops(self):
-        if self.transition_handler.reasoning_loops < settings.MAX_REASONING_LOOPS:
-            return
-        self.transition_handler.reasoning_loops = 0
-        if settings.DEBUG_STATE_ERRORS:
-            self.logger.warning(
-                "TRIGGER: maybe_break_for_repeated_reasoning_loops",
-                extra=self.log_extra,
-            )
-        await self._break_reasoning_loop()
-
-    async def maybe_break_for_repeated_preamble_loops(self):
-        if self.transition_handler.preamble_loops < settings.MAX_PREAMBLE_LOOPS:
-            return
-        self.transition_handler.preamble_loops = 0
-        if settings.DEBUG_STATE_ERRORS:
-            self.logger.warning(
-                "TRIGGER: maybe_break_for_repeated_preamble_loops",
-                extra=self.log_extra,
-            )
-        await self._break_reasoning_loop()
+        await self._break_loop(ConversationState.REASONING_END)
 
     async def maybe_break_inference_loop(self, token: ConversationToken):
         t0 = unix_timestamp_in_ms()
         await self.maybe_break_for_custom_tool_grammar()
-        await self.maybe_break_for_repeated_reasoning_text(token)
-        await self.maybe_break_for_repeated_reasoning_loops()
-        await self.maybe_break_for_repeated_preamble_loops()
-        await self.maybe_break_for_max_reasoning_tokens()
-        await self.maybe_break_non_reasoning_loop(token)
+        await self.maybe_break_for_reasoning_loop(token)
+        await self.maybe_break_for_non_reasoning_loop(token)
         td = unix_timestamp_in_ms() - t0
         self.break_ts_logs.append(td)
 
@@ -625,7 +571,15 @@ class StateHandler:
         if isinstance(completion, str):
             return
 
+        self.completions.append(completion)
+
         await self.maybe_transition_created_state()
+
+        # llama.cpp case where it returns a special completion object on maxlen
+        if completion.choices[0].finish_reason == "length":
+            msg = "Backend error: max length hit"
+            self.logger.error(msg, extra=self.log_extra)
+            return await self.put_error(msg, "ERR_BACKEND_MAXLEN")
 
         token = normalize_completion_token(
             completion=completion,
@@ -686,7 +640,6 @@ class StateHandler:
         # store AFTER parser.process so we only store valid tokens
         # in case this needs to be fed into reports / stats later
         # eg if we recover state, we don't count the "bad" tokens
-        self.completions.append(completion)
         self._store_token(token)
 
         if self.parser.messages and self.parser.state == StreamState.EXPECT_START:
@@ -703,10 +656,13 @@ class StateHandler:
         if not r_t:
             return
 
-        total_break_time = sum(self.break_ts_logs)
-        mean_break_time = total_break_time / len(self.break_ts_logs)
-        print(f"mean time to break logs = {mean_break_time:.8f} ms")
-        print(f"total time to break logs = {total_break_time:.4f} ms")
+        if settings.DEBUG_REPETITION_EVAL_TIME:
+            _total = sum(self.break_ts_logs)
+            _mean = _total / len(self.break_ts_logs)
+            msg = (
+                f"repetition eval times: {_mean:.8f} ms (mean), {_total:.4f} ms (total)"
+            )
+            self.logger.debug(msg, extra=self.log_extra)
 
         t_p = (r_t[0].created_at - self.created_at) / 1000
         t_e = (r_t[-1].created_at - r_t[0].created_at) / 1000
@@ -776,7 +732,7 @@ class StateHandler:
         if not self.is_done:
             return
         self._log_stats()
-        return self.response_buffer
+        return
 
     def _debug_completion(self, completion: Union[Completion, str]):
         if not settings.DEBUG_COMPLETIONS:
@@ -790,13 +746,7 @@ class StateHandler:
         if isinstance(completion, dict):
             msg = f"Backend error: {completion.get('error')}"
             self.logger.error(msg, extra=self.log_extra)
-            await self.put_error(msg, "ERR_BACKEND_EXCEPTION")
-            self.is_done = True
-            # increment generation error counter
-            m = self.manager.params.model
-            w = wire_api_label_from_params(self.manager.params)
-            generation_errors_total.labels(wire_api=w, model=m).inc()
-            return
+            return await self.put_error(msg, "ERR_BACKEND_EXCEPTION")
 
         self._debug_completion(completion)
         await self._process_completion(completion)

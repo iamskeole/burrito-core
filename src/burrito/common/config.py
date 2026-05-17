@@ -4,6 +4,7 @@ from typing import Literal, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# TODO: cleanup, don't need root + env path anymore
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 ENV_FILE_PATH = PROJECT_ROOT / ".env"
 
@@ -31,8 +32,8 @@ class Settings(BaseSettings):
         default=True, description="Log reasoning effort."
     )
     DEBUG_TOOL_CALLS: bool = Field(default=True, description="Log tool names.")
-    DEBUG_TOOL_INPUTS: bool = Field(default=False, description="Log tool inputs.")
-    DEBUG_TOOL_OUTPUTS: bool = Field(default=False, description="Log tool outputs.")
+    DEBUG_TOOL_INPUTS: bool = Field(default=True, description="Log tool inputs.")
+    DEBUG_TOOL_OUTPUTS: bool = Field(default=True, description="Log tool outputs.")
     DEBUG_COMPLETIONS: bool = Field(
         default=False,
         description="Log completion events received from inference backend.",
@@ -45,14 +46,17 @@ class Settings(BaseSettings):
         default=False, description="Log SSE events sent to clients."
     )
     DEBUG_RESPONSE_BUFFER: bool = Field(
-        default=False,
+        default=True,
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(
-        default=False, description="Log state transition events."
+        default=True, description="Log state transition events."
     )
     DEBUG_HARMONY_ERRORS: bool = Field(
         default=True, description="Log unhandled Harmony errors."
+    )
+    DEBUG_REPETITION_EVAL_TIME: bool = Field(
+        default=True, description="Log time taken for repetition evals."
     )
     DEBUG_BROWSER_ERRORS: bool = Field(
         default=True, description="Log browser tool errors."
@@ -214,13 +218,13 @@ class Settings(BaseSettings):
         description="Remove granular timestamps (eg: 12:42:23) from prompts. These mess up prompt caching with no added benefit.",
     )
     SYSTEM_MESSAGE_DATE_CONFIG: str | Literal["off", "auto", "auto-utc"] = Field(
-        default="2026-04-08",
-        description="Whether and how to include and format current date in system message.",
+        default="auto-utc",
+        description="Whether and how to include and format current date in system message. Use YYYY-MM-DD format if static date.",
     )
 
     # TODO: reset to Nones when done benchmarking
     SAMPLING_DEFAULT_TOP_K: Optional[int] = Field(
-        default=64, description="Default top_k to use when not set by client"
+        default=None, description="Default top_k to use when not set by client"
     )
     SAMPLING_DEFAULT_TOP_P: Optional[float] = Field(
         default=1.0, description="Default top_p to use when not set by client"
@@ -284,7 +288,7 @@ class Settings(BaseSettings):
         description="Timeout (in seconds) to keep idle browser sessions alive.",
     )
     PYTHON_SESSION_IDLE_TIMEOUT: int = Field(
-        default=1 * 1 * 60,  # 20 minutes
+        default=1 * 1 * 30,  # 20 minutes
         description="Timeout (in seconds) to keep idle python sessions alive. MUST be > than execution timeout otherwise SessionHandler sentinel can prematurely kill long working python tool threads.",
     )
 

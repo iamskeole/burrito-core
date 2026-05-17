@@ -143,6 +143,7 @@ class DockerKernelManager:
                 os.remove(path)
 
             self.pool_state.pop(kernel_id, None)
+            logger.debug(f"kill_kernel: {kernel_id}")
         except Exception as e:
             logger.debug(f"Cleanup failed for {kernel_id}: {e}")
 

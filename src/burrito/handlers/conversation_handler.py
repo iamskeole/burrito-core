@@ -221,7 +221,6 @@ class ConversationHandler:
     async def return_json(self) -> Dict:
         async for _ in self.return_stream():
             pass
-            self.state_handler.response_buffer
         assert self.state_handler.is_done, "Generation did not complete successfully."
 
         output_object = self.state_handler.output_object

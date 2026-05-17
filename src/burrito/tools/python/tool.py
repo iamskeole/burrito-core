@@ -185,7 +185,8 @@ class BurritoPython(PythonTool):
                 execution_task.cancel()
                 msg = (f"Request cancelled. Kernel interrupted with {e}.",)
                 self.logger.warning(msg, extra=self.log_extra)
-                raise
+                # raise
+                output = "[ERROR]: python kernel excecuition timed out."
 
             except Exception as e:
                 await self._interrupt_jupyter_kernel()
