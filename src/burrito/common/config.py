@@ -46,7 +46,7 @@ class Settings(BaseSettings):
         default=False, description="Log SSE events sent to clients."
     )
     DEBUG_RESPONSE_BUFFER: bool = Field(
-        default=True,
+        default=False,
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(
@@ -143,18 +143,15 @@ class Settings(BaseSettings):
         description="Model personality prompt that gets built into the system prompt.",
     )
 
-    MAX_REASONING_TOKENS: int = Field(
-        default=128000,
-        description="Default maximum reasoning tokens budget before brain surgery to output NOW. Setting this to 0 is experimental, it forces model to skip output on analysis channel straight to final (ie no reasoning).",
+    BREAK_REASONING_LOOP: bool = Field(
+        default=True,
+        description="Whether to detect and attempt to break reasoning repetition loops",
     )
-    MAX_REASONING_LOOPS: int = Field(
-        default=100,
-        description="Maximum number of reasoning loops before triggering a state recovery.",
+    BREAK_NON_REASONING_LOOP: bool = Field(
+        default=True,
+        description="Whether to detect and attempt to break repetition loops outside of the analysis channel. Forces the model back into analysis channel to consider its mistakes. May break some clients that do not expect streamed outputs to be reasoning -> output -> reasoning -> output.",
     )
-    MAX_PREAMBLE_LOOPS: int = Field(
-        default=100,
-        description="Maximum number of preamble loops before triggering a state recovery.",
-    )
+
     REPETITION_WINDOW_SIZE: int = Field(
         default=64,
         description=(
@@ -193,16 +190,6 @@ class Settings(BaseSettings):
             "Minimum number of (decoded) text characters to trigger entropy checks."
         ),
     )
-    BREAK_NON_REASONING_REPETITIONS: bool = Field(
-        default=True,
-        description="Whether to detect and attempt to break repetition loops outside of the analysis channel. Forces the model back into analysis channel to consider its mistakes. May break some clients that do not expect streamed outputs to be reasoning -> output -> reasoning -> output.",
-    )
-    NON_REASONING_REPETITION_RECOVERY_CHANNEL: Literal[
-        "analysis", "commentary", "final"
-    ] = Field(
-        default="final",
-        description="What channel to prefill on model state recovery. Defaults to analysis to allow model to reason about the error it encountered.",
-    )
 
     MAX_RECOVER_STATE_ATTEMPTS: int = Field(
         default=32,
@@ -218,22 +205,21 @@ class Settings(BaseSettings):
         description="Remove granular timestamps (eg: 12:42:23) from prompts. These mess up prompt caching with no added benefit.",
     )
     SYSTEM_MESSAGE_DATE_CONFIG: str | Literal["off", "auto", "auto-utc"] = Field(
-        default="auto-utc",
+        default="2026-05-22",
         description="Whether and how to include and format current date in system message. Use YYYY-MM-DD format if static date.",
     )
 
-    # TODO: reset to Nones when done benchmarking
     SAMPLING_DEFAULT_TOP_K: Optional[int] = Field(
         default=None, description="Default top_k to use when not set by client"
     )
     SAMPLING_DEFAULT_TOP_P: Optional[float] = Field(
-        default=1.0, description="Default top_p to use when not set by client"
+        default=None, description="Default top_p to use when not set by client"
     )
     SAMPLING_DEFAULT_MIN_P: Optional[float] = Field(
-        default=0.0, description="Default min_p to use when not set by client"
+        default=None, description="Default min_p to use when not set by client"
     )
     SAMPLING_DEFAULT_TEMPERATURE: Optional[float] = Field(
-        default=1.0, description="Default temperature to use when not set by client"
+        default=None, description="Default temperature to use when not set by client"
     )
     SAMPLING_DEFAULT_SEED: Optional[int] = Field(
         default=None, description="Default seed to use when not set by client"

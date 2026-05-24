@@ -56,7 +56,10 @@ class RepetitionHandler:
         """
         text = text.lower()
         # mask numbers before removing punctuation to avoid merging
-        text = re.sub(r"\d+", " <| NUM |> ", text)
+        # actually no, some math scenarios where model can't use tools and
+        # needs to do math will be false positives, so we stop replacing digits
+        # and fallback on entroipy crashing to detect loops
+        # text = re.sub(r"\d+", " <| NUM |> ", text)
         text = self.cleanup_pattern.sub("", text)
         return re.sub(r"\s+", " ", text).strip()
 
@@ -170,9 +173,8 @@ class RepetitionHandler:
         if len_recent < self.entropy_num_chars:
             return False
         check_text = self.recent_raw_text[-self.entropy_num_chars :]
-        # Replace all digits with '0'.
-        # "101st, 102nd" becomes "0st, 0nd" -> compresses flawlessly.
-        check_text = re.sub(r"\d+", "0", check_text)
+        # see note in _normalize, we leave numbers as is, zlib should eventually catch
+        # check_text = re.sub(r"\d+", "0", check_text) #
         compressed = zlib.compress(check_text.encode("utf-8"))
         compression_ratio = len(compressed) / len(check_text)
         is_crashing = compression_ratio < self.entropy_threshold

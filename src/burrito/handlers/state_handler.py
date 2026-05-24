@@ -118,6 +118,7 @@ class StateHandler:
         self.last_parser_message_ix = 0
 
         # token stores for stats
+        self.n_prompt_tokens: int = 0 # running counter for state recovery accuracy
         self.response_tokens: List[ConversationToken] = []
         self.reasoning_tokens: List[ConversationToken] = []
         self.preamble_tokens: List[ConversationToken] = []
@@ -278,6 +279,8 @@ class StateHandler:
             is_on_init=True,
             prefill_tokens=prefill_tokens,
         )
+        self.n_prompt_tokens += len(self.prompt_tokens)
+
         self.parser = StreamableParser(ENCODING, Role.ASSISTANT)
         for token in prefill_tokens:
             self.parser.process(token)
@@ -384,7 +387,6 @@ class StateHandler:
         self.manager._stop_stream()
         self.parser_state = ConversationState.ERROR
 
-        # TODO: better message history / sequence handling across tools and recovery messages
         prev_messages = self.parser.messages  # we operate on rust view
         if partial_reasoning:
             msg_assistant = build_assistant_message(
@@ -398,9 +400,10 @@ class StateHandler:
             prev_messages.append(self.recovery_message)
             self.recovery_message = None
 
-        for i in prev_messages:
-            self.extra_messages.append(i)
-        self._init_conversation(extra_messages=self.extra_messages)
+        # for i in prev_messages:
+        #     self.extra_messages.append(i)
+        extra_messages = self.extra_messages + prev_messages
+        self._init_conversation(extra_messages=extra_messages)
         self.manager._init_stream()
         self.recover_state_attempts += 1
 
@@ -462,7 +465,6 @@ class StateHandler:
             ):
                 self.reasoning_tokens.append(token)
                 self.reasoning_buffer += token.text
-
             case (
                 ConversationState.NATIVE_TOOL_INPUT_START
                 | ConversationState.NATIVE_TOOL_INPUT
@@ -526,7 +528,7 @@ class StateHandler:
         # may break some clients, eg they're probably not expecting to receive
         # output -> reasoning -> output, so we're giving the user a choice
         # for whether or not to enabnle breaking non-reasoning loops
-        if not settings.BREAK_NON_REASONING_REPETITIONS:
+        if not settings.BREAK_NON_REASONING_LOOP:
             return
 
         # we handle reasoning loop breaks separately
@@ -547,6 +549,10 @@ class StateHandler:
         return await self._break_loop(ConversationState.TRANSITION)
 
     async def maybe_break_for_reasoning_loop(self, token: ConversationToken):
+        # give control over this to the user, don't default to enforcing,
+        # we assume they know what they're doing
+        if not settings.BREAK_REASONING_LOOP:
+            return
         if self.parser_state not in [
             ConversationState.REASONING,
             ConversationState.PREAMBLE,
@@ -630,7 +636,7 @@ class StateHandler:
             # msg = get_prompt("sentinel_bad_token_sequence").format(
             #     model_output=f"{repr(e.args[0])}"
             # )
-
+            self.response_buffer
             # repr-ing the harmony error sometimes dumps full assistant text
             # which is confusing so we use a generic message instead
             msg = get_prompt("sentinel_bad_token_sequence_generic")
@@ -652,7 +658,7 @@ class StateHandler:
         await self.maybe_break_inference_loop(token)
 
     def _log_stats(self):
-        p_t, r_t = self.prompt_tokens, self.response_tokens
+        r_t = self.response_tokens
         if not r_t:
             return
 
@@ -668,10 +674,11 @@ class StateHandler:
         t_e = (r_t[-1].created_at - r_t[0].created_at) / 1000
         t_t = t_p + t_e
 
-        n_p, n_e = len(p_t), len(r_t)
+        n_p, n_e = self.n_prompt_tokens, len(r_t)
         n_t = n_p + n_e
         n_r = len(self.reasoning_tokens)
         t_c = len(self.tool_handler.tool_calls)
+        # best effort, as we don't keep track of prompt tokens after state recovery
         tps_p = n_p / t_p if t_p > 0 else 0
         tps_e = n_e / t_e if t_e > 0 else 0
 

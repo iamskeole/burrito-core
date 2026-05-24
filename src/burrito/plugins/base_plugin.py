@@ -34,7 +34,7 @@ class BasePlugin(ABC):
         pass
 
     def get_token_counts(self) -> ConversationUsage:
-        n_input = len(self.manager.prompt_tokens)
+        n_input = self.manager.n_prompt_tokens
         n_reasoning = len(self.manager.reasoning_tokens)
         n_preamble = len(self.manager.preamble_tokens)
         n_output_text = len(self.manager.output_text_tokens)
