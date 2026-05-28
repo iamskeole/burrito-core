@@ -161,7 +161,7 @@ def build_developer_message(inputs: ConversationInputs) -> Optional[Message]:
     instructions = inputs.instructions or ""
     if not instructions and not inputs.tools:
         return
-    if settings.CLEANUP_LOW_PRECISION_PROMPT_TIMESTRINGS:
+    if settings.CLEANUP_HIGH_PRECISION_PROMPT_TIMESTRINGS:
         instructions = TIME_DETECT_RE.sub(TIME_REPLACE_RE, instructions)
     dev_message = DeveloperContent.new().with_instructions(instructions)
 

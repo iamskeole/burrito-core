@@ -39,14 +39,14 @@ class Settings(BaseSettings):
         description="Log completion events received from inference backend.",
     )
     DEBUG_PROMPT: bool = Field(
-        default=False,
+        default=True,
         description="Log the conversation prompt before Harmony tokenization.",
     )
     DEBUG_OUTGOING_EVENTS: bool = Field(
         default=False, description="Log SSE events sent to clients."
     )
     DEBUG_RESPONSE_BUFFER: bool = Field(
-        default=False,
+        default=True,
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(
@@ -196,16 +196,21 @@ class Settings(BaseSettings):
         description="Maximum attempts to recover a corrupted inference state.",
     )
 
+    STATE_RECOVERY_USER_NAME: Optional[str] = Field(
+        default="<|SENTINEL|>",
+        description="User name to feed to model when adding state recovery messages.",
+    )
+
     ENFORCE_STRICT_TOOL_NAMESPACES: bool = Field(
         default=False,
         description="Require tool names to be fully qualified namespaces ('functions.*', 'browser.*' and 'python').",
     )
-    CLEANUP_LOW_PRECISION_PROMPT_TIMESTRINGS: bool = Field(
+    CLEANUP_HIGH_PRECISION_PROMPT_TIMESTRINGS: bool = Field(
         default=True,
         description="Remove granular timestamps (eg: 12:42:23) from prompts. These mess up prompt caching with no added benefit.",
     )
     SYSTEM_MESSAGE_DATE_CONFIG: str | Literal["off", "auto", "auto-utc"] = Field(
-        default="2026-05-22",
+        default="2026-05-25",
         description="Whether and how to include and format current date in system message. Use YYYY-MM-DD format if static date.",
     )
 

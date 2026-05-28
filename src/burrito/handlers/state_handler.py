@@ -360,7 +360,8 @@ class StateHandler:
         generation_errors_total.labels(wire_api=w, model=m).inc()
 
     def _add_recovery_message(self, text: str):
-        message = build_user_message(text, "BURRITO-HARNESS-SENTINEL")
+        user_name = settings.STATE_RECOVERY_USER_NAME
+        message = build_user_message(text, user_name)
         self.recovery_message = message
 
         if not settings.DEBUG_RESPONSE_BUFFER:
@@ -406,7 +407,7 @@ class StateHandler:
         self._init_conversation(extra_messages=extra_messages)
         self.manager._init_stream()
         self.recover_state_attempts += 1
-
+        self.response_buffer
     # 🐉 HIC SVNT DRACONES 🐉
     # we assume the user knows what they're doing when writing and wanting
     # to use a custom grammar; we convert user-specified grammar to gbnf
