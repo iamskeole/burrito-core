@@ -1,3 +1,4 @@
+# type: ignore
 from concurrent.futures import ThreadPoolExecutor
 
 from openai import Client

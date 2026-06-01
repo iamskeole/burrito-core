@@ -111,7 +111,10 @@ def assistant_message(input: ContentParam) -> Optional[List[Message]]:
             if channel:
                 message.with_channel(channel=channel.value)
             if recipient:
-                message.with_recipient(recipient)
+                is_native_tool = "python" in recipient or "browser" in recipient
+                prefix = "" if is_native_tool else "functions."
+                recipient_with_prefix = f"{prefix}{recipient}"
+                message.with_recipient(recipient_with_prefix)
             messages.append(message)
     return messages
 

@@ -39,14 +39,14 @@ class Settings(BaseSettings):
         description="Log completion events received from inference backend.",
     )
     DEBUG_PROMPT: bool = Field(
-        default=True,
+        default=False,
         description="Log the conversation prompt before Harmony tokenization.",
     )
     DEBUG_OUTGOING_EVENTS: bool = Field(
         default=False, description="Log SSE events sent to clients."
     )
     DEBUG_RESPONSE_BUFFER: bool = Field(
-        default=True,
+        default=False,
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(

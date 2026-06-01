@@ -118,7 +118,10 @@ def tool_call_input_message(
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
     message.with_channel(ConversationChannel.COMMENTARY.value)
     if recipient:
-        message.with_recipient(recipient)
+        is_native_tool = "browser" in recipient or "python" in recipient
+        prefix = "" if is_native_tool else "functions."
+        recipient_with_prefix = f"{prefix}{recipient}"
+        message.with_recipient(recipient_with_prefix)
     return message
 
 
@@ -256,4 +259,7 @@ def build_message_list_responses(params: WireApiParamsResponses) -> Conversation
         tools=tools,
         reasoning=reasoning,
     )
+    for ix, message in enumerate(messages):
+        print(f'---- msg {ix} of {len(messages)}')
+        print(message)
     return converation_inputs

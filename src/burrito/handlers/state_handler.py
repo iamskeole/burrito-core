@@ -403,11 +403,14 @@ class StateHandler:
 
         # for i in prev_messages:
         #     self.extra_messages.append(i)
+        # we don't append to extra_messages so we don't pollute context with
+        # state recovery messages, ie only have the latest recovery message present
+        # leaving the commented out original implementation for future self
         extra_messages = self.extra_messages + prev_messages
         self._init_conversation(extra_messages=extra_messages)
         self.manager._init_stream()
         self.recover_state_attempts += 1
-        self.response_buffer
+
     # 🐉 HIC SVNT DRACONES 🐉
     # we assume the user knows what they're doing when writing and wanting
     # to use a custom grammar; we convert user-specified grammar to gbnf
