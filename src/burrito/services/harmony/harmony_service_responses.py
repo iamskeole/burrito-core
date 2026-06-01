@@ -118,6 +118,9 @@ def tool_call_input_message(
     message = Message(author=Author(role=Role.ASSISTANT), content=content)
     message.with_channel(ConversationChannel.COMMENTARY.value)
     if recipient:
+        # TODO: seems a bit brittle but haven't seen harnesses name tools 
+        # browser or python for now, so don't worry about it.. yet
+        # (valid for all wire apis)
         is_native_tool = "browser" in recipient or "python" in recipient
         prefix = "" if is_native_tool else "functions."
         recipient_with_prefix = f"{prefix}{recipient}"
