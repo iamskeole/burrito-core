@@ -234,7 +234,7 @@ class Settings(BaseSettings):
         default=True, description="Enable the native Python tool."
     )
     IS_PYTHON_TOOL_ALWAYS_ENABLED: bool = Field(
-        default=False,
+        default=True,
         description="Always enable Python tool without caller tool list gymnastics.",
     )
 

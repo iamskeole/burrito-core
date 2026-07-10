@@ -3,9 +3,10 @@ import asyncio
 from burrito.tools.browser.tool import BurritoBrowser
 
 tool = BurritoBrowser()
-url = "https://platform.claude.com/docs/en/build-with-claude/working-with-messages"
+tool.view_tokens = 9999999
+url = "https://developers.openai.com/api/docs/guides/migrate-to-responses"
 is_docs_website = True
-num_lines = 500
+num_lines = -1
 
 
 async def main():

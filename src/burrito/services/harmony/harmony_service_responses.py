@@ -262,7 +262,4 @@ def build_message_list_responses(params: WireApiParamsResponses) -> Conversation
         tools=tools,
         reasoning=reasoning,
     )
-    for ix, message in enumerate(messages):
-        print(f'---- msg {ix} of {len(messages)}')
-        print(message)
     return converation_inputs

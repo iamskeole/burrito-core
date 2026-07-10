@@ -10,7 +10,6 @@ from gpt_oss.tools.simple_browser.page_contents import (
     get_domain,
     process_html,
 )
-
 from burrito.common.config import settings
 from burrito.tools.browser.engine import BurritoBrowserEngine
 
@@ -28,14 +27,15 @@ class BurritoBrowserBackend(Backend):
         async with session:
             timeout_ms = (
                 session.timeout.total or 1
-            ) * 1000  # playwright expects ms, aiohttp in s
+            ) * 1000  # playwright expects ms, httpx in s
             text = await self.engine.fetch(url, is_docs_website, timeout_ms)  # type: ignore
             processed = process_html(html=text, url=url, title=None)
-
             if not processed.text:
                 domain = get_domain(url).replace("www.", "")
-                processed.text = f"No content available. {domain} is likely blocking headless access."
-
+                processed.text = (
+                    "No content available. "
+                    f"{domain} is likely blocking headless access."
+                )
         return processed
 
     async def _search_searxng(

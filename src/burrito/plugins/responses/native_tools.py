@@ -88,7 +88,7 @@ class NativeToolsPluginResponses(BasePluginResponses):
             # FIXME: should we return if no url? maybe cursor is valid?
             url = args.get("url", "unknown")
             action = ActionFind(
-                type="find",
+                type="find_in_page",
                 pattern=pattern,
                 url=url,
             )

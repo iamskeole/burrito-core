@@ -36,7 +36,12 @@ FROM mcr.microsoft.com/playwright/python:v1.58.0-noble
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
-RUN groupadd -r burrito && useradd -r -m -g burrito -s /bin/bash burrito_user
+RUN (userdel -r ubuntu || true) && \
+    (userdel -r pwuser || true) && \
+    (groupdel ubuntu || true) && \
+    (groupdel pwuser || true) && \
+    groupadd -g 1000 burrito && \
+    useradd -m -u 1000 -g burrito -s /bin/bash burrito_user
 
 # Copy the venv, vocab, and app
 COPY --from=builder --chown=burrito_user:burrito /opt/venv /opt/venv
