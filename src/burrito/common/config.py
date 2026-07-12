@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         description="Log completion events received from inference backend.",
     )
     DEBUG_PROMPT: bool = Field(
-        default=False,
+        default=True,
         description="Log the conversation prompt before Harmony tokenization.",
     )
     DEBUG_OUTGOING_EVENTS: bool = Field(
@@ -247,7 +247,7 @@ class Settings(BaseSettings):
     )
 
     BROWSER_BACKEND: Literal["playwright", "httpx"] = Field(
-        default="httpx",
+        default="playwright",
         description="Choose between playwright or httpx for browser fetch.",
     )
     # NOTE: defaulting to jupyter since it will be inside docker anyway in prod
@@ -322,7 +322,7 @@ class Settings(BaseSettings):
     )
 
     SEARXNG_API_URL: str = Field(
-        default="",
+        default="http://atlas.local:9090", # TODO: change to blank after benchmarks
         description="Endpoint URL for the SearXNG search API. If both this and BRAVE_API_KEY are blank, browser.search is disabled.",
     )
 

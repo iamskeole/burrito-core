@@ -3,9 +3,9 @@ import asyncio
 from burrito.tools.browser.tool import BurritoBrowser
 
 tool = BurritoBrowser()
-tool.view_tokens = 9999999
-url = "https://developers.openai.com/api/docs/guides/migrate-to-responses"
-is_docs_website = True
+tool.view_tokens = 10241111
+url = "https://openai.com/index/introducing-gpt-oss/"
+is_docs_website = False
 num_lines = -1
 
 

@@ -32,6 +32,8 @@ from burrito.types.wire_api_params_responses import (
     ToolCallOutputParamResponses,
     UserInputMessageParamResponses,
     WireApiParamsResponses,
+    ToolParamNamespaceResponses,
+    ToolParamToolSearchResponses
 )
 
 
@@ -222,6 +224,11 @@ def parse_tools(params: WireApiParamsResponses) -> List[ConversationToolParam]:
                 continue  # we handle web search natively
 
             case ToolParamPythonResponses():
+                continue
+
+            case ToolParamNamespaceResponses():
+                continue
+            case ToolParamToolSearchResponses():
                 continue
 
             case _:

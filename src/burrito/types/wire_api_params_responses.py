@@ -147,6 +147,31 @@ class Conversation(BaseModel):
     id: str
 
 
+class ToolParamNamespaceResponses(BaseModel):
+    """
+    Groups tools under a namespace (such as an MCP server).
+    """
+    type: Literal["namespace"]
+    name: str
+    description: Optional[str] = None
+    # A namespace contains sub-tools (typically standard functions or custom tools)
+    tools: List[
+        Union[
+            ToolParamFunctionResponses,
+            ToolParamCustomResponses,
+        ]
+    ]
+
+class ToolParamToolSearchResponses(BaseModel):
+    """
+    Enables OpenAI Responses API Tool Search.
+    """
+    type: Literal["tool_search"]
+    description: Optional[str] = None
+    
+    model_config = ConfigDict(extra="allow")
+
+
 class WireApiParamsResponses(BaseModel):
     model: str = settings.DEFAULT_MODEL_NAME
     input: Union[str, List[InputItemParamResponses]]
@@ -182,6 +207,9 @@ class WireApiParamsResponses(BaseModel):
                 # to force schema validation failure
                 # see note in harmony_service for more details
                 ToolParamCustomResponses,
+                # Support new OpenAI Responses schemas
+                ToolParamNamespaceResponses,
+                ToolParamToolSearchResponses,
             ]
         ]
     ] = None

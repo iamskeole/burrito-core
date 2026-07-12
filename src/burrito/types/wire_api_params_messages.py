@@ -54,7 +54,7 @@ ContentBlock = Annotated[
 
 
 class ContentParam(BaseModel):
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "system", "developer"]
     content: Union[str, List[ContentBlock]]
 
 
@@ -94,7 +94,7 @@ class ConversationParam(BaseModel):
 
 class ReasoningParam(BaseModel):
     budget_tokens: Optional[int] = 32000
-    type: Optional[Literal["enabled"]] = "enabled"
+    type: Optional[Literal["enabled", "adaptive", "disabled"]] = "enabled"
 
 
 class WireApiParamsMessages(BaseModel):
