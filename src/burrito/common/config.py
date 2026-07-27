@@ -151,6 +151,10 @@ class Settings(BaseSettings):
         default=True,
         description="Whether to detect and attempt to break repetition loops outside of the analysis channel. Forces the model back into analysis channel to consider its mistakes. May break some clients that do not expect streamed outputs to be reasoning -> output -> reasoning -> output.",
     )
+    BLOCK_SIZE_REASONING_TOKEN_CAP: int = Field(
+        default=2048,
+        description="Number of tokens in a 'block' that computes reasoning tokens caps dynamic by reasoning effort. Defaults to 128 x (64|128|256). If this is < context length (131072 = 128 block size * 1024 blocks), model is forced to output a final answer when hit. Fail fast(er). To disable, set to >= 1024."
+    )
 
     REPETITION_WINDOW_SIZE: int = Field(
         default=64,

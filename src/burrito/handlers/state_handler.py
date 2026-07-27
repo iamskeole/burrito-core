@@ -90,6 +90,7 @@ from burrito.types.tool_param_custom import CustomToolInputFormatGrammar
 from burrito.types.wire_api_params_chat import WireApiParamsChat
 from burrito.types.wire_api_params_messages import WireApiParamsMessages
 from burrito.types.wire_api_params_responses import WireApiParamsResponses
+from burrito.types.reasoning_token_cap_num_blocks import ReasoningTokenCapNumBlocks
 
 if TYPE_CHECKING:
     from .conversation_handler import ConversationHandler
@@ -455,6 +456,67 @@ class StateHandler:
         grammar = lark_to_gbnf(tool.format.definition)
         self.manager._init_stream(grammar)
 
+    # 🐉 HIC SVNT DRACONES 🐉
+    # this will break tool calls and likely causes other failure modes, but exits fast(er)
+    # than if the model is left to beat around the bush to full context length
+    async def maybe_break_for_reasoning_cap(self):
+        if self.parser_state not in [
+            ConversationState.REASONING,
+            ConversationState.PREAMBLE,
+        ]:
+            return
+
+        n_reasoning_tokens = len(self.reasoning_tokens)
+        n_preamble_tokens = len(self.preamble_tokens)
+        n_candidate_tokens = n_reasoning_tokens + n_preamble_tokens
+
+        reasoning_default = settings.DEFAULT_REASONING_EFFORT
+        reasoning_params = self.conversation_inputs.reasoning
+        reasoning_effort = reasoning_params.effort if reasoning_params else reasoning_default
+        if not reasoning_effort:
+            reasoning_effort = reasoning_default
+        num_reasoning_blocks = {
+            'low': ReasoningTokenCapNumBlocks.LOW.value,
+            'medium': ReasoningTokenCapNumBlocks.MEDIUM.value,
+            'high': ReasoningTokenCapNumBlocks.HIGH.value
+        }[reasoning_effort.lower()]
+
+        block_size = settings.BLOCK_SIZE_REASONING_TOKEN_CAP
+        max_reasoning_tokens = num_reasoning_blocks * block_size
+
+        if self.reasoning_interrupted:
+            return
+
+        if n_candidate_tokens < max_reasoning_tokens:
+            return
+
+        self.manager._stop_stream()
+        prev_messages = self.parser.messages
+
+        for i in prev_messages:
+            self.extra_messages.append(i)
+
+        partial_reasoning = self.parser.current_content
+        self_prompt = get_prompt("sentinel_reasoning_cap")
+
+        txt_assistant = f"{partial_reasoning}\n\n{self_prompt}"
+        msg_assistant = build_assistant_message(
+            text=txt_assistant,
+            channel=self.parser.current_channel
+            or ConversationChannel.ANALYSIS.value,
+        )
+        prev_messages.append(msg_assistant)
+
+        self._init_conversation(extra_messages=prev_messages)
+
+        dec = ENCODING.decode(self.prompt_tokens)
+        print(dec)
+
+        tkn, state = None, ConversationState.REASONING
+        await self.transition_handler.transition(tkn, state)
+        self.manager._init_stream()
+        self.reasoning_interrupted = True
+
     def _store_token(self, token: ConversationToken):
         state = self.parser_state
 
@@ -569,6 +631,7 @@ class StateHandler:
 
     async def maybe_break_inference_loop(self, token: ConversationToken):
         t0 = unix_timestamp_in_ms()
+        await self.maybe_break_for_reasoning_cap()
         await self.maybe_break_for_custom_tool_grammar()
         await self.maybe_break_for_reasoning_loop(token)
         await self.maybe_break_for_non_reasoning_loop(token)
