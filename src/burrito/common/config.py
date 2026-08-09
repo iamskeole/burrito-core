@@ -31,15 +31,15 @@ class Settings(BaseSettings):
     DEBUG_REASONING_EFFORT: bool = Field(
         default=True, description="Log reasoning effort."
     )
-    DEBUG_TOOL_CALLS: bool = Field(default=True, description="Log tool names.")
-    DEBUG_TOOL_INPUTS: bool = Field(default=True, description="Log tool inputs.")
-    DEBUG_TOOL_OUTPUTS: bool = Field(default=True, description="Log tool outputs.")
+    DEBUG_TOOL_CALLS: bool = Field(default=False, description="Log tool names.")
+    DEBUG_TOOL_INPUTS: bool = Field(default=False, description="Log tool inputs.")
+    DEBUG_TOOL_OUTPUTS: bool = Field(default=False, description="Log tool outputs.")
     DEBUG_COMPLETIONS: bool = Field(
         default=False,
         description="Log completion events received from inference backend.",
     )
     DEBUG_PROMPT: bool = Field(
-        default=True,
+        default=False,
         description="Log the conversation prompt before Harmony tokenization.",
     )
     DEBUG_OUTGOING_EVENTS: bool = Field(
@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     MODEL_IDENTITY: str = Field(
         default="default",
         description="Model personality prompt that gets built into the system prompt.",
+    )
+    PRUNE_REASONING: bool = Field(
+        default=True,
+        description="Whether to prune assistant reasoning messages from context.",
     )
 
     BREAK_REASONING_LOOP: bool = Field(

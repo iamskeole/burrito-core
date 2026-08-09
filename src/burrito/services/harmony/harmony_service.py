@@ -12,6 +12,7 @@ from openai_harmony import (
     HarmonyEncodingName,
     Message,
     ReasoningEffort,
+    RenderConversationConfig,
     Role,
     SystemContent,
     TextContent,
@@ -219,6 +220,9 @@ def build_tool_message(text: str, name: Optional[str]) -> Message:
 
 def prune_reasoning(messages: List[Message]) -> list[Message]:
     if len(messages) == 0:
+        return messages
+
+    if not settings.PRUNE_REASONING:
         return messages
 
     pruned: List[Message] = []
@@ -452,8 +456,11 @@ def render_conversation_for_completion(
     is_on_init: bool = False,
     prefill_tokens: List[int] = [],
 ) -> list[int]:
+    config = RenderConversationConfig(
+        auto_drop_analysis=settings.PRUNE_REASONING
+    )
     prompt_tokens = ENCODING.render_conversation_for_completion(
-        conversation=conversation, next_turn_role=Role.ASSISTANT
+        conversation=conversation, next_turn_role=Role.ASSISTANT, config=config
     )
     tokens_for_completion = prompt_tokens + prefill_tokens
 
