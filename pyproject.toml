@@ -17,6 +17,9 @@ dependencies = [
     "notebook>=7.4.7",
     "openai>=2.5.0",
     "openai-harmony>=0.0.4",
+    # Pinned to the playwright/python base image: v1.58.0-noble ships the
+    # matching browser builds in /ms-playwright, so nothing is downloaded
+    "playwright==1.58.0",
     "pydantic>=2.12.3",
     "pydantic-settings>=2.11.0",
     "trafilatura>=2.0.0",
@@ -35,4 +38,4 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-burrito = ["common/prompts/*.md"]
+burrito = ["prompts/*.md"]

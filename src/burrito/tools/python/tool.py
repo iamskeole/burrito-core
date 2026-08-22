@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import AsyncIterator, Optional
 
 import httpx
@@ -15,6 +16,42 @@ from burrito.tools.python.async_jupyter_session import (
     ContainerJupyterSession,
     InProcessJupyterSession,
 )
+
+# The python tool description has online/offline variants. The internet
+# probe (a wikipedia GET) is a network call, so it is refreshed
+# asynchronously (at app startup and by the session maintenance loop) and
+# cached here; tool_config only reads the cache and never blocks on a request.
+PYTHON_INTERNET_FLAG_TTL = 300  # seconds
+_PYTHON_INTERNET_FLAG: Optional[bool] = None
+_PYTHON_INTERNET_FLAG_AT: float = 0.0
+
+
+def python_internet_flag() -> Optional[bool]:
+    return _PYTHON_INTERNET_FLAG
+
+
+async def refresh_python_internet_flag() -> bool:
+    """Probe wikipedia and cache whether this host has internet access."""
+    global _PYTHON_INTERNET_FLAG, _PYTHON_INTERNET_FLAG_AT
+    if (
+        _PYTHON_INTERNET_FLAG is not None
+        and time.time() - _PYTHON_INTERNET_FLAG_AT < PYTHON_INTERNET_FLAG_TTL
+    ):
+        return _PYTHON_INTERNET_FLAG
+
+    ua_test = f"burrito-liveness-check/{__version__}; +{__repo__}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(
+                "https://www.wikipedia.org/", headers={"User-Agent": ua_test}
+            )
+        enabled = response.status_code < 400
+    except Exception:
+        enabled = False
+
+    _PYTHON_INTERNET_FLAG = enabled
+    _PYTHON_INTERNET_FLAG_AT = time.time()
+    return enabled
 
 
 class BurritoPython(PythonTool):
@@ -49,21 +86,23 @@ class BurritoPython(PythonTool):
     def patch_tool_description(self, config: ToolNamespaceConfig):
         backend = self._execution_backend
         timeout = self._local_jupyter_timeout
-        ua_test = f"burrito-liveness-check/{__version__}; +{__repo__}"
-        headers = {"User-Agent": ua_test}
-        try:
-            wikipedia = httpx.get(
-                "https://www.wikipedia.org/", headers=headers, timeout=5.0
-            )
-            internet_enabled = wikipedia.status_code < 400
-        except Exception:
-            internet_enabled = False
+        # keep in sync with refresh_python_internet_flag(); a not-yet-probed
+        # flag (None) is treated as offline, which is the safe direction
+        internet_enabled = bool(python_internet_flag())
 
         suffix = "online" if internet_enabled else "offline"
         if "jupyter" in backend:
+            # in-process kernels inherit the app's uv venv, so plain
+            # `uv pip install` targets it; docker kernels run on a conda
+            # env without a venv, where uv needs `--system`
+            install_cmd = (
+                "uv pip install"
+                if backend == "jupyter-in-process"
+                else "uv pip install --system"
+            )
             description = get_prompt(
                 f"python_tool_description_jupyter_{suffix}"
-            ).format(timeout=timeout)
+            ).format(timeout=timeout, install_cmd=install_cmd)
         else:
             description = get_prompt(f"python_tool_description_docker_{suffix}")
 

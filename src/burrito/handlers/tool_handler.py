@@ -122,13 +122,21 @@ class ToolHandler:
         conn_info = None
         if kernel_manager is not None:
             kernel_id = await kernel_manager.acquire_kernel()
-            conn_info = await kernel_manager.get_connection_info(kernel_id)
-        self.python_tool = BurritoPython(
-            self.log_id,
-            kernel_id=kernel_id,
-            conn_info=conn_info,
-            kernel_manager=kernel_manager,
-        )
+        try:
+            if kernel_manager is not None:
+                conn_info = await kernel_manager.get_connection_info(kernel_id)
+            self.python_tool = BurritoPython(
+                self.log_id,
+                kernel_id=kernel_id,
+                conn_info=conn_info,
+                kernel_manager=kernel_manager,
+            )
+        except Exception:
+            # the kernel never became reachable (or the session failed to
+            # connect to it); destroy it so the pool doesn't leak the container
+            if kernel_manager is not None:
+                await kernel_manager.release_kernel(kernel_id, destroy=True)
+            raise
         session_handler.set_python_tool(session_id, self.python_tool)
         return self.python_tool
 

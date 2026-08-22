@@ -12,19 +12,18 @@ Internet access for this session is **ENABLED**.
 **Working with packages**:
 - If a package is not part of the Python standard library, install it using `uv`:
 
-  `!uv pip install package_name`
+  `!{install_cmd} package_name`
 
 - Place the installation in a separate cell before importing the package.
 - After installation, import the package normally.
 - Use this pattern:
 
 ```
-!uv pip install requests
+!{install_cmd} requests
 import requests
 ```
 
 **Constraints:**
 
-- Prefer %pip install over !pip install to ensure the correct Python environment is used.
 - Do NOT use subprocess or sys.executable unless explicitly necessary.
 - Assume the environment persists within the notebook session.

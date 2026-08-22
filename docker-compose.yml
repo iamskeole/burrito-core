@@ -15,6 +15,11 @@ services:
     networks:
       - burrito-internal
 
+  # Build-only stub: the kernel containers themselves are created at
+  # runtime by burrito through the docker socket proxy. This service
+  # exists so the image can be built; it is never started by
+  # `docker compose up` (see profile). Build it explicitly with:
+  #   docker compose build burrito-kernel
   burrito-kernel:
     build:
       context: .
@@ -34,8 +39,16 @@ services:
       - "8888:8000"
     environment:
       - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://apollo.local:9999}
+      # burrito manages the python-kernel containers through this proxy
+      # (only used when PYTHON_BACKEND=jupyter-docker-kernels)
       - DOCKER_HOST=tcp://docker-proxy:2375
       - JUPYTER_RUNTIME_DIR=/tmp/jupyter-runtime
+      # lets browser.search use the bundled SearXNG instance
+      # (set BRAVE_API_KEY to prefer the Brave API instead)
+      - SEARXNG_API_URL=${SEARXNG_API_URL:-http://searxng:8080}
+      # set to jupyter-docker-kernels to run python kernels in isolated
+      # burrito-kernel containers (build that image first)
+      # - PYTHON_BACKEND=jupyter-docker-kernels
     volumes:
       - jupyter-runtime:/tmp/jupyter-runtime
     networks:
@@ -98,4 +111,7 @@ volumes:
 networks:
   burrito-internal:
     name: burrito-internal
-    internal: true # Creates a sandbox network with no internet access
+    # kernels get normal bridge egress on this network: the python tool's
+    # online/offline description is decided by the app's wikipedia probe,
+    # which shares this network. Set `internal: true` to re-isolate the
+    # kernels from the internet (the offline description will then apply).

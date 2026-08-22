@@ -169,15 +169,19 @@ class ContainerJupyterSession(AsyncJupyterSession):
         self._client.load_connection_file(tmp_path)
         os.remove(tmp_path)
 
+    def _docker_sigint(self) -> None:
+        client = docker.from_env()
+        container = client.containers.get(f"burrito-kernel-{self.kernel_id}")
+        # Sends POSIX SIGINT directly to the kernel to rip it out of infinite loops
+        container.kill(signal="SIGINT")
+
     async def interrupt(self) -> None:
         try:
             if self.kernel_manager is not None:
                 await self.kernel_manager.release_kernel(self.kernel_id, destroy=True)
             else:
-                client = docker.from_env()
-                container = client.containers.get(f"burrito-kernel-{self.kernel_id}")
-                # Sends POSIX SIGINT directly to the kernel to rip it out of infinite loops
-                container.kill(signal="SIGINT")
+                # blocking docker call: run it on a worker thread, not the event loop
+                await asyncio.to_thread(self._docker_sigint)
         except Exception:
             try:
                 # Fallback to the Jupyter Control Channel (must bypass the locked shell channel)

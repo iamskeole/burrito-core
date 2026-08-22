@@ -11,7 +11,7 @@ from burrito.common.config import settings
 from burrito.common.logger import FastAPILogger
 from burrito.handlers.kernel_handler import DockerKernelManager
 from burrito.tools.browser.tool import BurritoBrowser
-from burrito.tools.python.tool import BurritoPython
+from burrito.tools.python.tool import BurritoPython, refresh_python_internet_flag
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -298,6 +298,9 @@ class SessionHandler:
             try:
                 py_evicted = self.python_tools.evict_idle(py_timeout)
                 br_evicted = self.browser_tools.evict_idle(br_timeout)
+
+                if settings.IS_PYTHON_TOOL_AVAILABLE:
+                    await refresh_python_internet_flag()
 
                 num_kernels = await self._manage_kernels()
 

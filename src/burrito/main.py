@@ -23,6 +23,7 @@ from burrito.routes.metrics import (
     request_latency_success,
 )
 from burrito.tools.browser.engine import BurritoBrowserEngine
+from burrito.tools.python.tool import refresh_python_internet_flag
 
 # silence the jupyter_client internals cleanup warnings
 # specifically targets the "never awaited" warnings from the jupyter internal bridge
@@ -50,6 +51,9 @@ async def lifespan(app: FastAPI):
     app.state.inference_semaphore = asyncio.Semaphore(max_requests)
 
     await app.state.session_handler.start_maintenance()
+
+    # prime the python tool's online/offline probe before the first request
+    await refresh_python_internet_flag()
 
     logger = FastAPILogger.get_logger(__name__)
 

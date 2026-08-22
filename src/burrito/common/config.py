@@ -274,7 +274,7 @@ class Settings(BaseSettings):
 
     SESSION_HANDLER_SENTINEL_HEARTBEAT_SECONDS: int = Field(
         default=30,
-        description="Timeout for python tool execution, in seconds.",
+        description="How often (in seconds) the session maintenance loop runs.",
     )
 
     PYTHON_EXECUTION_TIMEOUT_SECONDS: int = Field(
@@ -287,7 +287,7 @@ class Settings(BaseSettings):
         description="Timeout (in seconds) to keep idle browser sessions alive.",
     )
     PYTHON_SESSION_IDLE_TIMEOUT: int = Field(
-        default=1 * 1 * 30,  # 20 minutes
+        default=600,  # 10 minutes
         description="Timeout (in seconds) to keep idle python sessions alive. MUST be > than execution timeout otherwise SessionHandler sentinel can prematurely kill long working python tool threads.",
     )
 

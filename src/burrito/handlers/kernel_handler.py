@@ -1,16 +1,18 @@
+import asyncio
 import gc
-import logging
 import os
 import random
+import time
 from typing import Dict, Optional
 
 import docker
 import docker.errors as docker_errors
 
 from burrito.common.config import settings
+from burrito.common.logger import FastAPILogger
 from burrito.common.utils import random_uuid
 
-logger = logging.getLogger(__name__)
+logger = FastAPILogger.get_logger(__name__)
 
 
 class DockerKernelManager:
@@ -45,8 +47,10 @@ class DockerKernelManager:
         """Syncs local pool_state with actual running Docker containers."""
         try:
             # List all containers that match our naming convention
-            containers = self.client.containers.list(
-                filters={"name": "burrito-kernel-"}
+            # (blocking docker call: run it on a worker thread, not the event loop)
+            containers = await asyncio.to_thread(
+                self.client.containers.list,
+                filters={"name": "burrito-kernel-"},
             )
             active_ids = set()
 
@@ -86,7 +90,9 @@ class DockerKernelManager:
         try:
             kernel_id = random_uuid()[:6]
 
-            out = self.client.containers.run(
+            # blocking docker call: run it on a worker thread, not the event loop
+            out = await asyncio.to_thread(
+                self.client.containers.run,
                 image="burrito-kernel:latest",
                 name=f"burrito-kernel-{kernel_id}",
                 detach=True,
@@ -130,36 +136,35 @@ class DockerKernelManager:
         else:
             self.pool_state[kernel_id] = "idle"
 
+    def _kill_blocking(self, kernel_id: str) -> None:
+        container = self.client.containers.get(f"burrito-kernel-{kernel_id}")
+        container.stop(timeout=2)
+        container.remove()
+
+        # Cleanup the shared volume file
+        path = f"/tmp/jupyter-runtime/{kernel_id}.json"
+        if os.path.exists(path):
+            os.remove(path)
+
     async def kill_kernel(self, kernel_id: str):
         """Stops and removes the container and its connection file."""
         try:
-            container = self.client.containers.get(f"burrito-kernel-{kernel_id}")
-            container.stop(timeout=2)
-            container.remove()
-
-            # Cleanup the shared volume file
-            path = f"/tmp/jupyter-runtime/{kernel_id}.json"
-            if os.path.exists(path):
-                os.remove(path)
+            # blocking docker calls: run them on a worker thread, not the event loop
+            await asyncio.to_thread(self._kill_blocking, kernel_id)
 
             self.pool_state.pop(kernel_id, None)
             logger.debug(f"kill_kernel: {kernel_id}")
         except Exception as e:
             logger.debug(f"Cleanup failed for {kernel_id}: {e}")
 
-    async def get_connection_info(self, kernel_id: str) -> str:
-        """Reads the connection JSON written by the kernel container via Docker API."""
-        import asyncio
+    def _poll_connection_file(self, container, path: str) -> str:
+        """Blocking: waits (up to 5s) for the kernel to write its connection file."""
         import io
         import tarfile
 
-        container = self.client.containers.get(f"burrito-kernel-{kernel_id}")
-
         for _ in range(50):
             try:
-                bits, stat = container.get_archive(
-                    f"/tmp/jupyter-runtime/{kernel_id}.json"
-                )
+                bits, stat = container.get_archive(path)
                 file_content = b"".join(bits)
 
                 with tarfile.open(fileobj=io.BytesIO(file_content)) as tar:
@@ -170,16 +175,24 @@ class DockerKernelManager:
                             content = f.read().decode("utf-8")
                             if content:
                                 return content
-            except docker_errors.NotFound as e:
-                # The container or the file does not exist; surface a clear error
-                raise FileNotFoundError(
-                    f"Container or file for kernel {kernel_id} not found"
-                ) from e
-            except Exception as e:
+            except docker_errors.NotFound:
+                # The connection file has not been written yet; keep polling
+                pass
+            except Exception:
                 pass
 
-            await asyncio.sleep(0.1)
+            time.sleep(0.1)
 
-        raise FileNotFoundError(
-            f"Kernel {kernel_id} has not written its connection file yet."
+        raise FileNotFoundError("Kernel has not written its connection file yet.")
+
+    async def get_connection_info(self, kernel_id: str) -> str:
+        """Reads the connection JSON written by the kernel container via Docker API."""
+        # blocking docker calls: run them on a worker thread, not the event loop
+        container = await asyncio.to_thread(
+            self.client.containers.get, f"burrito-kernel-{kernel_id}"
+        )
+        return await asyncio.to_thread(
+            self._poll_connection_file,
+            container,
+            f"/tmp/jupyter-runtime/{kernel_id}.json",
         )

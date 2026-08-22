@@ -34,7 +34,8 @@ Dockerfile
 docker-compose.yml
 docker-compose.test.yml
 script.py
-pyproject.toml
+# NOTE: pyproject.toml and uv.lock must NOT be listed here -
+# the Dockerfile COPYs them into the build context
 .env
 
 # -------------------------------------------------------
@@ -48,7 +49,6 @@ Thumbs.db
 *.tmp
 *.bak
 ~$*
-*.lock
 
 # -------------------------------------------------------
 # Miscellaneous
