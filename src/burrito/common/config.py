@@ -50,35 +50,35 @@ class Settings(BaseSettings):
         description="Persist the in-memory response buffer. Includes state recovery messages.",
     )
     DEBUG_STATE_CHANGE: bool = Field(
-        default=True, description="Log state transition events."
+        default=False, description="Log state transition events."
     )
     DEBUG_HARMONY_ERRORS: bool = Field(
-        default=True, description="Log unhandled Harmony errors."
+        default=False, description="Log unhandled Harmony errors."
     )
     DEBUG_REPETITION_EVAL_TIME: bool = Field(
-        default=True, description="Log time taken for repetition evals."
+        default=False, description="Log time taken for repetition evals."
     )
     DEBUG_BROWSER_ERRORS: bool = Field(
-        default=True, description="Log browser tool errors."
+        default=False, description="Log browser tool errors."
     )
     DEBUG_STATE_ERRORS: bool = Field(
-        default=True, description="Log state management errors."
+        default=False, description="Log state management errors."
     )
     DEBUG_CLIENT_DISCONNECTS: bool = Field(
-        default=True, description="Log client disconnect events."
+        default=False, description="Log client disconnect events."
     )
     DEBUG_GENERATOR_CLEANUP: bool = Field(
-        default=True, description="Log cleanup actions performed by the generator."
+        default=False, description="Log cleanup actions performed by the generator."
     )
     DEBUG_SESSION_CACHE: bool = Field(
-        default=True, description="Log cache operations inside SessionCache."
+        default=False, description="Log cache operations inside SessionCache."
     )
     DEBUG_SESSION_SENTINEL_HEARTBEAT: bool = Field(
         default=False,
         description="Log tick / tock heartbeats for SessionHandler tool cleanup sentinel.",
     )
     DEBUG_KERNEL_OPERATIONS: bool = Field(
-        default=True,
+        default=False,
         description="Log operations performed by the KernelHandler to manage Jupyter kernels in docker.",
     )
 
@@ -218,7 +218,7 @@ class Settings(BaseSettings):
         description="Remove granular timestamps (eg: 12:42:23) from prompts. These mess up prompt caching with no added benefit.",
     )
     SYSTEM_MESSAGE_DATE_CONFIG: str | Literal["off", "auto", "auto-utc"] = Field(
-        default="2026-05-25",
+        default="auto-utc",
         description="Whether and how to include and format current date in system message. Use YYYY-MM-DD format if static date.",
     )
 
@@ -330,7 +330,7 @@ class Settings(BaseSettings):
     )
 
     SEARXNG_API_URL: str = Field(
-        default="http://atlas.local:9090", # TODO: change to blank after benchmarks
+        default="",
         description="Endpoint URL for the SearXNG search API. If both this and BRAVE_API_KEY are blank, browser.search is disabled.",
     )
 
