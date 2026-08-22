@@ -1,10 +1,10 @@
-# burrito
+# 🌯 burrito
 
 A batteries-included inference harness for gpt-oss.
 
 ## What
 
-Burrito is a drop-in replacement for the **OpenAI** and **Anthropic** APIs, backed by a gpt-oss model. It accepts standard requests on `/v1/chat/completions`, `/v1/responses`, and `/v1/messages` (JSON and streamed, including standard wire events where applicable) and delegates next-token prediction to an existing inference backend — **llama.cpp** or **vLLM** — over `/v1/completions`. It does not ship a model.
+burrito is a drop-in replacement for the **OpenAI** and **Anthropic** APIs, backed by a gpt-oss model. It accepts standard requests on `/v1/chat/completions`, `/v1/responses`, and `/v1/messages` (JSON and streamed, including standard wire events where applicable) and delegates next-token prediction to an existing inference backend — **llama.cpp** or **vLLM** — over `/v1/completions`. It does not ship a model.
 
 ## Why
 
@@ -13,7 +13,7 @@ gpt-oss was trained with native `python` and `browser` tools and to work in dist
 - **llama.cpp** implements both OpenAI endpoints plus an Anthropic-compatible `/v1/messages`, but forces tool calls through grammars and a hardcoded `functions.` prefix. That buys high tool-call success, but the model's native `python` / `browser.*` namespaces cannot be used (they are trained under their own names, not `functions.python` / `functions.browser`), and jinja failures end generation immediately.
 - **vLLM** has working tool calling on the OpenAI endpoints, but no `/v1/messages` for Anthropic-compatible clients, no recovery from malformed output, and python/browser support only in a separate demo server that defaults to commercial browser APIs — meaning API fees and third-party data.
 
-Burrito fills the other side of that specialization: it is a model-specific harness that renders conversations the way the model was trained to read them, executes the native `python` and `browser` tools inside the same process (no separate servers), recovers from hallucinated tool calls by telling the model where it went wrong — the model is smart enough to correct itself — and exposes production health checks and Prometheus metrics.
+burrito fills the other side of that specialization: it is a model-specific harness that renders conversations the way the model was trained to read them, executes the native `python` and `browser` tools inside the same process (no separate servers), recovers from hallucinated tool calls by telling the model where it went wrong — the model is smart enough to correct itself — and exposes production health checks and Prometheus metrics.
 
 ## How
 
@@ -24,9 +24,22 @@ Burrito fills the other side of that specialization: it is a model-specific harn
 
 **Rule of thumb:** use llama.cpp when you want maximum single-threaded speed and do not need the native tools; use burrito when you want native python/browser tools, Anthropic-compatible endpoints, and parallel request handling, on either backend.
 
+## Evaluations
+
+The comparisons above are backed by a public evaluation suite: [burrito-evals](https://github.com/iamskeole/burrito-evals) (MIT-licensed, like this repo) ran gpt-oss-20b across **320,192 runs** — 3.49B tokens, 1,062 GPU hours on a single RTX 3090, batch size 1, 8 random seeds per configuration — over the Big Function Calling Leaderboard (single-turn, live-API, and multi-turn agentic tests), AIME25, and GPQA. Seven backend configurations were compared: burrito over llama.cpp and vLLM (with and without preserved thinking), vanilla llama.cpp with the default and fixed jinja templates, and vanilla vLLM.
+
+Headline results — the repo ships the full report, all 44 figures, the per-run dataset, and the reasoning trace for every run, so everything below is reproducible:
+
+- **Configuration matters more than model capability.** The same weights score from ~0% to ~87% depending on template, tool format, wire API, and effort level.
+- **The default jinja template breaks the model.** Removing `commentary` from the valid output channels when no tools are present moves live-test accuracy from ~3% to ~40%; the fix has also been submitted upstream to the model's Hugging Face repo.
+- **Wire API matters.** On vLLM, `/v1/responses` errors on 73.5–83.5% of multi-turn runs versus 29.0–36.0% on `/v1/chat/completions`. burrito sidesteps the tradeoff by speaking `/v1/completions` to the backend.
+- **Structured tool schemas (fc_model=1) triple multi-turn accuracy** over AST parsing (fc_model=0), where the vanilla backends collapse to ~0%.
+- **Reasoning effort changes answer quality, not just length.** At a fixed ~1.4k reasoning-token budget, AIME25 accuracy is 38/97/100% for low/medium/high effort — and brute-forcing more tokens past an effort level's optimal zone degrades accuracy.
+- **Native python tools add 21–24 points at low effort and 10–12 at medium**, while reducing token usage.
+
 ## Installation
 
-> **Prerequisites**: Docker with Compose v2 (a running docker daemon on the host), and a gpt-oss inference backend (llama.cpp or vLLM) that the docker host can reach. Burrito does not ship a model.
+> **Prerequisites**: Docker with Compose v2 (a running docker daemon on the host), and a gpt-oss inference backend (llama.cpp or vLLM) that the docker host can reach. burrito does not ship a model.
 
 1. clone this repo
 
@@ -77,7 +90,7 @@ By default the python tool runs Jupyter kernels **in-process** inside the burrit
 1. build the kernel image (step 3)
 2. uncomment `PYTHON_BACKEND=jupyter-docker-kernels` in [`docker-compose.yml`](/docker-compose.yml) (or export it) and `docker compose up -d` again
 
-Burrito then manages `burrito-kernel` containers itself through the bundled docker-socket-proxy: kernels are pre-warmed (default 2), get their own container on the `burrito-internal` network, and are reachable over that network's DNS. Kernels keep normal internet access on that network, matching the app itself: the python tool's description tells the model whether installing packages is possible (the app probes wikipedia at boot and refreshes the answer periodically). If you want the kernels isolated from the internet instead, add `internal: true` back to the `burrito-internal` network in the compose file — the offline description will then apply and agent code can only use the preinstalled numpy/pandas/sympy. If you get `a network with name burrito-internal exists but was not created by compose`, remove the stale network first: `docker network rm burrito-internal`.
+burrito then manages `burrito-kernel` containers itself through the bundled docker-socket-proxy: kernels are pre-warmed (default 2), get their own container on the `burrito-internal` network, and are reachable over that network's DNS. Kernels keep normal internet access on that network, matching the app itself: the python tool's description tells the model whether installing packages is possible (the app probes wikipedia at boot and refreshes the answer periodically). If you want the kernels isolated from the internet instead, add `internal: true` back to the `burrito-internal` network in the compose file — the offline description will then apply and agent code can only use the preinstalled numpy/pandas/sympy. If you get `a network with name burrito-internal exists but was not created by compose`, remove the stale network first: `docker network rm burrito-internal`.
 
 ### Debugging
 
@@ -89,4 +102,4 @@ docker compose -f docker-compose.yml -f docker-compose.test.yml up --build -d
 
 ## Licenses
 
-This project depends on a minimal number of open-source libraries. All packages have permissive licenses except for the SearXNG and Grafana Docker images, which are AGPL-3.0; the Docker image also embeds Playwright's browsers (Chromium, Firefox, WebKit) under their respective open-source licenses. Detailed license information is available in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+burrito itself is MIT-licensed ([LICENSE](/LICENSE)). It depends on a minimal number of open-source libraries. All packages have permissive licenses except for the SearXNG and Grafana Docker images, which are AGPL-3.0; the Docker image also embeds Playwright's browsers (Chromium, Firefox, WebKit) under their respective open-source licenses. Detailed license information is available in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).

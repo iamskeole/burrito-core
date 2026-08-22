@@ -15,7 +15,7 @@ services:
     networks:
       - burrito-internal
 
-  # Build-only stub: the kernel containers themselves are created at
+  # build-only stub: the kernel containers themselves are created at
   # runtime by burrito through the docker socket proxy. This service
   # exists so the image can be built; it is never started by
   # `docker compose up` (see profile). Build it explicitly with:
@@ -29,7 +29,6 @@ services:
     profiles:
       - donotstart
 
-  # 2. Update your main app
   burrito:
     build: .
     image: burrito:latest
@@ -37,18 +36,45 @@ services:
     restart: unless-stopped
     ports:
       - "8888:8000"
+    # all variables below are overridable from the project's .env file
+    # (see .env.example); the defaults match burrito's in-app defaults
     environment:
       - BACKEND_BASE_URL=${BACKEND_BASE_URL:-http://apollo.local:9999}
       # burrito manages the python-kernel containers through this proxy
       # (only used when PYTHON_BACKEND=jupyter-docker-kernels)
       - DOCKER_HOST=tcp://docker-proxy:2375
       - JUPYTER_RUNTIME_DIR=/tmp/jupyter-runtime
-      # lets browser.search use the bundled SearXNG instance
-      # (set BRAVE_API_KEY to prefer the Brave API instead)
+      # browser.search: bundled SearXNG by default; a BRAVE_API_KEY from
+      # .env, when set, takes priority
       - SEARXNG_API_URL=${SEARXNG_API_URL:-http://searxng:8080}
-      # set to jupyter-docker-kernels to run python kernels in isolated
-      # burrito-kernel containers (build that image first)
-      # - PYTHON_BACKEND=jupyter-docker-kernels
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      # python tool: available to the model, and/or always enabled
+      # (bypasses the per-request tools-list check)
+      - IS_PYTHON_TOOL_AVAILABLE=${IS_PYTHON_TOOL_AVAILABLE:-true}
+      - IS_PYTHON_TOOL_ALWAYS_ENABLED=${IS_PYTHON_TOOL_ALWAYS_ENABLED:-false}
+      - IS_BROWSER_TOOL_AVAILABLE=${IS_BROWSER_TOOL_AVAILABLE:-true}
+      - IS_BROWSER_TOOL_ALWAYS_ENABLED=${IS_BROWSER_TOOL_ALWAYS_ENABLED:-false}
+      # python kernel backend: jupyter-in-process (default) or
+      # jupyter-docker-kernels (build the burrito-kernel image first)
+      - PYTHON_BACKEND=${PYTHON_BACKEND:-jupyter-in-process}
+      # model + harmony behaviour
+      - DEFAULT_MODEL_NAME=${DEFAULT_MODEL_NAME:-openai/gpt-oss-20b}
+      - MODEL_IDENTITY=${MODEL_IDENTITY:-default}
+      - SYSTEM_MESSAGE_DATE_CONFIG=${SYSTEM_MESSAGE_DATE_CONFIG:-auto-utc}
+      - PRUNE_REASONING=${PRUNE_REASONING:-true}
+      # browser tool locale / language / timezone
+      - BROWSER_LOCALE=${BROWSER_LOCALE:-en-GB}
+      - BROWSER_LANGUAGE=${BROWSER_LANGUAGE:-en}
+      - BROWSER_TIMEZONE=${BROWSER_TIMEZONE:-Europe/London}
+      # container logs at info by default; set LOG_LEVEL=debug in .env
+      # to restore the verbose in-app default
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # seconds to wait for the next token from the backend before
+      # aborting the request
+      - BACKEND_INTER_TOKEN_TIMEOUT=${BACKEND_INTER_TOKEN_TIMEOUT:-120}
+      # /metrics protection (both empty = endpoint is open)
+      - METRICS_AUTH_TOKEN=${METRICS_AUTH_TOKEN:-}
+      - METRICS_IP_WHITELIST=${METRICS_IP_WHITELIST:-}
     volumes:
       - jupyter-runtime:/tmp/jupyter-runtime
     networks:
@@ -82,7 +108,7 @@ services:
       - "3000:3000"
 
   valkey:
-    image: valkey/valkey:latest # Use the official Valkey image
+    image: valkey/valkey:latest # use the official Valkey image
     container_name: burrito-valkey
     restart: unless-stopped
     ports:
@@ -106,7 +132,7 @@ services:
 
 volumes:
   grafana-storage:
-  jupyter-runtime: # The new volume shared between 'burrito' and kernel containers
+  jupyter-runtime: # volume shared between 'burrito' and kernel containers
 
 networks:
   burrito-internal:

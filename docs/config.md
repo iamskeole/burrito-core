@@ -6,6 +6,8 @@ Burrito exposes all its behaviour through environment variables.  A complete lis
 - **``BACKEND_BASE_URL``** – Base URL of the LLM backend (required in practice).  It must omit the ``/v1`` prefix; the default points to ``http://127.0.0.1:9999``.
 - **``SEARXNG_API_URL``** – Endpoint for the self‑hosted SearXNG search service (``browser.search`` fallback).  The compose file points this at the bundled SearXNG container (``http://searxng:8080``).  When blank **and** ``BRAVE_API_KEY`` is empty, the ``browser.search`` tool is disabled.
 - **``BRAVE_API_KEY``** – Public API key for Brave Search.  When supplied it takes priority over SearXNG for the search tool.
+- **``DEFAULT_MODEL_NAME``** – Model identifier sent to the backend when the client does not set one (default ``openai/gpt-oss-20b``).
+- **``BACKEND_INTER_TOKEN_TIMEOUT``** – Seconds to wait for the next token from the backend before the request is aborted (default ``120``); raise it for slow local backends.
 - **``MAX_REQUEST_BODY_SIZE``** – Maximum POST payload size in bytes (default 1 MiB).  Requests larger than this are rejected with a 413.
 - **``MAX_CONCURRENT_INFERENCE_REQUESTS``** – Number of concurrent inferences that a single Uvicorn worker will handle.
 - **``MAX_RECOVER_STATE_ATTEMPTS``** – How many retries Burrito will perform when a state recovery message fails.
@@ -17,6 +19,12 @@ Burrito exposes all its behaviour through environment variables.  A complete lis
 - **``PYTHON_BACKEND``** – Python execution mode: ``jupyter-in-process`` (default, kernels inside the burrito container) or ``jupyter-docker-kernels`` (isolated ``burrito-kernel`` containers managed via the docker socket proxy; ``DOCKER_HOST`` is set in the compose file).  With docker kernels, ``PYTHON_KERNEL_MIN_POOL_SIZE`` (default 2) keeps that many pre‑warmed. Docker kernels run on the compose ``burrito-internal`` network, which has normal internet egress by default (set ``internal: true`` on that network in the compose file to remove it).
 - **``BROWSER_TIMEOUT_FETCH``** – Timeout for page fetches (seconds).
 - **``BROWSER_TIMEOUT_SEARCH``** – Timeout for web‑search calls (seconds).
+- **``BROWSER_LOCALE``** / **``BROWSER_LANGUAGE``** / **``BROWSER_TIMEZONE``** – Browser tool personalisation (defaults ``en-GB`` / ``en`` / ``Europe/London``); the values are also echoed into the model's prompt.
+
+## Model behaviour (Harmony)
+- **``MODEL_IDENTITY``** – Personality baked into the system message: ``default``, ``v1`` or ``caveman`` (see ``src/burrito/prompts/model_identity_*.md``; unknown values fall back to ``default``).
+- **``SYSTEM_MESSAGE_DATE_CONFIG``** – Date injected into the system message: ``auto`` (server timezone), ``auto-utc`` (default), ``off``, or a fixed ``YYYY-MM-DD`` to pin inputs for reproducible evals.
+- **``PRUNE_REASONING``** – Drop old assistant reasoning messages from context to save tokens (default ``true``).
 
 > Note: ``HOST`` and ``PORT`` exist in the Settings class but are not used by the container deployment — the image's command line pins Uvicorn to ``0.0.0.0:8000`` and the compose file maps host port 8888 to it.
 
