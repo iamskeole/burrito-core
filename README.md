@@ -31,7 +31,7 @@ The comparisons above are backed by a public evaluation suite: [burrito-evals](h
 Headline results — the repo ships the full report, all 44 figures, the per-run dataset, and the reasoning trace for every run, so everything below is reproducible:
 
 - **Configuration matters more than model capability.** The same weights score from ~0% to ~87% depending on template, tool format, wire API, and effort level.
-- **The default jinja template breaks the model.** Removing `commentary` from the valid output channels when no tools are present moves live-test accuracy from ~3% to ~40%; the fix has also been submitted upstream to the model's Hugging Face repo.
+- **The default jinja template breaks the model.** Removing `commentary` from the valid output channels when no tools are present moves live-test accuracy from ~3% to ~40%; the fix has also been submitted upstream to the model's Hugging Face repo: [gpt-oss-20b/chat_template.jinja](https://huggingface.co/openai/gpt-oss-20b/discussions/274/files).
 - **Wire API matters.** On vLLM, `/v1/responses` errors on 73.5–83.5% of multi-turn runs versus 29.0–36.0% on `/v1/chat/completions`. burrito sidesteps the tradeoff by speaking `/v1/completions` to the backend.
 - **Structured tool schemas (fc_model=1) triple multi-turn accuracy** over AST parsing (fc_model=0), where the vanilla backends collapse to ~0%.
 - **Reasoning effort changes answer quality, not just length.** At a fixed ~1.4k reasoning-token budget, AIME25 accuracy is 38/97/100% for low/medium/high effort — and brute-forcing more tokens past an effort level's optimal zone degrades accuracy.
